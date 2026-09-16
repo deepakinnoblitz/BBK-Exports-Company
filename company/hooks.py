@@ -194,6 +194,10 @@ for r in spa_routes:
 
 home_page = "crm"
 
+website_context = {
+    "favicon": "/assets/company/crm/BBK-LOGO.png"
+}
+
 
 extend_bootinfo = "company.company.api.extend_bootinfo"
 
