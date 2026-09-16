@@ -19,7 +19,11 @@
   "dob",
   "blood_group",
   "sex",
+  "marital_status",
+  "qualification",
+  "aadhar_number",
   "pf_number",
+  "uan_number",
   "esi_no",
   "column_break_hiwd",
   "email",
@@ -28,6 +32,10 @@
   "office_phone_number",
   "department",
   "designation",
+  "employee_type",
+  "line_order",
+  "shift",
+  "bus_travel_route",
   "status",
   "user",
   "evaluation_score",
@@ -94,8 +102,9 @@
   },
   {
    "fieldname": "designation",
-   "fieldtype": "Data",
-   "label": "Designation"
+   "fieldtype": "Link",
+   "label": "Designation",
+   "options": "Designation"
   },
   {
    "fieldname": "date_of_joining",
@@ -165,8 +174,7 @@
    "fieldname": "user",
    "fieldtype": "Link",
    "label": "User",
-   "options": "User",
-   "reqd": 1
+   "options": "User"
   },
   {
    "default": "100",
@@ -267,6 +275,54 @@
    "fieldname": "employee_details_section",
    "fieldtype": "Section Break",
    "label": "Employee Details"
+  },
+  {
+   "fieldname": "employee_type",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Employee Type",
+   "options": "Staff\nNorth Indian Staff\nWorkers\nDrivers\nContractor\nHouse Keeping\nSecurity\nSTP Employees"
+  },
+  {
+   "fieldname": "marital_status",
+   "fieldtype": "Select",
+   "label": "Marital Status",
+   "options": "Single\nMarried\nDivorced\nWidowed"
+  },
+  {
+   "fieldname": "qualification",
+   "fieldtype": "Link",
+   "label": "Qualification",
+   "options": "Qualification"
+  },
+  {
+   "fieldname": "aadhar_number",
+   "fieldtype": "Data",
+   "label": "Aadhar Number"
+  },
+  {
+   "fieldname": "uan_number",
+   "fieldtype": "Data",
+   "label": "UAN Number"
+  },
+  {
+   "fieldname": "line_order",
+   "fieldtype": "Link",
+   "label": "Line Order",
+   "options": "Line Order"
+  },
+  {
+   "fieldname": "shift",
+   "fieldtype": "Link",
+   "label": "Shift",
+   "options": "Shift"
+  },
+  {
+   "fieldname": "bus_travel_route",
+   "fieldtype": "Link",
+   "label": "Bus - Travel Route",
+   "options": "Bus Travel Route"
   }
  ],
  "grid_page_length": 50,
