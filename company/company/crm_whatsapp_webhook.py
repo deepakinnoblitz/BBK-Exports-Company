@@ -7,7 +7,7 @@ from werkzeug.wrappers import Response
 
 
 LOG_FILE = (
-    "/home/innoblitz/frappe-dev/server/com-bench/"
+    "/home/vishal/frappe/bbk-exports-bench/"
     "apps/company/company/company/logs/"
     "whatsapp_webhook.log"
 )
