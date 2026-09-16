@@ -1,0 +1,251 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2026-04-04 09:46:00",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "logo_tab",
+  "app_logo",
+  "dashboard_tab",
+  "weekly_chart_source",
+  "present_threshold",
+  "half_day_threshold",
+  "salary_slip_tab",
+  "salary_calculation_source",
+  "salary_holiday_handling",
+  "salary_slip_present_threshold",
+  "salary_slip_half_day_threshold",
+  "salary_slip_absent_threshold",
+  "notification_tab",
+  "leave_notification",
+  "wfh_notification",
+  "request_notification",
+  "reimbursement_notification",
+  "task_notification",
+  "job_notification",
+  "currency_tab",
+  "default_currency",
+  "default_locale",
+  "call_tab",
+  "livekit_url",
+  "livekit_api_key",
+  "livekit_api_secret",
+   "sidebar_tab",
+   "show_attendance_list",
+   "show_daily_log",
+   "show_attendance_report",
+   "show_daily_log_report"
+ ],
+ "fields": [
+  {
+   "fieldname": "logo_tab",
+   "fieldtype": "Tab Break",
+   "label": "Logo"
+  },
+  {
+   "fieldname": "app_logo",
+   "fieldtype": "Attach Image",
+   "label": "App Logo"
+  },
+  {
+   "fieldname": "dashboard_tab",
+   "fieldtype": "Tab Break",
+   "label": "Dashboard"
+  },
+  {
+   "default": "Attendance",
+   "fieldname": "weekly_chart_source",
+   "fieldtype": "Select",
+   "label": "Weekly Chart Source",
+   "options": "Attendance\nDaily Log"
+  },
+  {
+   "default": "5",
+   "fieldname": "present_threshold",
+   "fieldtype": "Float",
+   "label": "Present Threshold (Hours)"
+  },
+  {
+   "default": "3",
+   "fieldname": "half_day_threshold",
+   "fieldtype": "Float",
+   "label": "Half Day Threshold (Hours)"
+  },
+  {
+   "fieldname": "salary_slip_tab",
+   "fieldtype": "Tab Break",
+   "label": "Salary Slip"
+  },
+  {
+   "default": "Attendance",
+   "fieldname": "salary_calculation_source",
+   "fieldtype": "Select",
+   "label": "Calculation Source",
+   "options": "Attendance\nDaily Log"
+  },
+  {
+   "default": "Include in Working Days",
+   "fieldname": "salary_holiday_handling",
+   "fieldtype": "Select",
+   "label": "Holiday Handling",
+   "options": "Include in Working Days\nExclude from Working Days"
+  },
+  {
+   "default": "5",
+   "fieldname": "salary_slip_present_threshold",
+   "fieldtype": "Float",
+   "label": "Present Threshold (Hours)"
+  },
+  {
+   "default": "3",
+   "fieldname": "salary_slip_half_day_threshold",
+   "fieldtype": "Float",
+   "label": "Half Day Threshold (Hours)"
+  },
+  {
+   "default": "3",
+   "fieldname": "salary_slip_absent_threshold",
+   "fieldtype": "Float",
+   "label": "Absent Threshold (Hours)"
+  },
+  {
+   "fieldname": "notification_tab",
+   "fieldtype": "Tab Break",
+   "label": "Notifications"
+  },
+  {
+   "default": "1",
+   "fieldname": "leave_notification",
+   "fieldtype": "Check",
+   "label": "Leave Application Mail"
+  },
+  {
+   "default": "1",
+   "fieldname": "wfh_notification",
+   "fieldtype": "Check",
+   "label": "WFH Attendance Mail"
+  },
+  {
+   "default": "1",
+   "fieldname": "request_notification",
+   "fieldtype": "Check",
+   "label": "Request List Mail"
+  },
+  {
+   "default": "1",
+   "fieldname": "reimbursement_notification",
+   "fieldtype": "Check",
+   "label": "Reimbursement List Mail"
+  },
+  {
+   "default": "1",
+   "fieldname": "task_notification",
+   "fieldtype": "Check",
+   "label": "Task Manager Mail"
+  },
+  {
+   "default": "1",
+   "fieldname": "job_notification",
+   "fieldtype": "Check",
+   "label": "Job Application Mail"
+  },
+  {
+   "fieldname": "currency_tab",
+   "fieldtype": "Tab Break",
+   "label": "Currency & Locale"
+  },
+  {
+   "default": "INR",
+   "fieldname": "default_currency",
+   "fieldtype": "Select",
+   "label": "Default Currency",
+   "options": "INR\nUSD\nEUR\nGBP\nJPY\nAUD\nCAD"
+  },
+  {
+   "default": "en-IN",
+   "fieldname": "default_locale",
+   "fieldtype": "Select",
+   "label": "Default Locale",
+   "options": "en-IN\nen-US\nen-GB\nde-DE\nfr-FR\nja-JP"
+  },
+  {
+   "fieldname": "call_tab",
+   "fieldtype": "Tab Break",
+   "label": "Call Integration"
+  },
+  {
+   "fieldname": "livekit_url",
+   "fieldtype": "Data",
+   "label": "LiveKit Server URL"
+  },
+  {
+   "fieldname": "livekit_api_key",
+   "fieldtype": "Data",
+   "label": "LiveKit API Key"
+  },
+  {
+   "fieldname": "livekit_api_secret",
+   "fieldtype": "Password",
+   "label": "LiveKit API Secret"
+  },
+  {
+   "fieldname": "sidebar_tab",
+   "fieldtype": "Tab Break",
+   "label": "Sidebar"
+  },
+  {
+   "default": "1",
+   "fieldname": "show_attendance_list",
+   "fieldtype": "Check",
+   "label": "Show Attendance List"
+  },
+  {
+   "default": "1",
+   "fieldname": "show_daily_log",
+   "fieldtype": "Check",
+   "label": "Show Daily Log"
+  },
+  {
+   "default": "1",
+   "fieldname": "show_attendance_report",
+   "fieldtype": "Check",
+   "label": "Show Attendance Report"
+  },
+  {
+   "default": "1",
+   "fieldname": "show_daily_log_report",
+   "fieldtype": "Check",
+   "label": "Show Daily Log Report"
+  }
+ ],
+ "issingle": 1,
+ "links": [],
+ "modified": "2026-04-04 15:18:40.334840",
+ "modified_by": "Administrator",
+ "module": "Company",
+ "name": "HRMS Settings",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "role": "All"
+  }
+ ],
+ "row_format": "Dynamic",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

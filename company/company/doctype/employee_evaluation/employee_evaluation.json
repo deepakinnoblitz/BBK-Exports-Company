@@ -1,0 +1,160 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "autoname": "None",
+ "creation": "2026-03-13 06:40:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "employee",
+  "employee_name",
+  "trait",
+  "evaluation_type",
+  "evaluation_date",
+  "column_break_rehr",
+  "score_change",
+  "hr_user",
+  "is_submitted",
+  "auto_submit",
+  "section_break_ntcc",
+  "remarks",
+  "how_to_improve"
+ ],
+ "fields": [
+  {
+   "fieldname": "employee",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Employee",
+   "options": "Employee",
+   "reqd": 1
+  },
+  {
+   "fieldname": "employee_name",
+   "fieldtype": "Data",
+   "fetch_from": "employee.employee_name",
+   "in_list_view": 1,
+   "label": "Employee Name",
+   "read_only": 1
+  },
+  {
+   "fieldname": "trait",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Trait",
+   "options": "Evaluation Trait",
+   "reqd": 1
+  },
+  {
+   "fieldname": "evaluation_type",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Evaluation Type",
+   "options": "Evaluation Point",
+   "reqd": 1
+  },
+  {
+   "fieldname": "evaluation_date",
+   "fieldtype": "Date",
+   "label": "Evaluation Date",
+   "default": "Today"
+  },
+  {
+   "fieldname": "score_change",
+   "fieldtype": "Int",
+   "label": "Score Change",
+   "read_only": 1
+  },
+  {
+   "fieldname": "hr_user",
+   "fieldtype": "Link",
+   "label": "HR User",
+   "options": "User",
+   "read_only": 1
+  },
+  {
+   "fieldname": "remarks",
+   "fieldtype": "Small Text",
+   "label": "Remarks"
+  },
+  {
+   "fieldname": "how_to_improve",
+   "fieldtype": "Small Text",
+   "label": "How to Improve"
+  },
+  {
+   "fieldname": "column_break_rehr",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "section_break_ntcc",
+   "fieldtype": "Section Break"
+  },
+  {
+   "default": "0",
+   "fieldname": "is_submitted",
+   "fieldtype": "Check",
+   "hidden": 1,
+   "label": "Is Submitted"
+  },
+  {
+   "default": "0",
+   "fieldname": "auto_submit",
+   "fieldtype": "Check",
+   "hidden": 1,
+   "label": "Auto Submit"
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "is_submittable": 1,
+ "links": [],
+ "modified": "2026-03-13 06:40:00.000000",
+ "modified_by": "Administrator",
+ "module": "Company",
+ "name": "Employee Evaluation",
+ "naming_rule": "By script",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1,
+   "submit": 1,
+   "cancel": 1,
+   "amend": 1
+  },
+  {
+   "create": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "delete": 1,
+   "report": 1,
+   "role": "HR",
+   "share": 1,
+   "write": 1,
+   "select": 1,
+   "submit": 1,
+   "cancel": 1,
+   "amend": 1
+  },
+  {
+   "read": 1,
+   "role": "Employee",
+   "select": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": []
+}

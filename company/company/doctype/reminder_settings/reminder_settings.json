@@ -1,0 +1,103 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2025-12-17 14:49:16.845821",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "enable_reminders",
+  "default_email_enabled",
+  "default_remind_before_minutes",
+  "scheduler_interval",
+  "allowed_doctypes",
+  "default_email_template",
+  "email_to"
+ ],
+ "fields": [
+  {
+   "default": "0",
+   "fieldname": "enable_reminders",
+   "fieldtype": "Check",
+   "label": "Enable Reminders"
+  },
+  {
+   "default": "0",
+   "fieldname": "default_email_enabled",
+   "fieldtype": "Check",
+   "label": "Default Email Enabled"
+  },
+  {
+   "fieldname": "scheduler_interval",
+   "fieldtype": "Select",
+   "hidden": 1,
+   "label": "Scheduler Interval",
+   "options": "15 Minutes"
+  },
+  {
+   "fieldname": "allowed_doctypes",
+   "fieldtype": "Table",
+   "hidden": 1,
+   "label": "Allowed Doctype",
+   "options": "Allowed Reminder Doctype"
+  },
+  {
+   "fieldname": "default_email_template",
+   "fieldtype": "Link",
+   "hidden": 1,
+   "label": "Email Template",
+   "options": "Email Template"
+  },
+  {
+   "fieldname": "email_to",
+   "fieldtype": "Table MultiSelect",
+   "label": "Email To",
+   "options": "Child Users",
+   "reqd": 1
+  },
+  {
+   "default": "60",
+   "fieldname": "default_remind_before_minutes",
+   "fieldtype": "Int",
+   "label": "Default Reminder (Minutes Before)"
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "issingle": 1,
+ "links": [],
+ "modified": "2025-12-17 14:49:16.845821",
+ "modified_by": "Administrator",
+ "module": "Company",
+ "name": "Reminder Settings",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "delete": 1,
+   "report": 1,
+   "role": "CRM And Sales",
+   "share": 1,
+   "write": 1,
+   "select": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "rows_threshold_for_grid_search": 20,
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": []
+}

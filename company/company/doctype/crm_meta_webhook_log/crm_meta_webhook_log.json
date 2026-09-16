@@ -1,0 +1,100 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "autoname": "format:CML-WHL-{YYYY}-{MM}-{DD}-{#####}",
+ "creation": "2026-07-09 11:30:00",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "headers",
+  "payload",
+  "response",
+  "http_status",
+  "execution_time",
+  "retry_count",
+  "status"
+ ],
+ "fields": [
+  {
+   "fieldname": "headers",
+   "fieldtype": "Long Text",
+   "label": "Headers"
+  },
+  {
+   "fieldname": "payload",
+   "fieldtype": "Long Text",
+   "label": "Payload"
+  },
+  {
+   "fieldname": "response",
+   "fieldtype": "Long Text",
+   "label": "Response"
+  },
+  {
+   "fieldname": "http_status",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "HTTP Status"
+  },
+  {
+   "fieldname": "execution_time",
+   "fieldtype": "Float",
+   "in_list_view": 1,
+   "label": "Execution Time (Seconds)"
+  },
+  {
+   "default": "0",
+   "fieldname": "retry_count",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Retry Count"
+  },
+  {
+   "default": "Unverified",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Status",
+   "options": "Verified\nUnverified\nFailed"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-07-09 19:21:06.340326",
+ "modified_by": "Administrator",
+ "module": "Company",
+ "name": "CRM Meta Webhook Log",
+ "naming_rule": "Expression",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "delete": 1,
+   "report": 1,
+   "role": "CRM And Sales",
+   "share": 1,
+   "write": 1,
+   "select": 1
+ }
+ ],
+ "row_format": "Dynamic",
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": []
+}

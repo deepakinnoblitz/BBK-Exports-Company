@@ -1,0 +1,90 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2026-07-15 11:30:00",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "module_id",
+  "screen_id",
+  "add_permission",
+  "edit_permission",
+  "view_permission",
+  "delete_permission",
+  "export_permission",
+  "import_permission"
+ ],
+ "fields": [
+  {
+   "fieldname": "module_id",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Module ID",
+   "reqd": 1
+  },
+  {
+   "fieldname": "screen_id",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Screen ID",
+   "reqd": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "add_permission",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "label": "Add"
+  },
+  {
+   "default": "0",
+   "fieldname": "edit_permission",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "label": "Edit"
+  },
+  {
+   "default": "0",
+   "fieldname": "view_permission",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "label": "View"
+  },
+  {
+   "default": "0",
+   "fieldname": "delete_permission",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "label": "Delete"
+  },
+  {
+   "default": "0",
+   "fieldname": "export_permission",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "label": "Export"
+  },
+  {
+   "default": "0",
+   "fieldname": "import_permission",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "label": "Import"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "istable": 1,
+ "links": [],
+ "modified": "2026-07-15 17:31:22.328531",
+ "modified_by": "Administrator",
+ "module": "Company",
+ "name": "Permission Access",
+ "naming_rule": "By fieldname",
+ "owner": "Administrator",
+ "permissions": [],
+ "row_format": "Dynamic",
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": []
+}

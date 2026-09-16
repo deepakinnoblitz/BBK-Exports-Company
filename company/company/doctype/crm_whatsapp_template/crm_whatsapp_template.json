@@ -1,0 +1,189 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2026-06-06 11:38:24.566855",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "status",
+  "template_name",
+  "category",
+  "section_usage",
+  "used_for",
+  "section_template_content",
+  "header_text",
+  "message_body",
+  "footer_text",
+  "column_break_1",
+  "allow_attachment",
+  "default_attachment",
+  "available_variables",
+  "section_meta",
+  "meta_template_name",
+  "meta_template_id",
+  "column_break_2",
+  "language",
+  "meta_status",
+  "last_synced_on"
+ ],
+ "fields": [
+  {
+   "fieldname": "template_name",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Template Name",
+   "reqd": 1
+  },
+  {
+   "fieldname": "category",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Category",
+   "options": "CRM WhatsApp Template Category",
+   "reqd": 1
+  },
+  {
+   "default": "Draft",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "label": "Status",
+   "options": "Draft\nActive\nInactive"
+  },
+  {
+   "fieldname": "section_usage",
+   "fieldtype": "Section Break",
+   "label": "Usage"
+  },
+  {
+   "fieldname": "used_for",
+   "fieldtype": "Data",
+   "label": "Used For"
+  },
+  {
+   "fieldname": "section_template_content",
+   "fieldtype": "Section Break",
+   "label": "Template Content"
+  },
+  {
+   "fieldname": "header_text",
+   "fieldtype": "Small Text",
+   "label": "Header Text"
+  },
+  {
+   "fieldname": "message_body",
+   "fieldtype": "Text Editor",
+   "in_list_view": 1,
+   "label": "Message Body",
+   "reqd": 1
+  },
+  {
+   "fieldname": "footer_text",
+   "fieldtype": "Small Text",
+   "label": "Footer Text"
+  },
+  {
+   "fieldname": "column_break_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "0",
+   "fieldname": "allow_attachment",
+   "fieldtype": "Check",
+   "label": "Allow Attachment"
+  },
+  {
+   "depends_on": "eval:doc.allow_attachment==1",
+   "fieldname": "default_attachment",
+   "fieldtype": "Table",
+   "label": "Default Attachment",
+   "options": "CRM WhatsApp Template Attachment"
+  },
+  {
+   "fieldname": "section_meta",
+   "fieldtype": "Section Break",
+   "label": "Meta Information"
+  },
+  {
+   "fieldname": "meta_template_name",
+   "fieldtype": "Data",
+   "label": "Meta Template Name"
+  },
+  {
+   "fieldname": "meta_template_id",
+   "fieldtype": "Data",
+   "label": "Meta Template ID",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_2",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "English",
+   "fieldname": "language",
+   "fieldtype": "Select",
+   "label": "Language",
+   "options": "English\nTamil\nHindi\nArabic\nFrench"
+  },
+  {
+   "default": "Draft",
+   "fieldname": "meta_status",
+   "fieldtype": "Select",
+   "label": "Meta Status",
+   "options": "Draft\nPending\nApproved\nRejected\nDisabled"
+  },
+  {
+   "fieldname": "last_synced_on",
+   "fieldtype": "Datetime",
+   "label": "Last Synced On",
+   "read_only": 1
+  },
+  {
+   "fieldname": "available_variables",
+   "fieldtype": "Code",
+   "label": "Variables",
+   "options": "Text",
+   "read_only": 1
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-07-04 11:44:58.937744",
+ "modified_by": "Administrator",
+ "module": "Company",
+ "name": "CRM WhatsApp Template",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "CRM And Sales",
+   "select": 1,
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "rows_threshold_for_grid_search": 20,
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": []
+}

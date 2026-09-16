@@ -1,0 +1,116 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "autoname": "field:leave_type_name",
+ "creation": "2025-09-24 17:14:38.392985",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "leave_type_name",
+  "is_paid",
+  "max_leaves",
+  "status",
+  "carry_forward",
+  "reset_frequency",
+  "restrict_during_probation",
+  "probation_period_months"
+ ],
+ "fields": [
+  {
+   "fieldname": "leave_type_name",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Leave Type Name",
+   "reqd": 1,
+   "unique": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "is_paid",
+   "fieldtype": "Check",
+   "label": "Is Paid"
+  },
+  {
+   "fieldname": "max_leaves",
+   "fieldtype": "Int",
+   "label": "Max Leaves"
+  },
+  {
+   "default": "0",
+   "fieldname": "carry_forward",
+   "fieldtype": "Check",
+   "label": "Carry Forward"
+  },
+  {
+   "fieldname": "reset_frequency",
+   "fieldtype": "Select",
+   "label": "Reset Frequency",
+   "options": "Every 3 months\nEvery 4 months\nEvery 6 months\nWhole year"
+  },
+  {
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "label": "Status",
+   "options": "\nActive\nInactive"
+  },
+  {
+   "default": "0",
+   "fieldname": "restrict_during_probation",
+   "fieldtype": "Check",
+   "label": "Restrict During Probation"
+  },
+  {
+   "depends_on": "eval:doc.restrict_during_probation",
+   "fieldname": "probation_period_months",
+   "fieldtype": "Int",
+   "label": "Probation Period (Months)",
+   "mandatory_depends_on": "eval:doc.restrict_during_probation",
+   "options": "3"
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-06-16 11:04:37.330567",
+ "modified_by": "Administrator",
+ "module": "Company",
+ "name": "Leave Type",
+ "naming_rule": "By fieldname",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "delete": 1,
+   "report": 1,
+   "role": "HR",
+   "share": 1,
+   "write": 1,
+   "select": 1
+  },
+  {
+   "read": 1,
+   "role": "Employee",
+   "select": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": []
+}

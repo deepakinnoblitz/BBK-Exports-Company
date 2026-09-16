@@ -1,0 +1,191 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "autoname": "format:{job_title}-{###}",
+ "creation": "2025-12-01 11:03:14.108044",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "job_title",
+  "designation",
+  "shift",
+  "location",
+  "experience",
+  "column_break_unft",
+  "posted_on",
+  "closes_on",
+  "status",
+  "section_break_tefw",
+  "small_description",
+  "description",
+  "skills_required",
+  "section_break_btxy",
+  "currency",
+  "salary_per",
+  "column_break_xtsm",
+  "lower_range",
+  "upper_range"
+ ],
+ "fields": [
+  {
+   "fieldname": "job_title",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Job Title",
+   "reqd": 1,
+   "unique": 1
+  },
+  {
+   "fieldname": "designation",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Designation",
+   "options": "Designation",
+   "reqd": 1
+  },
+  {
+   "default": "Open",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "label": "Status",
+   "options": "\nOpen\nClosed"
+  },
+  {
+   "default": "Now",
+   "fieldname": "posted_on",
+   "fieldtype": "Datetime",
+   "label": "Posted On"
+  },
+  {
+   "fieldname": "closes_on",
+   "fieldtype": "Date",
+   "label": "Closes On"
+  },
+  {
+   "description": "Job profile, qualifications required etc.",
+   "fieldname": "description",
+   "fieldtype": "Text Editor",
+   "label": "Description"
+  },
+  {
+   "fieldname": "currency",
+   "fieldtype": "Link",
+   "label": "Currency",
+   "options": "Currency"
+  },
+  {
+   "fieldname": "lower_range",
+   "fieldtype": "Currency",
+   "label": "Lower Range",
+   "options": "currency",
+   "precision": "0"
+  },
+  {
+   "fieldname": "upper_range",
+   "fieldtype": "Currency",
+   "label": "Upper Range",
+   "options": "currency",
+   "precision": "0"
+  },
+  {
+   "default": "Month",
+   "fieldname": "salary_per",
+   "fieldtype": "Select",
+   "label": "Salary Paid Per",
+   "options": "Month\nYear"
+  },
+  {
+   "fieldname": "column_break_unft",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "section_break_btxy",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "column_break_xtsm",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "section_break_tefw",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "skills_required",
+   "fieldtype": "Small Text",
+   "label": "Skills Required"
+  },
+  {
+   "fieldname": "small_description",
+   "fieldtype": "Small Text",
+   "label": "Description for Innoblitz career Page"
+  },
+  {
+   "default": "General Shift",
+   "fieldname": "shift",
+   "fieldtype": "Select",
+   "label": "Shift",
+   "options": "General Shift\nWFH\nNight Shift",
+   "reqd": 1
+  },
+  {
+   "fieldname": "location",
+   "fieldtype": "Data",
+   "label": "Location",
+   "reqd": 1
+  },
+  {
+   "fieldname": "experience",
+   "fieldtype": "Data",
+   "label": "Experience",
+   "reqd": 1
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2025-12-01 11:26:18.759967",
+ "modified_by": "Administrator",
+ "module": "Company",
+ "name": "Job Opening",
+ "naming_rule": "Expression",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "delete": 1,
+   "report": 1,
+   "role": "HR",
+   "share": 1,
+   "write": 1,
+   "select": 1
+  },
+  {
+   "read": 1,
+   "role": "Employee",
+   "select": 1
+  }
+
+ ],
+ "row_format": "Dynamic",
+ "rows_threshold_for_grid_search": 20,
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": []
+}

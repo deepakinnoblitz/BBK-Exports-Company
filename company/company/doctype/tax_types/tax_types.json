@@ -1,0 +1,83 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "autoname": "field:tax_name",
+ "creation": "2025-11-21 17:43:01.406629",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "tax_name",
+  "tax_percentage",
+  "tax_type",
+  "status"
+ ],
+ "fields": [
+  {
+   "fieldname": "tax_name",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Tax name",
+   "reqd": 1,
+   "unique": 1
+  },
+  {
+   "fieldname": "tax_percentage",
+   "fieldtype": "Float",
+   "label": "Tax Percentage",
+   "precision": "0"
+  },
+  {
+   "fieldname": "tax_type",
+   "fieldtype": "Select",
+   "label": "Tax Type",
+   "options": "GST\nIGST"
+  },
+  {
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "label": "Status",
+   "options": "Active\nInactive"
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2025-11-21 18:33:22.769399",
+ "modified_by": "Administrator",
+ "module": "Company",
+ "name": "Tax Types",
+ "naming_rule": "By fieldname",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "delete": 1,
+   "report": 1,
+   "role": "CRM And Sales",
+   "share": 1,
+   "write": 1,
+   "select": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "rows_threshold_for_grid_search": 20,
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": []
+}

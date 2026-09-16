@@ -1,0 +1,101 @@
+{
+    "actions": [],
+    "creation": "2026-01-29 10:11:00.000000",
+    "doctype": "DocType",
+    "engine": "InnoDB",
+    "field_order": [
+        "sender",
+        "receiver",
+        "content",
+        "status",
+        "sent_on",
+        "error_message",
+        "manual_chat_message"
+    ],
+    "fields": [
+        {
+            "fieldname": "sender",
+            "fieldtype": "Link",
+            "label": "Sender",
+            "options": "User",
+            "read_only": 1
+        },
+        {
+            "fieldname": "receiver",
+            "fieldtype": "Link",
+            "label": "Receiver",
+            "options": "User",
+            "read_only": 1
+        },
+        {
+            "fieldname": "content",
+            "fieldtype": "Small Text",
+            "label": "Content",
+            "read_only": 1
+        },
+        {
+            "default": "Pending",
+            "fieldname": "status",
+            "fieldtype": "Select",
+            "label": "Status",
+            "options": "Pending\nSending\nSent\nFailed",
+            "read_only": 1
+        },
+        {
+            "fieldname": "sent_on",
+            "fieldtype": "Datetime",
+            "label": "Sent On",
+            "read_only": 1
+        },
+        {
+            "fieldname": "error_message",
+            "fieldtype": "Small Text",
+            "label": "Error Message",
+            "read_only": 1
+        },
+        {
+            "fieldname": "manual_chat_message",
+            "fieldtype": "Link",
+            "label": "Manual Chat Message",
+            "options": "Manual Chat Message",
+            "read_only": 1
+        }
+    ],
+    "index_web_pages_for_search": 1,
+    "modified": "2026-01-29 10:11:00.000000",
+    "modified_by": "Administrator",
+    "module": "Company",
+    "name": "Chat Message Queue",
+    "owner": "Administrator",
+    "permissions": [
+        {
+            "create": 1,
+            "delete": 1,
+            "email": 1,
+            "print": 1,
+            "read": 1,
+            "role": "System Manager",
+            "share": 1,
+            "write": 1,
+            "select": 1,
+            "report": 1,
+            "export": 1
+        },
+        {
+            "create": 1,
+            "email": 1,
+            "export": 1,
+            "print": 1,
+            "read": 1,
+            "delete": 1,
+            "report": 1,
+            "role": "HR",
+            "share": 1,
+            "write": 1,
+            "select": 1
+        }
+    ],
+    "sort_field": "modified",
+    "sort_order": "DESC",
+    "states": []
+}

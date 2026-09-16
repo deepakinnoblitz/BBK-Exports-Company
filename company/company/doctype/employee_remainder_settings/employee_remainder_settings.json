@@ -1,0 +1,194 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2026-05-02 06:56:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "enable_hr_reminders",
+  "hr_remainders",
+  "section_break_break",
+  "enable_break_reminders",
+  "enable_max_break_reminders",
+  "max_break_duration_threshold",
+  "max_break_reminder_message",
+  "break_reminder_frequency",
+  "section_break_lunch",
+  "enable_lunch_reminders",
+  "enable_lunch_start_reminder",
+  "lunch_reminder_message",
+  "lunch_start_time",
+  "enable_lunch_end_reminder",
+  "lunch_end_time",
+  "lunch_end_reminder_message",
+  "enable_max_lunch_reminders",
+  "max_lunch_duration_threshold",
+  "max_lunch_reminder_message",
+  "lunch_reminder_frequency"
+ ],
+ "fields": [
+  {
+   "default": "0",
+   "fieldname": "enable_hr_reminders",
+   "fieldtype": "Check",
+   "label": "Enable HR Reminders"
+  },
+  {
+   "fieldname": "hr_remainders",
+   "fieldtype": "Table",
+   "label": "HR Reminders",
+   "options": "HR Remainder Configuration"
+  },
+  {
+   "fieldname": "section_break_break",
+   "fieldtype": "Section Break",
+   "label": "Break Reminders"
+  },
+  {
+   "default": "0",
+   "fieldname": "enable_break_reminders",
+   "fieldtype": "Check",
+   "label": "Enable Break Reminders"
+  },
+  {
+   "default": "0",
+   "depends_on": "eval:doc.enable_break_reminders",
+   "fieldname": "enable_max_break_reminders",
+   "fieldtype": "Check",
+   "label": "Enable Max Break Duration Reminders"
+  },
+  {
+   "depends_on": "eval:doc.enable_max_break_reminders",
+   "fieldname": "max_break_duration_threshold",
+   "fieldtype": "Float",
+   "label": "Max Break Duration (Minutes)",
+   "description": "Send reminder if a break exceeds X minutes."
+  },
+  {
+   "depends_on": "eval:doc.enable_max_break_reminders",
+   "fieldname": "max_break_reminder_message",
+   "fieldtype": "Small Text",
+   "label": "Max Break Reminder Message"
+  },
+  {
+   "depends_on": "eval:doc.enable_max_break_reminders",
+   "fieldname": "break_reminder_frequency",
+   "fieldtype": "Int",
+   "label": "Frequency to Notify (Minutes)",
+   "description": "Repeat the reminder every X minutes if the employee remains on break."
+  },
+  {
+   "fieldname": "section_break_lunch",
+   "fieldtype": "Section Break",
+   "label": "Lunch Reminders"
+  },
+  {
+   "default": "0",
+   "fieldname": "enable_lunch_reminders",
+   "fieldtype": "Check",
+   "label": "Enable Lunch Reminders"
+  },
+  {
+   "default": "0",
+   "depends_on": "eval:doc.enable_lunch_reminders",
+   "fieldname": "enable_lunch_start_reminder",
+   "fieldtype": "Check",
+   "label": "Enable Lunch Start Reminder"
+  },
+  {
+   "depends_on": "eval:doc.enable_lunch_start_reminder",
+   "fieldname": "lunch_reminder_message",
+   "fieldtype": "Small Text",
+   "label": "Lunch Reminder Message"
+  },
+  {
+   "depends_on": "eval:doc.enable_lunch_reminders",
+   "fieldname": "lunch_start_time",
+   "fieldtype": "Time",
+   "label": "Lunch Start Time"
+  },
+  {
+   "default": "0",
+   "depends_on": "eval:doc.enable_lunch_reminders",
+   "fieldname": "enable_lunch_end_reminder",
+   "fieldtype": "Check",
+   "label": "Enable Lunch End Reminder"
+  },
+  {
+   "depends_on": "eval:doc.enable_lunch_end_reminder",
+   "fieldname": "lunch_end_time",
+   "fieldtype": "Time",
+   "label": "Lunch End Time"
+  },
+  {
+   "depends_on": "eval:doc.enable_lunch_end_reminder",
+   "fieldname": "lunch_end_reminder_message",
+   "fieldtype": "Small Text",
+   "label": "Lunch End Reminder Message"
+  },
+  {
+   "default": "0",
+   "depends_on": "eval:doc.enable_lunch_reminders",
+   "fieldname": "enable_max_lunch_reminders",
+   "fieldtype": "Check",
+   "label": "Enable Max Lunch Duration Reminders"
+  },
+  {
+   "depends_on": "eval:doc.enable_max_lunch_reminders",
+   "fieldname": "max_lunch_duration_threshold",
+   "fieldtype": "Float",
+   "label": "Max Lunch Duration (Minutes)",
+   "description": "Send reminder if lunch exceeds X minutes."
+  },
+  {
+   "depends_on": "eval:doc.enable_max_lunch_reminders",
+   "fieldname": "max_lunch_reminder_message",
+   "fieldtype": "Small Text",
+   "label": "Max Lunch Reminder Message"
+  },
+  {
+   "depends_on": "eval:doc.enable_max_lunch_reminders",
+   "fieldname": "lunch_reminder_frequency",
+   "fieldtype": "Int",
+   "label": "Frequency to Notify (Minutes)",
+   "description": "Repeat the reminder every X minutes if the employee remains on lunch."
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "issingle": 1,
+ "links": [],
+ "modified": "2026-05-02 06:56:00.000000",
+ "modified_by": "Administrator",
+ "module": "Company",
+ "name": "Employee Remainder Settings",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "HR",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

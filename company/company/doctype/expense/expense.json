@@ -1,0 +1,93 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "autoname": "format:EXP-{DD}-{MM}-{YY}-{###}",
+ "creation": "2025-12-10 14:54:20.712550",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "date",
+  "column_break_gvbq",
+  "payment_type",
+  "section_break_hxmz",
+  "table_qecz",
+  "section_break_pjmz",
+  "total",
+  "description"
+ ],
+ "fields": [
+  {
+   "default": "Today",
+   "fieldname": "date",
+   "fieldtype": "Date",
+   "in_list_view": 1,
+   "label": "Date",
+   "reqd": 1
+  },
+  {
+   "fieldname": "payment_type",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Payment Type",
+   "options": "Payment Type",
+   "reqd": 1
+  },
+  {
+   "fieldname": "total",
+   "fieldtype": "Float",
+   "label": "Grand Total",
+   "precision": "2"
+  },
+  {
+   "fieldname": "description",
+   "fieldtype": "Small Text",
+   "label": "Description"
+  },
+  {
+   "fieldname": "table_qecz",
+   "fieldtype": "Table",
+   "label": "Expense Items",
+   "options": "Expense Items"
+  },
+  {
+   "fieldname": "column_break_gvbq",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "section_break_pjmz",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "section_break_hxmz",
+   "fieldtype": "Section Break"
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2025-12-10 15:05:10.436976",
+ "modified_by": "Administrator",
+ "module": "Company",
+ "name": "Expense",
+ "naming_rule": "Expression",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "rows_threshold_for_grid_search": 20,
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": []
+}

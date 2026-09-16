@@ -1,0 +1,122 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2026-03-26 05:25:00",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "scoring_weights_section",
+  "attendance_weight",
+  "personality_weight",
+  "login_time_weight",
+  "overtime_weight",
+  "leave_penalty_weight",
+  "column_break_params",
+  "daily_working_hours",
+  "leave_penalty_per_day",
+  "auto_publish",
+  "display_days"
+ ],
+ "fields": [
+  {
+   "fieldname": "scoring_weights_section",
+   "fieldtype": "Section Break",
+   "label": "Scoring Weights (%)"
+  },
+  {
+   "default": "30",
+   "fieldname": "attendance_weight",
+   "fieldtype": "Float",
+   "label": "Attendance Weight"
+  },
+  {
+   "default": "30",
+   "fieldname": "personality_weight",
+   "fieldtype": "Float",
+   "label": "Personality Weight"
+  },
+  {
+   "default": "20",
+   "fieldname": "login_time_weight",
+   "fieldtype": "Float",
+   "label": "Login Time Weight"
+  },
+  {
+   "default": "10",
+   "fieldname": "overtime_weight",
+   "fieldtype": "Float",
+   "label": "Overtime Weight"
+  },
+  {
+   "default": "20",
+   "fieldname": "leave_penalty_weight",
+   "fieldtype": "Float",
+   "label": "Leave Penalty Weight"
+  },
+  {
+   "fieldname": "column_break_params",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "8",
+   "fieldname": "daily_working_hours",
+   "fieldtype": "Float",
+   "label": "Daily Working Hours"
+  },
+  {
+   "default": "5",
+   "fieldname": "leave_penalty_per_day",
+   "fieldtype": "Float",
+   "label": "Leave Penalty Per Day"
+  },
+  {
+   "default": "0",
+   "fieldname": "auto_publish",
+   "fieldtype": "Check",
+   "label": "Auto Publish Awards"
+  },
+  {
+   "default": "31",
+   "description": "Number of days in the month to display the award on the dashboard",
+   "fieldname": "display_days",
+   "fieldtype": "Int",
+   "label": "Display Days on Dashboard"
+  }
+ ],
+ "issingle": 1,
+ "modified": "2026-03-26 10:45:00",
+ "modified_by": "Administrator",
+ "module": "Company",
+ "name": "Employee Award Settings",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "delete": 1,
+   "report": 1,
+   "role": "HR",
+   "share": 1,
+   "write": 1,
+   "select": 1
+  }
+ ],
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

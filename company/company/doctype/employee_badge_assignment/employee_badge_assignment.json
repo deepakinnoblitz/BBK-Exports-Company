@@ -1,0 +1,115 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2026-03-25 09:40:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "employee",
+  "employee_name",
+  "badge",
+  "column_break_zzzz",
+  "awarded_on",
+  "awarded_by",
+  "section_break_aaaa",
+  "reason"
+ ],
+ "fields": [
+  {
+   "fieldname": "employee",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Employee",
+   "options": "Employee",
+   "reqd": 1
+  },
+  {
+   "fetch_from": "employee.employee_name",
+   "fieldname": "employee_name",
+   "fieldtype": "Data",
+   "label": "Employee Name",
+   "read_only": 1
+  },
+  {
+   "fieldname": "badge",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Badge",
+   "options": "Employee Badge",
+   "reqd": 1
+  },
+  {
+   "fieldname": "column_break_zzzz",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "Today",
+   "fieldname": "awarded_on",
+   "fieldtype": "Date",
+   "in_list_view": 1,
+   "label": "Awarded On",
+   "reqd": 1
+  },
+  {
+   "default": "__user",
+   "fieldname": "awarded_by",
+   "fieldtype": "Link",
+   "label": "Awarded By",
+   "options": "User",
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_break_aaaa",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "reason",
+   "fieldtype": "Small Text",
+   "label": "Reason"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-03-25 09:40:00.000000",
+ "modified_by": "Administrator",
+ "module": "Company",
+ "name": "Employee Badge Assignment",
+ "naming_rule": "By script",
+ "autoname": "hash",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "delete": 1,
+   "report": 1,
+   "role": "HR",
+   "share": 1,
+   "write": 1,
+   "select": 1
+  },
+  {
+   "read": 1,
+   "role": "Employee",
+   "select": 1
+  }
+ ],
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": []
+}

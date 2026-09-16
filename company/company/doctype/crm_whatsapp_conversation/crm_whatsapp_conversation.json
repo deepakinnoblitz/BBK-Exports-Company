@@ -1,0 +1,162 @@
+{
+    "actions": [],
+    "allow_rename": 1,
+    "creation": "2026-06-05 13:00:04.022404",
+    "doctype": "DocType",
+    "engine": "InnoDB",
+    "field_order": [
+        "conversation_section",
+        "mobile_number",
+        "contact_name",
+        "status",
+        "column_break_1",
+        "assigned_to",
+        "unread_count",
+        "mapping_section",
+        "lead",
+        "prospect",
+        "proposal",
+        "client",
+        "conversation_info_section",
+        "last_message",
+        "last_message_on",
+        "profile_picture"
+    ],
+    "fields": [
+        {
+            "fieldname": "conversation_section",
+            "fieldtype": "Section Break",
+            "label": "Conversation Details"
+        },
+        {
+            "fieldname": "mobile_number",
+            "fieldtype": "Data",
+            "in_list_view": 1,
+            "label": "Mobile Number",
+            "reqd": 1,
+            "unique": 1
+        },
+        {
+            "fieldname": "contact_name",
+            "fieldtype": "Data",
+            "in_list_view": 1,
+            "label": "Contact Name"
+        },
+        {
+            "fieldname": "status",
+            "fieldtype": "Select",
+            "in_list_view": 1,
+            "label": "Status",
+            "options": "Open\nClosed\nArchived",
+            "default": "Open"
+        },
+        {
+            "fieldname": "column_break_1",
+            "fieldtype": "Column Break"
+        },
+        {
+            "fieldname": "assigned_to",
+            "fieldtype": "Link",
+            "label": "Assigned To",
+            "options": "User"
+        },
+        {
+            "fieldname": "unread_count",
+            "fieldtype": "Int",
+            "label": "Unread Count",
+            "default": 0,
+            "read_only": 1
+        },
+        {
+            "fieldname": "mapping_section",
+            "fieldtype": "Section Break",
+            "label": "CRM Mapping"
+        },
+        {
+            "fieldname": "lead",
+            "fieldtype": "Link",
+            "label": "Lead",
+            "options": "Lead"
+        },
+        {
+            "fieldname": "prospect",
+            "fieldtype": "Link",
+            "label": "Prospect",
+            "options": "Deal"
+        },
+        {
+            "fieldname": "proposal",
+            "fieldtype": "Link",
+            "label": "Proposal",
+            "options": "Proposal"
+        },
+        {
+            "fieldname": "client",
+            "fieldtype": "Link",
+            "label": "Client",
+            "options": "Contacts"
+        },
+        {
+            "fieldname": "conversation_info_section",
+            "fieldtype": "Section Break",
+            "label": "Conversation Information"
+        },
+        {
+            "fieldname": "last_message",
+            "fieldtype": "Small Text",
+            "label": "Last Message",
+            "read_only": 1
+        },
+        {
+            "fieldname": "last_message_on",
+            "fieldtype": "Datetime",
+            "label": "Last Message On",
+            "read_only": 1
+        },
+        {
+            "fieldname": "profile_picture",
+            "fieldtype": "Attach Image",
+            "label": "Profile Picture"
+        }
+    ],
+    "grid_page_length": 50,
+    "index_web_pages_for_search": 1,
+    "links": [],
+    "modified": "2026-06-05 13:00:04.022404",
+    "modified_by": "Administrator",
+    "module": "Company",
+    "name": "CRM WhatsApp Conversation",
+    "owner": "Administrator",
+    "permissions": [
+        {
+            "create": 1,
+            "delete": 1,
+            "email": 1,
+            "export": 1,
+            "print": 1,
+            "read": 1,
+            "report": 1,
+            "role": "System Manager",
+            "share": 1,
+            "write": 1
+        },
+        {
+            "create": 1,
+            "email": 1,
+            "export": 1,
+            "print": 1,
+            "read": 1,
+            "delete": 1,
+            "report": 1,
+            "role": "CRM And Sales",
+            "share": 1,
+            "write": 1,
+            "select": 1
+        }
+    ],
+    "row_format": "Dynamic",
+    "rows_threshold_for_grid_search": 20,
+    "sort_field": "creation",
+    "sort_order": "DESC",
+    "states": []
+}

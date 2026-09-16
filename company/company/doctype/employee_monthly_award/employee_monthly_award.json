@@ -1,0 +1,183 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2026-03-26 05:25:00",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "employee",
+  "employee_name",
+  "month",
+  "column_break_score",
+  "attendance_score",
+  "personality_score",
+  "login_score",
+  "overtime_score",
+  "leave_penalty",
+  "section_break_total",
+  "total_score",
+  "rank",
+  "column_break_flags",
+  "is_auto_generated",
+  "manually_selected",
+  "published",
+  "section_break_reason",
+  "reason",
+  "calculation_log"
+ ],
+ "fields": [
+  {
+   "fieldname": "employee",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Employee",
+   "options": "Employee",
+   "reqd": 1
+  },
+  {
+   "fetch_from": "employee.employee_name",
+   "fieldname": "employee_name",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Employee Name",
+   "read_only": 1
+  },
+  {
+   "fieldname": "month",
+   "fieldtype": "Date",
+   "in_list_view": 1,
+   "label": "Month",
+   "reqd": 1
+  },
+  {
+   "fieldname": "column_break_score",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "attendance_score",
+   "fieldtype": "Float",
+   "label": "Attendance Score",
+   "read_only": 1
+  },
+  {
+   "fieldname": "personality_score",
+   "fieldtype": "Float",
+   "label": "Personality Score",
+   "read_only": 1
+  },
+  {
+   "fieldname": "login_score",
+   "fieldtype": "Float",
+   "label": "Login Score",
+   "read_only": 1
+  },
+  {
+   "fieldname": "overtime_score",
+   "fieldtype": "Float",
+   "label": "Overtime Score",
+   "read_only": 1
+  },
+  {
+   "fieldname": "leave_penalty",
+   "fieldtype": "Float",
+   "label": "Leave Penalty",
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_break_total",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "total_score",
+   "fieldtype": "Float",
+   "in_list_view": 1,
+   "label": "Total Score",
+   "read_only": 1
+  },
+  {
+   "fieldname": "rank",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Rank",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_flags",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "0",
+   "fieldname": "is_auto_generated",
+   "fieldtype": "Check",
+   "label": "Is Auto Generated",
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "manually_selected",
+   "fieldtype": "Check",
+   "label": "Manually Selected"
+  },
+  {
+   "default": "0",
+   "fieldname": "published",
+   "fieldtype": "Check",
+   "label": "Published"
+  },
+  {
+   "fieldname": "section_break_reason",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "reason",
+   "fieldtype": "Small Text",
+   "label": "Reason"
+  },
+  {
+   "fieldname": "calculation_log",
+   "fieldtype": "Small Text",
+   "label": "Calculation Log",
+   "read_only": 1
+  }
+ ],
+ "modified": "2026-03-26 05:25:00",
+ "modified_by": "Administrator",
+ "module": "Company",
+ "name": "Employee Monthly Award",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "delete": 1,
+   "report": 1,
+   "role": "HR",
+   "share": 1,
+   "write": 1,
+   "select": 1
+  },
+  {
+   "read": 1,
+   "role": "Employee",
+   "select": 1
+  }
+ ],
+ "sort_field": "total_score",
+ "sort_order": "DESC",
+ "states": []
+}

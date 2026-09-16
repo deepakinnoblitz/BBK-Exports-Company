@@ -1,0 +1,10 @@
+[core]
+	repositoryformatversion = 0
+	filemode = true
+	bare = false
+	logallrefupdates = true
+[branch "main"]
+	vscode-merge-base = upstream/main
+[remote "origin"]
+	url = https://github.com/deepakinnoblitz/BBK-Exports-Company.git
+	fetch = +refs/heads/*:refs/remotes/origin/*

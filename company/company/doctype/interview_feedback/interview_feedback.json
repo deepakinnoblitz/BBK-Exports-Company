@@ -1,0 +1,61 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2025-12-01 10:53:13.316443",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "interview_type",
+  "rating",
+  "interviewer",
+  "notes"
+ ],
+ "fields": [
+  {
+   "fieldname": "interview_type",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Interview Type",
+   "options": "Interview Type",
+   "sticky": 1
+  },
+  {
+   "fieldname": "rating",
+   "fieldtype": "Rating",
+   "in_list_view": 1,
+   "label": "Rating",
+   "sticky": 1
+  },
+  {
+   "fieldname": "interviewer",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Interviewer",
+   "options": "User",
+   "sticky": 1
+  },
+  {
+   "fieldname": "notes",
+   "fieldtype": "Small Text",
+   "in_list_view": 1,
+   "label": "Notes",
+   "sticky": 1
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "istable": 1,
+ "links": [],
+ "modified": "2025-12-01 10:53:13.316443",
+ "modified_by": "Administrator",
+ "module": "Company",
+ "name": "Interview Feedback",
+ "owner": "Administrator",
+ "permissions": [],
+ "row_format": "Dynamic",
+ "rows_threshold_for_grid_search": 20,
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": []
+}

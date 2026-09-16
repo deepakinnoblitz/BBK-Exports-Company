@@ -1,0 +1,276 @@
+{
+    "actions": [],
+    "allow_rename": 1,
+    "autoname": "format:TASK-{######}",
+    "creation": "2026-03-09 18:18:24.269190",
+    "doctype": "DocType",
+    "engine": "InnoDB",
+    "field_order": [
+        "title",
+        "section_break_lezz",
+        "project",
+        "department",
+        "fetch_from_department",
+        "col_break1",
+        "due_date",
+        "due_time",
+        "estimated_time",
+        "sec_break1",
+        "assignees",
+        "tag_member",
+        "sec_break2",
+        "attachment_required",
+        "priority",
+        "col_break2",
+        "recurring_task",
+        "status",
+        "recurring_task_section",
+        "recurring_frequency",
+        "sec_break3",
+        "description",
+        "history",
+        "closed_by",
+        "closed_on"
+    ],
+    "fields": [
+        {
+            "bold": 1,
+            "fieldname": "title",
+            "fieldtype": "Data",
+            "in_list_view": 1,
+            "in_standard_filter": 1,
+            "label": "Title",
+            "reqd": 1
+        },
+        {
+            "fieldname": "project",
+            "fieldtype": "Link",
+            "in_list_view": 1,
+            "in_standard_filter": 1,
+            "label": "Project",
+            "options": "Project",
+            "reqd": 1
+        },
+        {
+            "fieldname": "col_break1",
+            "fieldtype": "Column Break"
+        },
+        {
+            "fieldname": "due_date",
+            "fieldtype": "Date",
+            "in_list_view": 1,
+            "label": "Due Date",
+            "reqd": 1
+        },
+        {
+            "fieldname": "due_time",
+            "fieldtype": "Time",
+            "label": "Due Time"
+        },
+        {
+            "fieldname": "estimated_time",
+            "fieldtype": "Float",
+            "label": "Estimated Time (Hours)"
+        },
+        {
+            "fieldname": "sec_break1",
+            "fieldtype": "Section Break"
+        },
+        {
+            "fieldname": "assignees",
+            "fieldtype": "Table",
+            "ignore_user_permissions": 1,
+            "label": "Assignees",
+            "options": "Task Manager Assignee",
+            "reqd": 1
+        },
+        {
+            "fieldname": "tag_member",
+            "fieldtype": "Link",
+            "label": "Tag Member For Notification",
+            "options": "User"
+        },
+        {
+            "fieldname": "department",
+            "fieldtype": "Link",
+            "label": "Department",
+            "options": "Department"
+        },
+        {
+            "default": "0",
+            "fieldname": "fetch_from_department",
+            "fieldtype": "Check",
+            "label": "Fetch All Employees From Department"
+        },
+        {
+            "fieldname": "sec_break2",
+            "fieldtype": "Section Break"
+        },
+        {
+            "default": "0",
+            "fieldname": "attachment_required",
+            "fieldtype": "Check",
+            "label": "Attachment Required To Close Task"
+        },
+        {
+            "default": "Medium",
+            "fieldname": "priority",
+            "fieldtype": "Select",
+            "in_list_view": 1,
+            "in_standard_filter": 1,
+            "label": "Priority",
+            "options": "Low\nMedium\nHigh"
+        },
+        {
+            "fieldname": "col_break2",
+            "fieldtype": "Column Break"
+        },
+        {
+            "default": "0",
+            "fieldname": "recurring_task",
+            "fieldtype": "Check",
+            "label": "Recurring Task"
+        },
+        {
+            "default": "Open",
+            "fieldname": "status",
+            "fieldtype": "Select",
+            "in_list_view": 1,
+            "in_standard_filter": 1,
+            "label": "Status",
+            "options": "Open\nIn Progress\nCompleted\nReopened\nOn Hold",
+            "read_only": 1
+        },
+        {
+            "depends_on": "eval:doc.recurring_task == 1",
+            "fieldname": "recurring_task_section",
+            "fieldtype": "Section Break",
+            "label": "Recurring Task Settings"
+        },
+        {
+            "depends_on": "eval:doc.recurring_task == 1",
+            "fieldname": "recurring_frequency",
+            "fieldtype": "Select",
+            "label": "Duration",
+            "mandatory_depends_on": "eval:doc.recurring_task == 1",
+            "options": "\nDaily\nWeekly\nMonthly\nQuarterly\nHalf Yearly"
+        },
+        {
+            "fieldname": "sec_break3",
+            "fieldtype": "Section Break"
+        },
+        {
+            "fieldname": "description",
+            "fieldtype": "Text Editor",
+            "label": "Description"
+        },
+        {
+            "fieldname": "history",
+            "fieldtype": "Table",
+            "label": "History",
+            "options": "Task Manager History",
+            "read_only": 1
+        },
+        {
+            "fieldname": "closed_by",
+            "fieldtype": "Link",
+            "hidden": 1,
+            "label": "Closed By",
+            "options": "User",
+            "read_only": 1
+        },
+        {
+            "fieldname": "closed_on",
+            "fieldtype": "Datetime",
+            "hidden": 1,
+            "label": "Closed On",
+            "read_only": 1
+        },
+        {
+            "fieldname": "section_break_lezz",
+            "fieldtype": "Section Break"
+        }
+    ],
+    "grid_page_length": 50,
+    "index_web_pages_for_search": 1,
+    "links": [],
+    "modified": "2026-04-22 17:13:34.154431",
+    "modified_by": "Administrator",
+    "module": "Company",
+    "name": "Task Manager",
+    "naming_rule": "Expression",
+    "owner": "Administrator",
+    "permissions": [
+        {
+            "create": 1,
+            "delete": 1,
+            "email": 1,
+            "export": 1,
+            "print": 1,
+            "read": 1,
+            "report": 1,
+            "role": "System Manager",
+            "share": 1,
+            "write": 1
+        },
+        {
+            "create": 1,
+            "email": 1,
+            "export": 1,
+            "print": 1,
+            "read": 1,
+            "delete": 1,
+            "report": 1,
+            "role": "HR",
+            "share": 1,
+            "write": 1,
+            "select": 1
+        },
+        {
+            "email": 1,
+            "read": 1,
+            "role": "Employee",
+            "write": 1,
+            "select": 1
+        },
+        {
+            "create": 1,
+            "email": 1,
+            "export": 1,
+            "print": 1,
+            "read": 1,
+            "delete": 1,
+            "report": 1,
+            "role": "Task Manager",
+            "share": 1,
+            "write": 1,
+            "select": 1
+        }
+    ],
+    "row_format": "Dynamic",
+    "rows_threshold_for_grid_search": 20,
+    "sort_field": "creation",
+    "sort_order": "DESC",
+    "states": [
+        {
+            "color": "Blue",
+            "title": "Open"
+        },
+        {
+            "color": "Orange",
+            "title": "In Progress"
+        },
+        {
+            "color": "Green",
+            "title": "Completed"
+        },
+        {
+            "color": "Red",
+            "title": "Reopened"
+        },
+        {
+            "color": "Yellow",
+            "title": "On Hold"
+        }
+    ]
+}

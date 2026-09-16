@@ -1,0 +1,41 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "autoname": "FUP.#####",
+ "creation": "2025-09-18 14:41:24.792339",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "followup_date",
+  "remark"
+ ],
+ "fields": [
+  {
+   "fieldname": "followup_date",
+   "fieldtype": "Datetime",
+   "in_list_view": 1,
+   "label": "Followup Date and Time"
+  },
+  {
+   "fieldname": "remark",
+   "fieldtype": "Small Text",
+   "label": "Remark"
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "istable": 1,
+ "links": [],
+ "modified": "2025-09-23 17:19:09.052083",
+ "modified_by": "Administrator",
+ "module": "Company",
+ "name": "Followup",
+ "naming_rule": "Expression (old style)",
+ "owner": "Administrator",
+ "permissions": [],
+ "row_format": "Dynamic",
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": []
+}

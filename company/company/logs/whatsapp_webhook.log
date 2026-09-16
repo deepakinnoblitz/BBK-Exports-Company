@@ -1,0 +1,109 @@
+
+
+====================================================================================================
+2026-06-05 09:57:23.564129 | WEBHOOK HIT
+
+METHOD:
+POST
+
+ARGS:
+{'object': 'whatsapp_business_account', 'entry': [{'id': '0', 'changes': [{'field': 'messages', 'value': {'messaging_product': 'whatsapp', 'metadata': {'display_phone_number': '16505551111', 'phone_number_id': '123456123'}, 'contacts': [{'profile': {'name': 'test user name'}, 'wa_id': '16315551181', 'user_id': 'US.13491208655302741918'}], 'messages': [{'id': 'ABGGFlA5Fpa', 'timestamp': '1504902988', 'from': '16315551181', 'from_user_id': 'US.13491208655302741918', 'type': 'text', 'text': {'body': 'this is a text message'}}]}}]}], 'cmd': 'company.company.crm_whatsapp_webhook.webhook'}
+
+RAW:
+{"object":"whatsapp_business_account","entry":[{"id":"0","changes":[{"field":"messages","value":{"messaging_product":"whatsapp","metadata":{"display_phone_number":"16505551111","phone_number_id":"123456123"},"contacts":[{"profile":{"name":"test user name"},"wa_id":"16315551181","user_id":"US.13491208655302741918"}],"messages":[{"id":"ABGGFlA5Fpa","timestamp":"1504902988","from":"16315551181","from_user_id":"US.13491208655302741918","type":"text","text":{"body":"this is a text message"}}]}}]}]}
+
+
+
+====================================================================================================
+2026-06-05 09:57:23.565460 | POST PAYLOAD
+{
+  "object": "whatsapp_business_account",
+  "entry": [
+    {
+      "id": "0",
+      "changes": [
+        {
+          "field": "messages",
+          "value": {
+            "messaging_product": "whatsapp",
+            "metadata": {
+              "display_phone_number": "16505551111",
+              "phone_number_id": "123456123"
+            },
+            "contacts": [
+              {
+                "profile": {
+                  "name": "test user name"
+                },
+                "wa_id": "16315551181",
+                "user_id": "US.13491208655302741918"
+              }
+            ],
+            "messages": [
+              {
+                "id": "ABGGFlA5Fpa",
+                "timestamp": "1504902988",
+                "from": "16315551181",
+                "from_user_id": "US.13491208655302741918",
+                "type": "text",
+                "text": {
+                  "body": "this is a text message"
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}
+
+
+====================================================================================================
+2026-06-05 09:57:23.566283 | MESSAGES FOUND
+[
+  {
+    "id": "ABGGFlA5Fpa",
+    "timestamp": "1504902988",
+    "from": "16315551181",
+    "from_user_id": "US.13491208655302741918",
+    "type": "text",
+    "text": {
+      "body": "this is a text message"
+    }
+  }
+]
+
+
+====================================================================================================
+2026-06-05 09:57:23.566599 | PROCESS MESSAGE
+
+Phone:
+16315551181
+
+Message:
+this is a text message
+
+Meta Message ID:
+ABGGFlA5Fpa
+
+
+
+====================================================================================================
+2026-06-05 09:57:23.570294 | CONVERSATION EXISTS
+la17s8jlip
+
+
+====================================================================================================
+2026-06-05 09:57:23.576628 | MESSAGE ALREADY EXISTS
+ABGGFlA5Fpa
+
+
+====================================================================================================
+2026-06-05 09:57:23.607430 | CONVERSATION UPDATED
+la17s8jlip
+
+
+====================================================================================================
+2026-06-05 09:57:23.608387 | STATUSES FOUND
+[]

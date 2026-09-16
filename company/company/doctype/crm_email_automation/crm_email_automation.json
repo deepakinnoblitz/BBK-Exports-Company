@@ -1,0 +1,424 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2026-06-10 14:00:00",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "basic_info_section",
+  "automation_name",
+  "is_active",
+  "for_status_change",
+  "for_campaigns",
+  "basic_info_cb",
+  "status",
+  "description",
+  "email_config_section",
+  "email_template",
+  "subject_override",
+  "email_config_cb",
+  "target_type",
+  "trigger_event",
+  "workflow_state",
+  "previous_workflow_state",
+  "current_deal_stage",
+  "previous_deal_stage",
+  "dialog_section",
+  "show_confirmation_dialog",
+  "dialog_title",
+  "dialog_message",
+  "auto_send",
+  "filters_section",
+  "filters",
+  "schedule_section",
+  "frequency",
+  "start_date",
+  "end_date",
+  "schedule_cb",
+  "run_time",
+  "week_day",
+  "day_of_month",
+  "execution_section",
+  "create_separate_campaign",
+  "send_immediately",
+  "execution_cb",
+  "auto_pause_on_error",
+  "max_retry_count",
+  "status_section",
+  "last_run_on",
+  "next_run_on",
+  "status_cb",
+  "last_campaign",
+  "statistics_section",
+  "total_runs",
+  "total_recipients",
+  "total_emails_sent",
+  "statistics_cb",
+  "total_failed",
+  "open_count",
+  "click_count"
+ ],
+ "fields": [
+  {
+   "fieldname": "basic_info_section",
+   "fieldtype": "Section Break",
+   "label": "Basic Information"
+  },
+  {
+   "fieldname": "automation_name",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Automation Name",
+   "reqd": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "is_active",
+   "fieldtype": "Check",
+   "label": "Is Active (On / Off Switch)"
+  },
+  {
+   "fieldname": "basic_info_cb",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "Draft",
+   "depends_on": "eval:doc.for_campaigns==1",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "label": "Status",
+   "options": "Draft\nActive\nPaused\nCompleted\nCancelled\nFailed"
+  },
+  {
+   "fieldname": "description",
+   "fieldtype": "Small Text",
+   "label": "Description"
+  },
+  {
+   "fieldname": "email_config_section",
+   "fieldtype": "Section Break",
+   "label": "Email Configuration"
+  },
+  {
+   "fieldname": "email_template",
+   "fieldtype": "Link",
+   "label": "Email Template",
+   "options": "CRM Email Template",
+   "reqd": 1
+  },
+  {
+   "fieldname": "subject_override",
+   "fieldtype": "Data",
+   "label": "Subject Override"
+  },
+  {
+   "fieldname": "email_config_cb",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "target_type",
+   "fieldtype": "Select",
+   "label": "Target Type",
+   "mandatory_depends_on": "eval:doc.for_campaigns==1",
+   "options": "Lead\nContact\nAccount\nDeals\nProposals"
+  },
+  {
+   "depends_on": "eval:doc.for_campaigns==1",
+   "fieldname": "filters_section",
+   "fieldtype": "Section Break",
+   "label": "Audience Filters"
+  },
+  {
+   "fieldname": "filters",
+   "fieldtype": "Table",
+   "label": "Filters",
+   "options": "CRM Campaign Filter"
+  },
+  {
+   "depends_on": "eval:doc.for_campaigns==1",
+   "fieldname": "schedule_section",
+   "fieldtype": "Section Break",
+   "label": "Schedule Configuration"
+  },
+  {
+   "fieldname": "frequency",
+   "fieldtype": "Select",
+   "label": "Frequency",
+   "mandatory_depends_on": "eval:doc.for_campaigns==1",
+   "options": "Once\nDaily\nWeekly\nMonthly\nYearly"
+  },
+  {
+   "fieldname": "start_date",
+   "fieldtype": "Date",
+   "label": "Start Date",
+   "mandatory_depends_on": "eval:doc.for_campaigns==1"
+  },
+  {
+   "fieldname": "end_date",
+   "fieldtype": "Date",
+   "label": "End Date"
+  },
+  {
+   "fieldname": "schedule_cb",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "run_time",
+   "fieldtype": "Time",
+   "label": "Run Time",
+   "mandatory_depends_on": "eval:doc.for_campaigns==1"
+  },
+  {
+   "depends_on": "eval:doc.frequency=='Weekly'",
+   "fieldname": "week_day",
+   "fieldtype": "Select",
+   "label": "Week Day",
+   "options": "Monday\nTuesday\nWednesday\nThursday\nFriday\nSaturday\nSunday"
+  },
+  {
+   "depends_on": "eval:doc.frequency=='Monthly'",
+   "fieldname": "day_of_month",
+   "fieldtype": "Int",
+   "label": "Day of Month"
+  },
+  {
+   "collapsible": 1,
+   "depends_on": "eval:doc.for_campaigns==1",
+   "fieldname": "execution_section",
+   "fieldtype": "Section Break",
+   "label": "Execution Settings"
+  },
+  {
+   "default": "1",
+   "fieldname": "create_separate_campaign",
+   "fieldtype": "Check",
+   "label": "Create Separate Campaign"
+  },
+  {
+   "default": "1",
+   "fieldname": "send_immediately",
+   "fieldtype": "Check",
+   "label": "Send Immediately"
+  },
+  {
+   "fieldname": "execution_cb",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "1",
+   "fieldname": "auto_pause_on_error",
+   "fieldtype": "Check",
+   "label": "Auto Pause On Error"
+  },
+  {
+   "default": "3",
+   "fieldname": "max_retry_count",
+   "fieldtype": "Int",
+   "label": "Max Retry Count"
+  },
+  {
+   "collapsible": 1,
+   "depends_on": "eval:doc.for_campaigns==1",
+   "fieldname": "status_section",
+   "fieldtype": "Section Break",
+   "label": "Automation Status"
+  },
+  {
+   "fieldname": "last_run_on",
+   "fieldtype": "Datetime",
+   "label": "Last Run On",
+   "read_only": 1
+  },
+  {
+   "fieldname": "next_run_on",
+   "fieldtype": "Datetime",
+   "label": "Next Run On",
+   "read_only": 1
+  },
+  {
+   "fieldname": "status_cb",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "last_campaign",
+   "fieldtype": "Link",
+   "label": "Last Campaign",
+   "options": "CRM Email Campaign",
+   "read_only": 1
+  },
+  {
+   "collapsible": 1,
+   "depends_on": "eval:doc.for_campaigns==1",
+   "fieldname": "statistics_section",
+   "fieldtype": "Section Break",
+   "label": "Statistics (Aggregated)"
+  },
+  {
+   "default": "0",
+   "fieldname": "total_runs",
+   "fieldtype": "Int",
+   "label": "Total Runs",
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "total_recipients",
+   "fieldtype": "Int",
+   "label": "Total Recipients",
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "total_emails_sent",
+   "fieldtype": "Int",
+   "label": "Total Emails Sent",
+   "read_only": 1
+  },
+  {
+   "fieldname": "statistics_cb",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "0",
+   "fieldname": "total_failed",
+   "fieldtype": "Int",
+   "label": "Total Failed",
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "open_count",
+   "fieldtype": "Int",
+   "label": "Open Count",
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "click_count",
+   "fieldtype": "Int",
+   "label": "Click Count",
+   "read_only": 1
+  },
+  {
+   "default": "1",
+   "fieldname": "for_status_change",
+   "fieldtype": "Check",
+   "label": "For Status Change"
+  },
+  {
+   "default": "0",
+   "fieldname": "for_campaigns",
+   "fieldtype": "Check",
+   "label": "For Campaigns"
+  },
+  {
+   "depends_on": "eval:doc.for_status_change==1",
+   "fieldname": "trigger_event",
+   "fieldtype": "Select",
+   "label": "Trigger Event",
+   "mandatory_depends_on": "eval:doc.for_status_change==1",
+   "options": "Lead Workflow State Change\nDeal Stage Change"
+  },
+  {
+   "depends_on": "eval:doc.trigger_event=='Lead Workflow State Change' && doc.for_status_change==1",
+   "fieldname": "workflow_state",
+   "fieldtype": "Select",
+   "label": "Workflow State",
+   "mandatory_depends_on": "eval:doc.trigger_event=='Lead Workflow State Change' && doc.for_status_change==1"
+  },
+  {
+   "depends_on": "eval:doc.trigger_event=='Lead Workflow State Change' && doc.for_status_change==1",
+   "fieldname": "previous_workflow_state",
+   "fieldtype": "Select",
+   "label": "Previous Workflow State",
+   "mandatory_depends_on": "eval:doc.trigger_event=='Lead Workflow State Change' && doc.for_status_change==1"
+  },
+  {
+   "depends_on": "eval:doc.trigger_event=='Deal Stage Change' && doc.for_status_change==1",
+   "fieldname": "current_deal_stage",
+   "fieldtype": "Select",
+   "label": "Current Deal Stage",
+   "mandatory_depends_on": "eval:doc.trigger_event=='Deal Stage Change' && doc.for_status_change==1"
+  },
+  {
+   "depends_on": "eval:doc.trigger_event=='Deal Stage Change' && doc.for_status_change==1",
+   "fieldname": "previous_deal_stage",
+   "fieldtype": "Select",
+   "label": "Previous Deal Stage",
+   "mandatory_depends_on": "eval:doc.trigger_event=='Deal Stage Change' && doc.for_status_change==1"
+  },
+  {
+   "depends_on": "eval:doc.for_status_change==1",
+   "fieldname": "dialog_section",
+   "fieldtype": "Section Break",
+   "label": "Confirmation Dialog"
+  },
+  {
+   "default": "1",
+   "fieldname": "show_confirmation_dialog",
+   "fieldtype": "Check",
+   "label": "Show Confirmation Dialog"
+  },
+  {
+   "default": "Send WhatsApp Message?",
+   "fieldname": "dialog_title",
+   "fieldtype": "Data",
+   "label": "Dialog Title",
+   "mandatory_depends_on": "eval:doc.show_confirmation_dialog==1 && doc.for_status_change==1"
+  },
+  {
+   "default": "Do you want to send the WhatsApp message?",
+   "fieldname": "dialog_message",
+   "fieldtype": "Small Text",
+   "label": "Dialog Message",
+   "mandatory_depends_on": "eval:doc.show_confirmation_dialog==1 && doc.for_status_change==1"
+  },
+  {
+   "default": "0",
+   "fieldname": "auto_send",
+   "fieldtype": "Check",
+   "label": "Auto Send"
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-07-03 18:38:55.071799",
+ "modified_by": "Administrator",
+ "module": "Company",
+ "name": "CRM Email Automation",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "CRM And Sales",
+   "select": 1,
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "rows_threshold_for_grid_search": 20,
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "automation_name"
+}

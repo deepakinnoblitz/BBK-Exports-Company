@@ -1,0 +1,179 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2026-06-10 11:36:28.868439",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "basic_information_section",
+  "is_active",
+  "template_name",
+  "category",
+  "template_for",
+  "basic_info_cb",
+  "description",
+  "email_settings_section",
+  "subject",
+  "email_settings_cb",
+  "sender_name",
+  "reply_to_email",
+  "content_section",
+  "email_content",
+  "footer_content",
+  "attachments_section",
+  "attachments",
+  "variables_section",
+  "available_variables"
+ ],
+ "fields": [
+  {
+   "fieldname": "basic_information_section",
+   "fieldtype": "Section Break",
+   "label": "Basic Information"
+  },
+  {
+   "fieldname": "template_name",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Template Name",
+   "reqd": 1
+  },
+  {
+   "fieldname": "basic_info_cb",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "category",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Category",
+   "options": "CRM Email Template Category",
+   "reqd": 1
+  },
+  {
+   "default": "1",
+   "fieldname": "is_active",
+   "fieldtype": "Check",
+   "label": "Is Active"
+  },
+  {
+   "fieldname": "description",
+   "fieldtype": "Small Text",
+   "label": "Description"
+  },
+  {
+   "fieldname": "email_settings_section",
+   "fieldtype": "Section Break",
+   "label": "Email Settings"
+  },
+  {
+   "fieldname": "subject",
+   "fieldtype": "Small Text",
+   "label": "Subject",
+   "reqd": 1
+  },
+  {
+   "fieldname": "sender_name",
+   "fieldtype": "Data",
+   "label": "Sender Name"
+  },
+  {
+   "fieldname": "email_settings_cb",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "reply_to_email",
+   "fieldtype": "Data",
+   "label": "Reply To Email",
+   "options": "Email"
+  },
+  {
+   "fieldname": "content_section",
+   "fieldtype": "Section Break",
+   "label": "Content"
+  },
+  {
+   "fieldname": "email_content",
+   "fieldtype": "Text Editor",
+   "label": "Email Content",
+   "reqd": 1
+  },
+  {
+   "fieldname": "footer_content",
+   "fieldtype": "Text Editor",
+   "label": "Footer Content"
+  },
+  {
+   "fieldname": "attachments_section",
+   "fieldtype": "Section Break",
+   "label": "Attachments"
+  },
+  {
+   "fieldname": "attachments",
+   "fieldtype": "Table",
+   "label": "Attachments",
+   "options": "CRM Email Template Attachment"
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "variables_section",
+   "fieldtype": "Section Break",
+   "label": "Available Variables"
+  },
+  {
+   "fieldname": "available_variables",
+   "fieldtype": "Code",
+   "label": "Variables",
+   "options": "Text",
+   "read_only": 1
+  },
+  {
+   "fieldname": "template_for",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Template For",
+   "reqd": 1
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-07-04 11:43:55.629750",
+ "modified_by": "Administrator",
+ "module": "Company",
+ "name": "CRM Email Template",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "CRM And Sales",
+   "select": 1,
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "rows_threshold_for_grid_search": 20,
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": [],
+ "title_field": "template_name"
+}

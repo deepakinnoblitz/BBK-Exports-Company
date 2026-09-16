@@ -1,0 +1,50 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2025-12-01 10:51:30.080399",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "date_time",
+  "status",
+  "notes"
+ ],
+ "fields": [
+  {
+   "default": "now",
+   "fieldname": "date_time",
+   "fieldtype": "Datetime",
+   "in_list_view": 1,
+   "label": "Date and Time"
+  },
+  {
+   "fieldname": "notes",
+   "fieldtype": "Small Text",
+   "in_list_view": 1,
+   "label": "Notes"
+  },
+  {
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Status",
+   "options": "Called \u2013 No Response\nCalled \u2013 Phone Switched Off\nCalled \u2013 Number Not Reachable\nCalled \u2013 Wrong Number\nCalled \u2013 Left Voicemail\nCalled \u2013 Asked to Call Later\nCalled \u2013 Spoke Briefly\nSpoke to Candidate \u2013 Confirmed Interest\nSpoke to Candidate \u2013 Not Available\nSpoke to Candidate \u2013 Requested Reschedule\nSpoke to Candidate \u2013 Awaiting Documents\nSpoke to Candidate \u2013 Will Revert Soon\nSpoke to Candidate \u2013 Needs More Time\nInterview Date Informed\nInterview Rescheduled\nCandidate Did Not Attend Interview\nCandidate Confirmed Interview\nCandidate Wants Remote Interview\nProfile Shortlisted \u2013 Candidate Updated\nProfile Rejected \u2013 Candidate Updated\nWaiting for Manager Feedback\nManager Review Pending\nPanel Availability Pending\nFeedback Submitted to Management\nOffer Under Preparation\nCandidate Accepted Offer\nCandidate Rejected Offer\nCandidate Not Interested\nCandidate Joined\nCandidate Withdrawn"
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "istable": 1,
+ "links": [],
+ "modified": "2025-12-01 10:51:30.080399",
+ "modified_by": "Administrator",
+ "module": "Company",
+ "name": "Job Applicant Followups",
+ "owner": "Administrator",
+ "permissions": [],
+ "row_format": "Dynamic",
+ "rows_threshold_for_grid_search": 20,
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": []
+}

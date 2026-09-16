@@ -1,0 +1,117 @@
+{
+ "actions": [],
+ "creation": "2026-01-29 08:53:00",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "sender",
+  "content",
+  "select_all_users",
+  "receivers",
+  "send_message",
+  "section_break_scheduling",
+  "is_scheduled",
+  "trigger_time",
+  "last_sent_date",
+  "test_scheduled_send"
+ ],
+ "fields": [
+  {
+   "fieldname": "sender",
+   "fieldtype": "Link",
+   "label": "Sender",
+   "options": "User"
+  },
+  {
+   "fieldname": "content",
+   "fieldtype": "Small Text",
+   "label": "Message Content"
+  },
+  {
+   "default": "0",
+   "fieldname": "select_all_users",
+   "fieldtype": "Check",
+   "label": "Select All Users"
+  },
+  {
+   "fieldname": "receivers",
+   "fieldtype": "Table",
+   "label": "Receivers",
+   "options": "Manual Chat Message Receiver"
+  },
+  {
+   "fieldname": "send_message",
+   "fieldtype": "Button",
+   "label": "Send Message"
+  },
+  {
+   "fieldname": "section_break_scheduling",
+   "fieldtype": "Section Break",
+   "label": "Scheduling"
+  },
+  {
+   "default": "0",
+   "fieldname": "is_scheduled",
+   "fieldtype": "Check",
+   "label": "Is Scheduled"
+  },
+  {
+   "depends_on": "eval:doc.is_scheduled == 1",
+   "fieldname": "trigger_time",
+   "fieldtype": "Time",
+   "label": "Trigger Time"
+  },
+  {
+   "fieldname": "last_sent_date",
+   "fieldtype": "Date",
+   "label": "Last Sent Date"
+  },
+  {
+   "fieldname": "test_scheduled_send",
+   "fieldtype": "Button",
+   "label": "Test Scheduled Send"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "issingle": 1,
+ "links": [],
+ "modified": "2026-01-29 16:51:55.081082",
+ "modified_by": "Administrator",
+ "module": "Company",
+ "name": "Manual Chat Message",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "delete": 1,
+   "report": 1,
+   "role": "HR",
+   "share": 1,
+   "write": 1,
+   "select": 1
+  },
+  {
+   "read": 1,
+   "role": "Employee",
+   "select": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

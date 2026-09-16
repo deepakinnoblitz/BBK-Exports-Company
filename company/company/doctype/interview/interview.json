@@ -1,0 +1,284 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "autoname": "IV.#####",
+ "creation": "2025-12-01 11:06:39.830623",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "job_details_tab",
+  "overall_status_section",
+  "overall_status",
+  "job_applicant_details_section",
+  "job_applicant",
+  "email_id",
+  "phone_number",
+  "country",
+  "column_break_3",
+  "job_applied",
+  "designation",
+  "state",
+  "city",
+  "section_break_6",
+  "notes",
+  "cover_letter",
+  "resume_attachment",
+  "resume_link",
+  "section_break_16",
+  "currency",
+  "column_break_18",
+  "lower_range",
+  "upper_range",
+  "tab_2_tab",
+  "section_break_whkb",
+  "scheduled_on",
+  "column_break_rkdg",
+  "from_time",
+  "to_time",
+  "section_break_xcqu",
+  "interview_summary",
+  "feedback_tab",
+  "feedbacks",
+  "overall_performance"
+ ],
+ "fields": [
+  {
+   "fieldname": "job_applicant",
+   "fieldtype": "Link",
+   "label": "Job Applicant",
+   "options": "Job Applicant",
+   "reqd": 1
+  },
+  {
+   "fieldname": "job_applicant_details_section",
+   "fieldtype": "Section Break",
+   "label": "Job Applicant Details"
+  },
+  {
+   "bold": 1,
+   "fetch_from": "job_applicant.email_id",
+   "fieldname": "email_id",
+   "fieldtype": "Data",
+   "label": "Email Address",
+   "options": "Email"
+  },
+  {
+   "fieldname": "column_break_3",
+   "fieldtype": "Column Break",
+   "width": "50%"
+  },
+  {
+   "fieldname": "section_break_6",
+   "fieldtype": "Section Break",
+   "label": "Resume"
+  },
+  {
+   "fetch_from": "job_applicant.cover_letter",
+   "fieldname": "cover_letter",
+   "fieldtype": "Text",
+   "label": "Cover Letter"
+  },
+  {
+   "fetch_from": "job_applicant.resume_attachment",
+   "fieldname": "resume_attachment",
+   "fieldtype": "Attach",
+   "label": "Resume Attachment"
+  },
+  {
+   "fetch_from": "job_applicant.notes",
+   "fieldname": "notes",
+   "fieldtype": "Data",
+   "label": "Notes",
+   "read_only": 1
+  },
+  {
+   "fetch_from": "job_applicant.phone_number",
+   "fieldname": "phone_number",
+   "fieldtype": "Data",
+   "label": "Phone Number",
+   "options": "Phone"
+  },
+  {
+   "fetch_from": "job_applicant.country",
+   "fieldname": "country",
+   "fieldtype": "Link",
+   "label": "Country",
+   "options": "Country"
+  },
+  {
+   "fetch_from": "job_applicant.resume_link",
+   "fieldname": "resume_link",
+   "fieldtype": "Data",
+   "label": "Resume Link"
+  },
+  {
+   "fieldname": "section_break_16",
+   "fieldtype": "Section Break",
+   "label": "Salary Expectation"
+  },
+  {
+   "fetch_from": "job_applicant.lower_range",
+   "fieldname": "lower_range",
+   "fieldtype": "Data",
+   "label": "Lower Range",
+   "precision": "0"
+  },
+  {
+   "fetch_from": "job_applicant.upper_range",
+   "fieldname": "upper_range",
+   "fieldtype": "Data",
+   "label": "Upper Range",
+   "precision": "0"
+  },
+  {
+   "fieldname": "column_break_18",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fetch_from": "job_applicant.currency",
+   "fieldname": "currency",
+   "fieldtype": "Link",
+   "label": "Currency",
+   "options": "Currency"
+  },
+  {
+   "fetch_from": "job_applicant.designation",
+   "fetch_if_empty": 1,
+   "fieldname": "designation",
+   "fieldtype": "Link",
+   "label": "Designation",
+   "options": "Designation"
+  },
+  {
+   "fetch_from": "job_applicant.job_title",
+   "fieldname": "job_applied",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Job Applied",
+   "options": "Job Opening",
+   "search_index": 1
+  },
+  {
+   "fetch_from": "job_applicant.state",
+   "fieldname": "state",
+   "fieldtype": "Select",
+   "label": "State"
+  },
+  {
+   "fetch_from": "job_applicant.city",
+   "fieldname": "city",
+   "fieldtype": "Select",
+   "label": "City"
+  },
+  {
+   "fieldname": "tab_2_tab",
+   "fieldtype": "Tab Break",
+   "label": "Interview Details"
+  },
+  {
+   "fieldname": "job_details_tab",
+   "fieldtype": "Tab Break",
+   "label": "Applicant Details"
+  },
+  {
+   "fieldname": "feedback_tab",
+   "fieldtype": "Tab Break",
+   "label": "Performance"
+  },
+  {
+   "fieldname": "scheduled_on",
+   "fieldtype": "Date",
+   "label": "Scheduled On"
+  },
+  {
+   "fieldname": "from_time",
+   "fieldtype": "Time",
+   "label": "From Time"
+  },
+  {
+   "fieldname": "to_time",
+   "fieldtype": "Time",
+   "label": "To Time"
+  },
+  {
+   "fieldname": "interview_summary",
+   "fieldtype": "Text Editor",
+   "label": "Interview Summary"
+  },
+  {
+   "fieldname": "column_break_rkdg",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "section_break_xcqu",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "feedbacks",
+   "fieldtype": "Table",
+   "label": "Feedbacks",
+   "options": "Interview Feedback"
+  },
+  {
+   "fieldname": "overall_performance",
+   "fieldtype": "Small Text",
+   "label": "Overall Performance"
+  },
+  {
+   "fieldname": "overall_status",
+   "fieldtype": "Select",
+   "label": "Overall Status",
+   "options": "\nApplied\nScreening\nShortlisted\nScheduled\nIn Progress\nCompleted\nNo-Show\nCancelled\nRescheduled\nSelected\nRejected\nOn Hold"
+  },
+  {
+   "fieldname": "section_break_whkb",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "overall_status_section",
+   "fieldtype": "Section Break",
+   "label": "Overall Status"
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2025-12-01 12:41:46.783777",
+ "modified_by": "Administrator",
+ "module": "Company",
+ "name": "Interview",
+ "naming_rule": "Expression (old style)",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "delete": 1,
+   "report": 1,
+   "role": "HR",
+   "share": 1,
+   "write": 1,
+   "select": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "rows_threshold_for_grid_search": 20,
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": []
+}

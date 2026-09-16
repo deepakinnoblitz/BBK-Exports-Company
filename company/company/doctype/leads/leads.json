@@ -1,0 +1,197 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "autoname": "LEADS.#####",
+ "creation": "2025-09-18 11:21:47.597990",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "leads_details_section",
+  "lead_name",
+  "gstin",
+  "phone_number",
+  "email",
+  "service",
+  "leads_type",
+  "leads_from",
+  "remarks",
+  "column_break_jxmk",
+  "company_name",
+  "country",
+  "state",
+  "city",
+  "status",
+  "billing_address",
+  "assigned_to",
+  "move_to_party",
+  "section_break_krkf",
+  "followup"
+ ],
+ "fields": [
+  {
+   "fieldname": "lead_name",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Name",
+   "reqd": 1
+  },
+  {
+   "fieldname": "company_name",
+   "fieldtype": "Data",
+   "label": "Company Name"
+  },
+  {
+   "fieldname": "gstin",
+   "fieldtype": "Data",
+   "label": "GSTIN",
+   "length": 15
+  },
+  {
+   "fieldname": "phone_number",
+   "fieldtype": "Phone",
+   "label": "Phone Number"
+  },
+  {
+   "fieldname": "email",
+   "fieldtype": "Data",
+   "label": "Email",
+   "options": "Email",
+   "unique": 1
+  },
+  {
+   "fieldname": "service",
+   "fieldtype": "Link",
+   "label": "Service",
+   "options": "Service",
+   "reqd": 1
+  },
+  {
+   "fieldname": "country",
+   "fieldtype": "Link",
+   "label": "Country",
+   "options": "Country",
+   "reqd": 1
+  },
+  {
+   "fieldname": "state",
+   "fieldtype": "Select",
+   "label": "State",
+   "options": "Andhra Pradesh\nArunachal Pradesh\nAssam\nBihar\nChhattisgarh\nGoa\nGujarat\nHaryana\nHimachal Pradesh\nJharkhand\nKarnataka\nKerala\nMadhya Pradesh\nMaharashtra\nManipur\nMeghalaya\nMizoram\nNagaland\nOdisha\nPunjab\nRajasthan\nSikkim\nTamil Nadu\nTelangana\nTripura\nUttar Pradesh\nUttarakhand\nWest Bengal\nAndaman and Nicobar Islands\nChandigarh\nDadra and Nagar Haveli and Daman and Diu\nDelhi\nJammu and Kashmir\nLadakh\nLakshadweep\nPuducherry"
+  },
+  {
+   "fieldname": "billing_address",
+   "fieldtype": "Small Text",
+   "label": "Billing Address"
+  },
+  {
+   "fieldname": "remarks",
+   "fieldtype": "Small Text",
+   "label": "Remarks"
+  },
+  {
+   "fieldname": "leads_type",
+   "fieldtype": "Select",
+   "label": "Leads Type",
+   "options": "\nIncoming\nOutgoing",
+   "reqd": 1
+  },
+  {
+   "fieldname": "leads_from",
+   "fieldtype": "Link",
+   "label": "Leads from",
+   "options": "Lead From",
+   "reqd": 1
+  },
+  {
+   "fieldname": "assigned_to",
+   "fieldtype": "Link",
+   "label": "Assigned To",
+   "options": "Employee"
+  },
+  {
+   "fieldname": "column_break_jxmk",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "label": "Status",
+   "options": "New Lead\nContacted\nQualified\nProposal Sent\nIn Negotiation\nFollow-up Scheduled\nOn Hold\nNot Interested\nIn Active\nClosed"
+  },
+  {
+   "fieldname": "move_to_party",
+   "fieldtype": "Select",
+   "label": "Move to Party",
+   "options": "\nMove to Customer"
+  },
+  {
+   "fieldname": "section_break_krkf",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "followup",
+   "fieldtype": "Table",
+   "label": "Followup ",
+   "options": "Followup"
+  },
+  {
+   "fieldname": "leads_details_section",
+   "fieldtype": "Section Break",
+   "label": "Leads Details"
+  },
+  {
+   "fieldname": "city",
+   "fieldtype": "Select",
+   "label": "City"
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2025-11-15 19:22:46.901456",
+ "modified_by": "Administrator",
+ "module": "Company",
+ "name": "Leads",
+ "naming_rule": "Expression (old style)",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "IT",
+   "share": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Sales",
+   "select": 1,
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": []
+}

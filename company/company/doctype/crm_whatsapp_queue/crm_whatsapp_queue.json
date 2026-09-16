@@ -1,0 +1,180 @@
+{
+    "actions": [],
+    "allow_rename": 1,
+    "creation": "2026-06-25 12:00:00.000000",
+    "doctype": "DocType",
+    "engine": "InnoDB",
+    "field_order": [
+        "campaign_information_section",
+        "campaign",
+        "whatsapp_template",
+        "recipient_information_section",
+        "recipient_name",
+        "recipient_phone",
+        "recipient_info_cb",
+        "reference_doctype",
+        "reference_name",
+        "message_information_section",
+        "message_content",
+        "attachment",
+        "queue_status_section",
+        "status",
+        "retry_count",
+        "error_message",
+        "delivery_information_section",
+        "queued_on",
+        "sent_on"
+    ],
+    "fields": [
+        {
+            "fieldname": "campaign_information_section",
+            "label": "Campaign Information",
+            "fieldtype": "Section Break"
+        },
+        {
+            "fieldname": "campaign",
+            "label": "Campaign",
+            "fieldtype": "Link",
+            "options": "CRM WhatsApp Campaign",
+            "reqd": 1,
+            "in_list_view": 1
+        },
+        {
+            "fieldname": "whatsapp_template",
+            "label": "WhatsApp Template",
+            "fieldtype": "Link",
+            "options": "CRM WhatsApp Template"
+        },
+        {
+            "fieldname": "recipient_information_section",
+            "label": "Recipient Information",
+            "fieldtype": "Section Break"
+        },
+        {
+            "fieldname": "recipient_name",
+            "label": "Recipient Name",
+            "fieldtype": "Data",
+            "reqd": 1,
+            "in_list_view": 1
+        },
+        {
+            "fieldname": "recipient_phone",
+            "label": "Recipient Phone",
+            "fieldtype": "Data",
+            "reqd": 1,
+            "in_list_view": 1
+        },
+        {
+            "fieldname": "recipient_info_cb",
+            "fieldtype": "Column Break"
+        },
+        {
+            "fieldname": "reference_doctype",
+            "label": "Reference Doctype",
+            "fieldtype": "Data"
+        },
+        {
+            "fieldname": "reference_name",
+            "label": "Reference Name",
+            "fieldtype": "Dynamic Link",
+            "options": "reference_doctype"
+        },
+        {
+            "fieldname": "message_information_section",
+            "label": "Message Content",
+            "fieldtype": "Section Break"
+        },
+        {
+            "fieldname": "message_content",
+            "label": "Message Content",
+            "fieldtype": "Long Text"
+        },
+        {
+            "fieldname": "attachment",
+            "label": "Attachment",
+            "fieldtype": "Data"
+        },
+        {
+            "fieldname": "queue_status_section",
+            "label": "Queue Status",
+            "fieldtype": "Section Break"
+        },
+        {
+            "fieldname": "status",
+            "label": "Status",
+            "fieldtype": "Select",
+            "options": "Pending\nProcessing\nSent\nFailed",
+            "default": "Pending",
+            "in_list_view": 1
+        },
+        {
+            "fieldname": "retry_count",
+            "label": "Retry Count",
+            "fieldtype": "Int",
+            "default": "0"
+        },
+        {
+            "fieldname": "error_message",
+            "label": "Error Message",
+            "fieldtype": "Small Text",
+            "read_only": 1
+        },
+        {
+            "fieldname": "delivery_information_section",
+            "label": "Delivery Information",
+            "fieldtype": "Section Break"
+        },
+        {
+            "fieldname": "queued_on",
+            "label": "Queued On",
+            "fieldtype": "Datetime",
+            "read_only": 1
+        },
+        {
+            "fieldname": "sent_on",
+            "label": "Sent On",
+            "fieldtype": "Datetime",
+            "read_only": 1
+        }
+    ],
+    "grid_page_length": 50,
+    "index_web_pages_for_search": 1,
+    "links": [],
+    "modified": "2026-06-25 12:00:00.000000",
+    "modified_by": "Administrator",
+    "module": "Company",
+    "name": "CRM WhatsApp Queue",
+    "owner": "Administrator",
+    "permissions": [
+        {
+            "create": 1,
+            "delete": 1,
+            "email": 1,
+            "export": 1,
+            "print": 1,
+            "read": 1,
+            "report": 1,
+            "role": "System Manager",
+            "share": 1,
+            "write": 1
+        },
+        {
+            "create": 1,
+            "email": 1,
+            "export": 1,
+            "print": 1,
+            "read": 1,
+            "delete": 1,
+            "report": 1,
+            "role": "CRM And Sales",
+            "share": 1,
+            "write": 1,
+            "select": 1
+        }
+    ],
+    "row_format": "Dynamic",
+    "rows_threshold_for_grid_search": 20,
+    "sort_field": "creation",
+    "sort_order": "DESC",
+    "states": []
+}

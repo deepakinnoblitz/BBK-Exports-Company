@@ -1,0 +1,179 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "autoname": "field:form_id",
+ "creation": "2026-07-09 11:30:00",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "integration_section",
+  "is_active",
+  "form_name",
+  "form_id",
+  "meta_page",
+  "form_status",
+  "locale",
+  "campaign_id",
+  "campaign_name",
+  "ad_set_id",
+  "ad_set_name",
+  "ad_id",
+  "ad_name",
+  "mapping_section",
+  "mandatory_fields_alert",
+  "allow_duplicates",
+  "duplicate_limit_by",
+  "field_mappings",
+  "questions_json"
+ ],
+ "fields": [
+  {
+   "fieldname": "integration_section",
+   "fieldtype": "Section Break",
+   "label": "Meta Form Configuration"
+  },
+  {
+   "fieldname": "form_name",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Form Name",
+   "reqd": 1
+  },
+  {
+   "fieldname": "form_id",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Form ID",
+   "reqd": 1,
+   "unique": 1
+  },
+  {
+   "fieldname": "meta_page",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Meta Page",
+   "options": "CRM Meta Page",
+   "reqd": 1
+  },
+  {
+   "fieldname": "form_status",
+   "fieldtype": "Data",
+   "label": "Form Status"
+  },
+  {
+   "fieldname": "locale",
+   "fieldtype": "Data",
+   "label": "Locale"
+  },
+  {
+   "fieldname": "campaign_id",
+   "fieldtype": "Data",
+   "label": "Campaign ID"
+  },
+  {
+   "fieldname": "campaign_name",
+   "fieldtype": "Data",
+   "label": "Campaign Name"
+  },
+  {
+   "fieldname": "ad_set_id",
+   "fieldtype": "Data",
+   "label": "Ad Set ID"
+  },
+  {
+   "fieldname": "ad_set_name",
+   "fieldtype": "Data",
+   "label": "Ad Set Name"
+  },
+  {
+   "fieldname": "ad_id",
+   "fieldtype": "Data",
+   "label": "Ad ID"
+  },
+  {
+   "fieldname": "ad_name",
+   "fieldtype": "Data",
+   "label": "Ad Name"
+  },
+  {
+   "default": "1",
+   "fieldname": "is_active",
+   "fieldtype": "Check",
+   "label": "Is Active"
+  },
+  {
+   "default": "0",
+   "fieldname": "allow_duplicates",
+   "fieldtype": "Check",
+   "label": "Allow Duplicates"
+  },
+  {
+   "default": "Email or Phone",
+   "fieldname": "duplicate_limit_by",
+   "fieldtype": "Select",
+   "label": "Duplicate Limit By",
+   "options": "Email or Phone\nEmail Only\nPhone Only"
+  },
+  {
+   "fieldname": "mapping_section",
+   "fieldtype": "Section Break",
+   "label": "Lead Field Mappings"
+  },
+  {
+   "fieldname": "mandatory_fields_alert",
+   "fieldtype": "HTML",
+   "label": "Mandatory Fields Alert"
+  },
+  {
+   "fieldname": "field_mappings",
+   "fieldtype": "Table",
+   "label": "Field Mappings",
+   "options": "CRM Meta Field Mapping"
+  },
+  {
+   "fieldname": "questions_json",
+   "fieldtype": "Code",
+   "options": "JSON",
+   "label": "Raw Questions JSON"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-07-30 14:30:00",
+ "modified_by": "Administrator",
+ "module": "Company",
+ "name": "CRM Meta Form",
+ "naming_rule": "By fieldname",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "CRM And Sales",
+   "select": 1,
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": []
+}

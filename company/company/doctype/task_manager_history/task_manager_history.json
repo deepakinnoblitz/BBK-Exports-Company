@@ -1,0 +1,80 @@
+{
+    "actions": [],
+    "creation": "2026-03-09 13:25:00.000000",
+    "doctype": "DocType",
+    "editable_grid": 1,
+    "engine": "InnoDB",
+    "field_order": [
+        "event",
+        "done_by",
+        "done_on",
+        "col_break1",
+        "hours_spent",
+        "closing_attachment",
+        "sec_break1",
+        "remarks"
+    ],
+    "fields": [
+        {
+            "fieldname": "event",
+            "label": "Event",
+            "fieldtype": "Select",
+            "options": "Closed\nReopened\nAccepted\nOn Hold\nResumed",
+            "in_list_view": 1,
+            "reqd": 1
+        },
+        {
+            "fieldname": "done_by",
+            "label": "Done By",
+            "fieldtype": "Link",
+            "options": "User",
+            "in_list_view": 1,
+            "read_only": 1
+        },
+        {
+            "fieldname": "done_on",
+            "label": "Done On",
+            "fieldtype": "Datetime",
+            "in_list_view": 1,
+            "read_only": 1
+        },
+        {
+            "fieldname": "col_break1",
+            "fieldtype": "Column Break"
+        },
+        {
+            "fieldname": "hours_spent",
+            "label": "Hours Spent",
+            "fieldtype": "Data",
+            "in_list_view": 1,
+            "read_only": 1
+        },
+        {
+            "fieldname": "closing_attachment",
+            "label": "Closing Attachment",
+            "fieldtype": "Attach",
+            "read_only": 1
+        },
+        {
+            "fieldname": "sec_break1",
+            "fieldtype": "Section Break"
+        },
+        {
+            "fieldname": "remarks",
+            "label": "Remarks",
+            "fieldtype": "Text Editor",
+            "read_only": 1
+        }
+    ],
+    "grid_page_length": 50,
+    "istable": 1,
+    "modified": "2026-03-09 13:25:00.000000",
+    "modified_by": "Administrator",
+    "module": "Company",
+    "name": "Task Manager History",
+    "owner": "Administrator",
+    "permissions": [],
+    "row_format": "Dynamic",
+    "sort_field": "creation",
+    "sort_order": "DESC"
+}

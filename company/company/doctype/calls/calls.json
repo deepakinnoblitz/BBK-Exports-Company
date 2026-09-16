@@ -1,0 +1,280 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "autoname": "format:CALL-{DD}-{MM}-{YY}-{###}",
+ "creation": "2025-12-12 16:10:26.487422",
+ "default_view": "Calendar",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "call_type_section",
+  "schedule_a_call",
+  "column_break_mvus",
+  "log_a_call",
+  "section_break_whbe",
+  "call_for",
+  "lead_name",
+  "contact_name",
+  "account_name",
+  "enter_id",
+  "title",
+  "outgoing_call_status",
+  "completed_call_status",
+  "completed_call_notes",
+  "call_notes",
+  "color",
+  "column_break_qnno",
+  "call_start_time",
+  "call_end_time",
+  "call_owner",
+  "lead_followup_row",
+  "reminder_setting_section",
+  "enable_reminder",
+  "reminder_sent",
+  "column_break_vzdu",
+  "remind_before_minutes",
+  "section_break_kstg",
+  "call_purpose",
+  "call_agenda",
+  "section_break_xtoy",
+  "host",
+  "participants",
+  "owner_name"
+ ],
+ "fields": [
+  {
+   "fieldname": "call_type_section",
+   "fieldtype": "Section Break",
+   "hidden": 1,
+   "label": "Call Type"
+  },
+  {
+   "default": "0",
+   "fieldname": "schedule_a_call",
+   "fieldtype": "Check",
+   "label": "Schedule a call"
+  },
+  {
+   "fieldname": "column_break_mvus",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "0",
+   "fieldname": "log_a_call",
+   "fieldtype": "Check",
+   "label": "Log a call"
+  },
+  {
+   "fieldname": "section_break_whbe",
+   "fieldtype": "Section Break",
+   "label": "Call Information"
+  },
+  {
+   "fieldname": "call_for",
+   "fieldtype": "Select",
+   "label": "Call For",
+   "options": "Lead\nContact\nAccounts\nOthers",
+   "reqd": 1
+  },
+  {
+   "default": "Scheduled",
+   "fieldname": "outgoing_call_status",
+   "fieldtype": "Select",
+   "label": "Outgoing Call Status",
+   "options": "\nScheduled\nCompleted"
+  },
+  {
+   "fieldname": "column_break_qnno",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "call_start_time",
+   "fieldtype": "Datetime",
+   "in_list_view": 1,
+   "label": "Call Start Time",
+   "reqd": 1
+  },
+  {
+   "fieldname": "call_owner",
+   "fieldtype": "Link",
+   "label": "Call Owner",
+   "options": "User"
+  },
+  {
+   "fieldname": "section_break_kstg",
+   "fieldtype": "Section Break",
+   "label": "Purpose Of Outgoing Call"
+  },
+  {
+   "fieldname": "call_purpose",
+   "fieldtype": "Data",
+   "label": "Call Purpose"
+  },
+  {
+   "fieldname": "call_agenda",
+   "fieldtype": "Small Text",
+   "label": "Call Agenda"
+  },
+  {
+   "fieldname": "call_end_time",
+   "fieldtype": "Datetime",
+   "label": "Call End Time"
+  },
+  {
+   "fieldname": "color",
+   "fieldtype": "Color",
+   "hidden": 1,
+   "label": "Color "
+  },
+  {
+   "fieldname": "title",
+   "fieldtype": "Data",
+   "label": "Title"
+  },
+  {
+   "default": "0",
+   "fieldname": "enable_reminder",
+   "fieldtype": "Check",
+   "label": "Enable Reminder"
+  },
+  {
+   "default": "0",
+   "fieldname": "reminder_sent",
+   "fieldtype": "Check",
+   "hidden": 1,
+   "label": "Reminder Sent"
+  },
+  {
+   "fieldname": "remind_before_minutes",
+   "fieldtype": "Int",
+   "label": "Remind me (mins)"
+  },
+  {
+   "depends_on": "eval:in_list([\"Lead\"], doc.call_for);",
+   "fieldname": "lead_name",
+   "fieldtype": "Link",
+   "label": "Lead Name",
+   "options": "Lead"
+  },
+  {
+   "fieldname": "reminder_setting_section",
+   "fieldtype": "Section Break",
+   "label": "Reminder Setting"
+  },
+  {
+   "fieldname": "column_break_vzdu",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "lead_followup_row",
+   "fieldtype": "Data",
+   "hidden": 1,
+   "label": "Lead Followup Row ID",
+   "read_only": 1
+  },
+  {
+   "depends_on": "eval:in_list([\"Completed\"], doc.outgoing_call_status);",
+   "fieldname": "completed_call_status",
+   "fieldtype": "Link",
+   "label": "Completed Call Status",
+   "options": "Call Status"
+  },
+  {
+   "depends_on": "eval:in_list([\"Completed\"], doc.outgoing_call_status);",
+   "fieldname": "completed_call_notes",
+   "fieldtype": "Small Text",
+   "label": "Completed Call Notes"
+  },
+  {
+   "fieldname": "call_notes",
+   "fieldtype": "Table",
+   "label": "Call Notes",
+   "options": "Call notes"
+  },
+  {
+   "fieldname": "section_break_xtoy",
+   "fieldtype": "Section Break"
+  },
+  {
+   "default": "__user",
+   "fieldname": "owner_name",
+   "fieldtype": "Link",
+   "label": "Owner",
+   "options": "User"
+  },
+  {
+   "depends_on": "eval:in_list([\"Contact\"], doc.call_for);",
+   "fieldname": "contact_name",
+   "fieldtype": "Link",
+   "label": "Contact Name",
+   "options": "Contacts"
+  },
+  {
+   "depends_on": "eval:in_list([\"Accounts\"], doc.call_for);",
+   "fieldname": "account_name",
+   "fieldtype": "Link",
+   "label": "Account Name",
+   "options": "Accounts"
+  },
+  {
+   "depends_on": "eval:in_list([\"Others\"], doc.call_for);",
+   "fieldname": "enter_id",
+   "fieldtype": "Data",
+   "label": "Enter ID"
+  },
+  {
+   "fieldname": "host",
+   "fieldtype": "Link",
+   "label": "Host",
+   "options": "User"
+  },
+  {
+   "fieldname": "participants",
+   "fieldtype": "Table MultiSelect",
+   "label": "Participants",
+   "options": "Child Users"
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "is_calendar_and_gantt": 1,
+ "links": [],
+ "modified": "2026-07-20 11:08:06.551297",
+ "modified_by": "Administrator",
+ "module": "Company",
+ "name": "Calls",
+ "naming_rule": "Expression",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "CRM And Sales",
+   "select": 1,
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "rows_threshold_for_grid_search": 20,
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": []
+}

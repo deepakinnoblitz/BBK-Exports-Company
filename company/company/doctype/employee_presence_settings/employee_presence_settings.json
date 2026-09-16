@@ -1,0 +1,206 @@
+{
+ "actions": [],
+ "allow_events_in_timeline": 0,
+ "allow_guest_to_view": 0,
+ "allow_import": 0,
+ "allow_print": 0,
+ "allow_rename": 0,
+ "autoname": "format:Employee Presence Settings",
+ "creation": "2024-03-27 11:20:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "enable_auto_status",
+  "idle_threshold",
+  "away_threshold",
+  "break_threshold",
+  "offline_threshold",
+  "enable_auto_resume_break",
+  "event_mousemove",
+  "event_keydown",
+  "event_scroll",
+  "event_click",
+  "event_touchstart",
+  "enable_location_tracking",
+  "track_on_login",
+  "track_on_logout",
+  "track_on_status_change",
+  "tracking_interval_minutes",
+  "minimum_gps_accuracy",
+  "location_tracking_target",
+  "tracked_employees"
+ ],
+ "fields": [
+  {
+   "default": "1",
+   "fieldname": "enable_auto_status",
+   "fieldtype": "Check",
+   "label": "Enable Auto Status (Global)"
+  },
+  {
+   "default": "60",
+   "fieldname": "idle_threshold",
+   "fieldtype": "Int",
+   "label": "Idle Threshold (Seconds)",
+   "depends_on": "eval:doc.enable_auto_status == 1"
+  },
+  {
+   "default": "300",
+   "fieldname": "away_threshold",
+   "fieldtype": "Int",
+   "label": "Away Threshold (Seconds)",
+   "depends_on": "eval:doc.enable_auto_status == 1"
+  },
+  {
+   "default": "900",
+   "fieldname": "break_threshold",
+   "fieldtype": "Int",
+   "label": "Break Threshold (Seconds)",
+   "depends_on": "eval:doc.enable_auto_status == 1"
+  },
+  {
+   "default": "3600",
+   "fieldname": "offline_threshold",
+   "fieldtype": "Int",
+   "label": "Auto-Offline Threshold (Seconds)",
+   "depends_on": "eval:doc.enable_auto_status == 1"
+  },
+  {
+   "default": "1",
+   "fieldname": "enable_auto_resume_break",
+   "fieldtype": "Check",
+   "label": "Enable Auto Resume from Break",
+   "depends_on": "eval:doc.enable_auto_status == 1"
+  },
+  {
+   "default": "1",
+   "fieldname": "event_mousemove",
+   "fieldtype": "Check",
+   "label": "Mouse Move",
+   "depends_on": "eval:doc.enable_auto_status == 1"
+  },
+  {
+   "default": "1",
+   "fieldname": "event_keydown",
+   "fieldtype": "Check",
+   "label": "Key Down",
+   "depends_on": "eval:doc.enable_auto_status == 1"
+  },
+  {
+   "default": "1",
+   "fieldname": "event_scroll",
+   "fieldtype": "Check",
+   "label": "Scroll",
+   "depends_on": "eval:doc.enable_auto_status == 1"
+  },
+  {
+   "default": "1",
+   "fieldname": "event_click",
+   "fieldtype": "Check",
+   "label": "Click",
+   "depends_on": "eval:doc.enable_auto_status == 1"
+  },
+  {
+   "default": "1",
+   "fieldname": "event_touchstart",
+   "fieldtype": "Check",
+   "label": "Touch Start",
+   "depends_on": "eval:doc.enable_auto_status == 1"
+  },
+  {
+   "default": "0",
+   "fieldname": "enable_location_tracking",
+   "fieldtype": "Check",
+   "label": "Enable Location Tracking"
+  },
+  {
+   "default": "1",
+   "fieldname": "track_on_login",
+   "fieldtype": "Check",
+   "label": "Track On Login",
+   "depends_on": "eval:doc.enable_location_tracking == 1"
+  },
+  {
+   "default": "1",
+   "fieldname": "track_on_logout",
+   "fieldtype": "Check",
+   "label": "Track On Logout",
+   "depends_on": "eval:doc.enable_location_tracking == 1"
+  },
+  {
+   "default": "1",
+   "fieldname": "track_on_status_change",
+   "fieldtype": "Check",
+   "label": "Track On Status Change",
+   "depends_on": "eval:doc.enable_location_tracking == 1"
+  },
+  {
+   "default": "10",
+   "fieldname": "tracking_interval_minutes",
+   "fieldtype": "Int",
+   "label": "Tracking Interval (Minutes)",
+   "depends_on": "eval:doc.enable_location_tracking == 1"
+  },
+  {
+   "default": "100",
+   "fieldname": "minimum_gps_accuracy",
+   "fieldtype": "Int",
+   "label": "Minimum GPS Accuracy (Meters)",
+   "depends_on": "eval:doc.enable_location_tracking == 1"
+  },
+  {
+   "default": "All Employees",
+   "fieldname": "location_tracking_target",
+   "fieldtype": "Select",
+   "label": "Location Tracking Target",
+   "options": "All Employees\nSelected Employees",
+   "depends_on": "eval:doc.enable_location_tracking == 1"
+  },
+  {
+   "fieldname": "tracked_employees",
+   "fieldtype": "Long Text",
+   "label": "Tracked Employees (JSON)",
+   "depends_on": "eval:doc.enable_location_tracking == 1 && doc.location_tracking_target == 'Selected Employees'"
+  }
+ ],
+ "index_pages": [],
+ "issingle": 1,
+ "links": [],
+ "modified": "2024-03-27 11:20:00.000000",
+ "modified_by": "Administrator",
+ "module": "Company",
+ "name": "Employee Presence Settings",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "HR",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "show_title_field_in_link": 0,
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": [],
+ "track_changes": 1
+}

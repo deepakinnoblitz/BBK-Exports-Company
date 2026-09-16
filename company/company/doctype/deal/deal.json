@@ -1,0 +1,186 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "autoname": "format:PRT-{YYYY}-{#####}",
+ "creation": "2025-12-12 16:08:35.615648",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "deal_details",
+  "deal_title",
+  "account",
+  "contact",
+  "type",
+  "source_lead",
+  "next_step",
+  "attachments",
+  "column_break",
+  "value",
+  "expected_close_date",
+  "stage",
+  "probability",
+  "deal_owner",
+  "notes",
+  "stage_history_tab",
+  "stage_history",
+  "section_break_zxam",
+  "owner_name"
+ ],
+ "fields": [
+  {
+   "fieldname": "deal_details",
+   "fieldtype": "Section Break",
+   "label": "Deal Details"
+  },
+  {
+   "fieldname": "deal_title",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Deal Title",
+   "reqd": 1
+  },
+  {
+   "fieldname": "contact",
+   "fieldtype": "Link",
+   "label": "Contact",
+   "options": "Contacts"
+  },
+  {
+   "fieldname": "value",
+   "fieldtype": "Currency",
+   "hidden": 1,
+   "label": "Deal Value"
+  },
+  {
+   "fieldname": "expected_close_date",
+   "fieldtype": "Date",
+   "label": "Expected Close Date"
+  },
+  {
+   "fieldname": "column_break",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "stage",
+   "fieldtype": "Select",
+   "label": "Stage",
+   "options": "Just In\nWorking\nEstimation Created\nEstimation Sent\nInvoice Created\nInvoice Sent\nSpecial Approval\nProject Started\nClosed",
+   "reqd": 1
+  },
+  {
+   "fieldname": "probability",
+   "fieldtype": "Percent",
+   "hidden": 1,
+   "label": "Probability"
+  },
+  {
+   "fieldname": "deal_owner",
+   "fieldtype": "Link",
+   "hidden": 1,
+   "label": "Owner",
+   "options": "User"
+  },
+  {
+   "fieldname": "source_lead",
+   "fieldtype": "Select",
+   "hidden": 1,
+   "label": "Source Lead",
+   "options": "Other"
+  },
+  {
+   "fieldname": "notes",
+   "fieldtype": "Small Text",
+   "label": "Notes"
+  },
+  {
+   "fieldname": "account",
+   "fieldtype": "Link",
+   "label": "Account",
+   "options": "Accounts",
+   "reqd": 1
+  },
+  {
+   "fieldname": "type",
+   "fieldtype": "Select",
+   "hidden": 1,
+   "label": "Type",
+   "options": "Existing Business\nNew Business"
+  },
+  {
+   "fieldname": "next_step",
+   "fieldtype": "Small Text",
+   "hidden": 1,
+   "label": "Next Step"
+  },
+  {
+   "fieldname": "stage_history_tab",
+   "fieldtype": "Tab Break",
+   "label": "Stage History"
+  },
+  {
+   "fieldname": "stage_history",
+   "fieldtype": "Table",
+   "label": "Stage History",
+   "options": "Deal Pipeline Timeline",
+   "read_only": 1
+  },
+  {
+   "fieldname": "section_break_zxam",
+   "fieldtype": "Section Break"
+  },
+  {
+   "default": "__user",
+   "fieldname": "owner_name",
+   "fieldtype": "Link",
+   "label": "Owner",
+   "options": "User"
+  },
+  {
+   "fieldname": "attachments",
+   "fieldtype": "Attach",
+   "hidden": 1,
+   "label": "Attachments"
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-06-23 17:04:33.853380",
+ "modified_by": "Administrator",
+ "module": "Company",
+ "name": "Deal",
+ "naming_rule": "Expression",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "CRM And Sales",
+   "select": 1,
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "rows_threshold_for_grid_search": 20,
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": []
+}

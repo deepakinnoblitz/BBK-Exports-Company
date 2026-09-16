@@ -1,0 +1,117 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2026-06-10 14:15:00",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "smtp_section",
+  "default_email_account",
+  "campaign_section",
+  "max_emails_per_batch",
+  "batch_delay",
+  "campaign_cb",
+  "maximum_retry_count",
+  "auto_retry_failed_emails",
+  "automation_section",
+  "enable_email_automation"
+ ],
+ "fields": [
+  {
+   "fieldname": "smtp_section",
+   "fieldtype": "Section Break",
+   "label": "SMTP Configuration"
+  },
+  {
+   "fieldname": "default_email_account",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Default Email Account",
+   "options": "Email Account",
+   "reqd": 1
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "campaign_section",
+   "fieldtype": "Section Break",
+   "label": "Campaign Configuration"
+  },
+  {
+   "default": "100",
+   "fieldname": "max_emails_per_batch",
+   "fieldtype": "Int",
+   "label": "Max Emails Per Batch"
+  },
+  {
+   "default": "5",
+   "fieldname": "batch_delay",
+   "fieldtype": "Int",
+   "label": "Batch Delay (Seconds)"
+  },
+  {
+   "fieldname": "campaign_cb",
+   "fieldtype": "Column Break"
+  },
+  {
+   "default": "3",
+   "fieldname": "maximum_retry_count",
+   "fieldtype": "Int",
+   "label": "Maximum Retry Count"
+  },
+  {
+   "default": "1",
+   "fieldname": "auto_retry_failed_emails",
+   "fieldtype": "Check",
+   "label": "Auto Retry Failed Emails"
+  },
+  {
+   "collapsible": 1,
+   "fieldname": "automation_section",
+   "fieldtype": "Section Break",
+   "label": "Automation Configuration"
+  },
+  {
+   "default": "1",
+   "fieldname": "enable_email_automation",
+   "fieldtype": "Check",
+   "label": "Enable Email Automation"
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "issingle": 1,
+ "links": [],
+ "modified": "2026-06-22 12:10:24.515611",
+ "modified_by": "Administrator",
+ "module": "Company",
+ "name": "CRM Email Settings",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "role": "CRM And Sales",
+   "select": 1,
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "rows_threshold_for_grid_search": 20,
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": []
+}

@@ -1,0 +1,188 @@
+{
+    "actions": [],
+    "allow_rename": 1,
+    "creation": "2026-06-10 11:54:32.317383",
+    "doctype": "DocType",
+    "engine": "InnoDB",
+    "field_order": [
+        "campaign_information_section",
+        "campaign_name",
+        "email_template",
+        "campaign_info_cb",
+        "subject",
+        "status",
+        "audience_section",
+        "target_type",
+        "filters",
+        "total_recipients",
+        "scheduling_section",
+        "send_immediately",
+        "schedule_date",
+        "statistics_section",
+        "analytics_dashboard_html",
+        "sent_count",
+        "open_count",
+        "click_count",
+        "failed_count"
+    ],
+    "fields": [
+        {
+            "fieldname": "campaign_information_section",
+            "label": "Campaign Information",
+            "fieldtype": "Section Break"
+        },
+        {
+            "fieldname": "campaign_name",
+            "label": "Campaign Name",
+            "fieldtype": "Data",
+            "reqd": 1,
+            "in_list_view": 1
+        },
+        {
+            "fieldname": "email_template",
+            "label": "Email Template",
+            "fieldtype": "Link",
+            "options": "CRM Email Template",
+            "reqd": 1
+        },
+        {
+            "fieldname": "campaign_info_cb",
+            "fieldtype": "Column Break"
+        },
+        {
+            "fieldname": "subject",
+            "label": "Subject",
+            "fieldtype": "Data"
+        },
+        {
+            "fieldname": "status",
+            "label": "Status",
+            "fieldtype": "Select",
+            "options": "Draft\nScheduled\nRunning\nPaused\nCompleted\nFailed\nCancelled",
+            "default": "Draft",
+            "in_list_view": 1,
+            "read_only": 1
+        },
+        {
+            "fieldname": "audience_section",
+            "label": "Audience",
+            "fieldtype": "Section Break"
+        },
+        {
+            "fieldname": "target_type",
+            "label": "Target Type",
+            "fieldtype": "Select",
+            "options": "Lead\nContact\nAccount",
+            "reqd": 1
+        },
+        {
+            "fieldname": "filters",
+            "label": "Filters",
+            "fieldtype": "Table",
+            "options": "CRM Campaign Filter"
+        },
+        {
+            "fieldname": "total_recipients",
+            "label": "Total Recipients",
+            "fieldtype": "Int",
+            "read_only": 1,
+            "default": "0"
+        },
+        {
+            "fieldname": "scheduling_section",
+            "label": "Scheduling",
+            "fieldtype": "Section Break"
+        },
+        {
+            "fieldname": "send_immediately",
+            "label": "Send Immediately",
+            "fieldtype": "Check",
+            "default": "1"
+        },
+        {
+            "fieldname": "schedule_date",
+            "label": "Schedule Date",
+            "fieldtype": "Datetime",
+            "depends_on": "eval:!doc.send_immediately"
+        },
+        {
+            "fieldname": "statistics_section",
+            "label": "Statistics",
+            "fieldtype": "Section Break",
+            "collapsible": 1
+        },
+        {
+            "fieldname": "analytics_dashboard_html",
+            "label": "Analytics Dashboard",
+            "fieldtype": "HTML"
+        },
+        {
+            "fieldname": "sent_count",
+            "label": "Sent Count",
+            "fieldtype": "Int",
+            "read_only": 1,
+            "default": "0"
+        },
+        {
+            "fieldname": "open_count",
+            "label": "Open Count",
+            "fieldtype": "Int",
+            "read_only": 1,
+            "default": "0"
+        },
+        {
+            "fieldname": "click_count",
+            "label": "Click Count",
+            "fieldtype": "Int",
+            "read_only": 1,
+            "default": "0"
+        },
+        {
+            "fieldname": "failed_count",
+            "label": "Failed Count",
+            "fieldtype": "Int",
+            "read_only": 1,
+            "default": "0"
+        }
+    ],
+    "grid_page_length": 50,
+    "index_web_pages_for_search": 1,
+    "links": [],
+    "modified": "2026-06-10 11:54:32.317383",
+    "modified_by": "Administrator",
+    "module": "Company",
+    "name": "CRM Email Campaign",
+    "owner": "Administrator",
+    "permissions": [
+        {
+            "create": 1,
+            "delete": 1,
+            "email": 1,
+            "export": 1,
+            "print": 1,
+            "read": 1,
+            "report": 1,
+            "role": "System Manager",
+            "share": 1,
+            "write": 1
+        },
+        {
+            "create": 1,
+            "email": 1,
+            "export": 1,
+            "print": 1,
+            "read": 1,
+            "delete": 1,
+            "report": 1,
+            "role": "CRM And Sales",
+            "share": 1,
+            "write": 1,
+            "select": 1
+        }
+    ],
+    "row_format": "Dynamic",
+    "rows_threshold_for_grid_search": 20,
+    "sort_field": "creation",
+    "sort_order": "DESC",
+    "states": []
+}

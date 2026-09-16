@@ -1,0 +1,162 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "autoname": "field:meta_lead_id",
+ "creation": "2026-07-09 11:30:00",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "integration_section",
+  "meta_lead_id",
+  "meta_app",
+  "meta_page",
+  "meta_form",
+  "campaign_name",
+  "ad_set_name",
+  "ad_name",
+  "webhook_payload",
+  "lead_json",
+  "received_time",
+  "processed_time",
+  "processing_status",
+  "retry_count",
+  "error_message",
+  "created_lead"
+ ],
+ "fields": [
+  {
+   "fieldname": "integration_section",
+   "fieldtype": "Section Break",
+   "label": "Meta Lead Details"
+  },
+  {
+   "fieldname": "meta_lead_id",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Meta Lead ID",
+   "reqd": 1,
+   "unique": 1
+  },
+  {
+   "fieldname": "meta_app",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Meta App",
+   "options": "CRM Meta App"
+  },
+  {
+   "fieldname": "meta_page",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Meta Page",
+   "options": "CRM Meta Page"
+  },
+  {
+   "fieldname": "meta_form",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Meta Form",
+   "options": "CRM Meta Form"
+  },
+  {
+   "fieldname": "campaign_name",
+   "fieldtype": "Data",
+   "label": "Campaign Name"
+  },
+  {
+   "fieldname": "ad_set_name",
+   "fieldtype": "Data",
+   "label": "Ad Set Name"
+  },
+  {
+   "fieldname": "ad_name",
+   "fieldtype": "Data",
+   "label": "Ad Name"
+  },
+  {
+   "fieldname": "webhook_payload",
+   "fieldtype": "Long Text",
+   "label": "Webhook Payload"
+  },
+  {
+   "fieldname": "lead_json",
+   "fieldtype": "Long Text",
+   "label": "Lead JSON"
+  },
+  {
+   "fieldname": "received_time",
+   "fieldtype": "Datetime",
+   "label": "Received Time"
+  },
+  {
+   "fieldname": "processed_time",
+   "fieldtype": "Datetime",
+   "label": "Processed Time"
+  },
+  {
+   "default": "Pending",
+   "fieldname": "processing_status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Processing Status",
+   "options": "Pending\nSuccess\nDuplicate\nFailed"
+  },
+  {
+   "default": "0",
+   "fieldname": "retry_count",
+   "fieldtype": "Int",
+   "label": "Retry Count"
+  },
+  {
+   "fieldname": "error_message",
+   "fieldtype": "Small Text",
+   "label": "Error Message"
+  },
+  {
+   "fieldname": "created_lead",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Created CRM Lead",
+   "options": "Lead"
+  }
+ ],
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-07-09 19:22:58.629098",
+ "modified_by": "Administrator",
+ "module": "Company",
+ "name": "CRM Meta Lead",
+ "naming_rule": "By fieldname",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "delete": 1,
+   "report": 1,
+   "role": "CRM And Sales",
+   "share": 1,
+   "write": 1,
+   "select": 1
+ }
+ ],
+ "row_format": "Dynamic",
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": []
+}

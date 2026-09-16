@@ -1,0 +1,84 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "autoname": "field:payroll_name",
+ "creation": "2025-09-24 17:40:09.201936",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "payroll_name",
+  "pay_period_start",
+  "pay_period_end",
+  "employees",
+  "total_gross_pay",
+  "total_net_pay",
+  "status"
+ ],
+ "fields": [
+  {
+   "fieldname": "pay_period_start",
+   "fieldtype": "Date",
+   "label": "Pay Period Start"
+  },
+  {
+   "fieldname": "pay_period_end",
+   "fieldtype": "Date",
+   "label": "Pay Period End"
+  },
+  {
+   "fieldname": "employees",
+   "fieldtype": "Table",
+   "label": "Employees",
+   "options": "Payroll Employee Table"
+  },
+  {
+   "fieldname": "total_gross_pay",
+   "fieldtype": "Currency",
+   "label": "Total Gross Pay"
+  },
+  {
+   "fieldname": "total_net_pay",
+   "fieldtype": "Currency",
+   "label": "Total Net Pay"
+  },
+  {
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "label": "Status",
+   "options": "\nDraft\nSubmitted\nCancelled"
+  },
+  {
+   "fieldname": "payroll_name",
+   "fieldtype": "Data",
+   "label": "Payroll Name",
+   "unique": 1
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2025-09-29 15:24:37.864037",
+ "modified_by": "Administrator",
+ "module": "Company",
+ "name": "Payroll Entry",
+ "naming_rule": "By fieldname",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": []
+}

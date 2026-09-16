@@ -1,0 +1,7 @@
+# Copyright (c) 2026, innoblitz and contributors
+# For license information, please see license.txt
+
+from frappe.model.document import Document
+
+class DealPipelineTimeline(Document):
+	pass

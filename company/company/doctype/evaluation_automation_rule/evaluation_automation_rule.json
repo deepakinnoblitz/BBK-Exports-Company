@@ -1,0 +1,169 @@
+{
+    "actions": [],
+    "allow_rename": 1,
+    "creation": "2026-04-28 10:45:00",
+    "doctype": "DocType",
+    "engine": "InnoDB",
+    "field_order": [
+        "rule_name",
+        "event_type",
+        "enabled",
+        "auto_submit",
+        "column_break_eval",
+        "trait",
+        "evaluation_point",
+        "section_break_thresholds",
+        "late_login_after",
+        "early_exit_before",
+        "break_duration_after",
+        "specific_day",
+        "specific_date",
+        "section_break_desc",
+        "description",
+        "how_to_improve"
+    ],
+    "fields": [
+        {
+            "fieldname": "rule_name",
+            "fieldtype": "Data",
+            "label": "Rule Name",
+            "reqd": 1,
+            "unique": 1
+        },
+        {
+            "fieldname": "event_type",
+            "fieldtype": "Select",
+            "in_list_view": 1,
+            "label": "Event Type",
+            "options": "Late Login\nEarly Exit\nTask Delayed\nDaily Log Submission\nSpecific Day Leave\nSpecific Date Leave",
+            "reqd": 1
+        },
+        {
+            "default": "1",
+            "fieldname": "enabled",
+            "fieldtype": "Check",
+            "in_list_view": 1,
+            "label": "Enabled"
+        },
+        {
+            "default": "1",
+            "fieldname": "auto_submit",
+            "fieldtype": "Check",
+            "label": "Auto Submit Evaluation"
+        },
+        {
+            "fieldname": "column_break_eval",
+            "fieldtype": "Column Break"
+        },
+        {
+            "fieldname": "trait",
+            "fieldtype": "Link",
+            "in_list_view": 1,
+            "label": "Evaluation Trait",
+            "options": "Evaluation Trait",
+            "reqd": 1
+        },
+        {
+            "fieldname": "evaluation_point",
+            "fieldtype": "Link",
+            "in_list_view": 1,
+            "label": "Evaluation Point",
+            "options": "Evaluation Point",
+            "reqd": 1
+        },
+        {
+            "fieldname": "section_break_thresholds",
+            "fieldtype": "Section Break",
+            "label": "Thresholds",
+            "depends_on": "eval:['Late Login', 'Early Exit', 'Daily Log Submission'].includes(doc.event_type)"
+        },
+        {
+            "fieldname": "late_login_after",
+            "fieldtype": "Time",
+            "label": "Late Login After (Time)",
+            "description": "Trigger evaluation if login is after this time.",
+            "depends_on": "eval:doc.event_type == 'Late Login'"
+        },
+        {
+            "fieldname": "early_exit_before",
+            "fieldtype": "Time",
+            "label": "Early Exit Before (Time)",
+            "description": "Trigger evaluation if logout is before this time.",
+            "depends_on": "eval:doc.event_type == 'Early Exit'"
+        },
+        {
+            "fieldname": "break_duration_after",
+            "fieldtype": "Float",
+            "label": "Break Duration After (Hours)",
+            "description": "Optional: Trigger evaluation if total break hours exceed this value. If empty, triggers on every log submission.",
+            "depends_on": "eval:doc.event_type == 'Daily Log Submission'"
+        },
+        {
+            "fieldname": "specific_day",
+            "fieldtype": "Select",
+            "label": "Specific Day",
+            "options": "Monday\nTuesday\nWednesday\nThursday\nFriday\nSaturday\nSunday",
+            "depends_on": "eval:doc.event_type == 'Specific Day Leave'"
+        },
+        {
+            "fieldname": "specific_date",
+            "fieldtype": "Date",
+            "label": "Specific Date",
+            "depends_on": "eval:doc.event_type == 'Specific Date Leave'"
+        },
+        {
+            "fieldname": "section_break_desc",
+            "fieldtype": "Section Break"
+        },
+        {
+            "fieldname": "description",
+            "fieldtype": "Small Text",
+            "label": "Description"
+        },
+        {
+            "fieldname": "how_to_improve",
+            "fieldtype": "Small Text",
+            "label": "How to Improve"
+        }
+    ],
+    "index_web_pages_for_search": 1,
+    "links": [],
+    "modified": "2026-04-29 09:30:00",
+    "modified_by": "Administrator",
+    "module": "Company",
+    "name": "Evaluation Automation Rule",
+    "naming_rule": "By fieldname",
+    "autoname": "field:rule_name",
+    "owner": "Administrator",
+    "permissions": [
+        {
+            "create": 1,
+            "delete": 1,
+            "email": 1,
+            "export": 1,
+            "print": 1,
+            "read": 1,
+            "report": 1,
+            "role": "System Manager",
+            "share": 1,
+            "write": 1
+        },
+        {
+            "create": 1,
+            "email": 1,
+            "export": 1,
+            "print": 1,
+            "read": 1,
+            "delete": 1,
+            "report": 1,
+            "role": "HR",
+            "share": 1,
+            "write": 1,
+            "select": 1
+        }
+    ],
+    "row_format": "Dynamic",
+    "sort_field": "modified",
+    "sort_order": "DESC",
+    "states": []
+}

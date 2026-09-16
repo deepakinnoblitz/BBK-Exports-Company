@@ -1,0 +1,56 @@
+{
+    "actions": [],
+    "allow_rename": 1,
+    "creation": "2026-05-02 06:56:00.000000",
+    "doctype": "DocType",
+    "editable_grid": 1,
+    "engine": "InnoDB",
+    "field_order": [
+        "message",
+        "trigger_time",
+        "is_global",
+        "selected_employees"
+    ],
+    "fields": [
+        {
+            "fieldname": "message",
+            "fieldtype": "Small Text",
+            "in_list_view": 1,
+            "label": "Message",
+            "reqd": 1
+        },
+        {
+            "fieldname": "trigger_time",
+            "fieldtype": "Time",
+            "in_list_view": 1,
+            "label": "Trigger Time",
+            "reqd": 1
+        },
+        {
+            "default": "0",
+            "fieldname": "is_global",
+            "fieldtype": "Check",
+            "in_list_view": 1,
+            "label": "Is Global"
+        },
+        {
+            "depends_on": "eval:!doc.is_global",
+            "fieldname": "selected_employees",
+            "fieldtype": "Table",
+            "label": "Selected Employees",
+            "options": "HR Remainder Selected Employee"
+        }
+    ],
+    "index_web_pages_for_search": 1,
+    "istable": 1,
+    "links": [],
+    "modified": "2026-05-02 06:56:00.000000",
+    "modified_by": "Administrator",
+    "module": "Company",
+    "name": "HR Remainder Configuration",
+    "owner": "Administrator",
+    "permissions": [],
+    "sort_field": "modified",
+    "sort_order": "DESC",
+    "states": []
+}

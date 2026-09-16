@@ -1,0 +1,247 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "autoname": "format:MEET-{MM}-{YY}-{####}",
+ "creation": "2025-12-12 16:11:20.758659",
+ "default_view": "Calendar",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "meeting_information_section",
+  "meet_for",
+  "lead_name",
+  "contact_name",
+  "enter_id",
+  "accounts_name",
+  "title",
+  "meeting_venue",
+  "location",
+  "column_break_tcot",
+  "from",
+  "to",
+  "outgoing_call_status",
+  "completed_meet_status",
+  "completed_meet_notes",
+  "meeting_notes",
+  "lead_followup_row",
+  "reminder_setting_section",
+  "enable_reminder",
+  "reminder_sent",
+  "column_break_ajiq",
+  "remind_before_minutes",
+  "section_break_zbia",
+  "host",
+  "column_break_jctf",
+  "participants",
+  "section_break_dogv",
+  "owner_name"
+ ],
+ "fields": [
+  {
+   "fieldname": "meeting_information_section",
+   "fieldtype": "Section Break",
+   "label": "Meeting Information"
+  },
+  {
+   "fieldname": "title",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Title",
+   "reqd": 1
+  },
+  {
+   "fieldname": "meeting_venue",
+   "fieldtype": "Select",
+   "label": "Meeting Venue",
+   "options": "In Office\nClient Location\nOnline"
+  },
+  {
+   "depends_on": "eval:in_list([\"Client Location\", \"Online\"], doc.meeting_venue)",
+   "fieldname": "location",
+   "fieldtype": "Data",
+   "label": "Location"
+  },
+  {
+   "fieldname": "column_break_tcot",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "from",
+   "fieldtype": "Datetime",
+   "label": "From"
+  },
+  {
+   "fieldname": "to",
+   "fieldtype": "Datetime",
+   "label": "To"
+  },
+  {
+   "fieldname": "section_break_zbia",
+   "fieldtype": "Section Break"
+  },
+  {
+   "fieldname": "host",
+   "fieldtype": "Link",
+   "label": "Host",
+   "options": "User"
+  },
+  {
+   "fieldname": "column_break_jctf",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "participants",
+   "fieldtype": "Table MultiSelect",
+   "label": "Participants",
+   "options": "Child Users"
+  },
+  {
+   "fieldname": "outgoing_call_status",
+   "fieldtype": "Select",
+   "label": "Meet Status",
+   "options": "Scheduled\nCompleted"
+  },
+  {
+   "default": "0",
+   "fieldname": "enable_reminder",
+   "fieldtype": "Check",
+   "label": "Enable Reminder"
+  },
+  {
+   "default": "0",
+   "fieldname": "reminder_sent",
+   "fieldtype": "Check",
+   "hidden": 1,
+   "label": "Reminder Sent"
+  },
+  {
+   "fieldname": "remind_before_minutes",
+   "fieldtype": "Int",
+   "label": "Remind me (mins)"
+  },
+  {
+   "fieldname": "meet_for",
+   "fieldtype": "Select",
+   "label": "Meet For",
+   "options": "Lead\nContact\nAccount\nOthers",
+   "reqd": 1
+  },
+  {
+   "depends_on": "eval:in_list([\"Lead\"], doc.meet_for);",
+   "fieldname": "lead_name",
+   "fieldtype": "Link",
+   "label": "Lead Name",
+   "options": "Lead"
+  },
+  {
+   "fieldname": "column_break_ajiq",
+   "fieldtype": "Column Break"
+  },
+  {
+   "depends_on": "eval:in_list([\"Completed\"], doc.outgoing_call_status);",
+   "fieldname": "completed_meet_status",
+   "fieldtype": "Link",
+   "label": "Completed Meet Status",
+   "options": "Meeting Status"
+  },
+  {
+   "depends_on": "eval:in_list([\"Completed\"], doc.outgoing_call_status);",
+   "fieldname": "completed_meet_notes",
+   "fieldtype": "Small Text",
+   "label": "Completed Meet Notes"
+  },
+  {
+   "fieldname": "meeting_notes",
+   "fieldtype": "Table",
+   "label": "Meeting Notes",
+   "options": "Meeting notes"
+  },
+  {
+   "fieldname": "lead_followup_row",
+   "fieldtype": "Data",
+   "hidden": 1,
+   "label": "Lead Followup Row ID",
+   "read_only": 1
+  },
+  {
+   "fieldname": "reminder_setting_section",
+   "fieldtype": "Section Break",
+   "label": "Reminder Settings"
+  },
+  {
+   "fieldname": "section_break_dogv",
+   "fieldtype": "Section Break"
+  },
+  {
+   "default": "__user",
+   "fieldname": "owner_name",
+   "fieldtype": "Link",
+   "hidden": 1,
+   "label": "Owner",
+   "options": "User",
+   "read_only": 1
+  },
+  {
+   "depends_on": "eval:in_list([\"Contact\"], doc.meet_for);",
+   "fieldname": "contact_name",
+   "fieldtype": "Link",
+   "label": "Contact Name",
+   "options": "Contacts"
+  },
+  {
+   "depends_on": "eval:in_list([\"Account\"], doc.meet_for);",
+   "fieldname": "accounts_name",
+   "fieldtype": "Link",
+   "label": "Accounts Name",
+   "options": "Accounts"
+  },
+  {
+   "depends_on": "eval:in_list([\"Others\"], doc.meet_for);",
+   "fieldname": "enter_id",
+   "fieldtype": "Data",
+   "label": "Enter ID"
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "is_calendar_and_gantt": 1,
+ "links": [],
+ "modified": "2026-07-20 11:29:20.052667",
+ "modified_by": "Administrator",
+ "module": "Company",
+ "name": "Meeting",
+ "naming_rule": "Expression",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "CRM And Sales",
+   "select": 1,
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "rows_threshold_for_grid_search": 20,
+ "sort_field": "creation",
+ "sort_order": "DESC",
+ "states": []
+}

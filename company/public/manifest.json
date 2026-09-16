@@ -1,0 +1,21 @@
+{
+  "name": "Innoblitz ERP",
+  "short_name": "Innoblitz",
+  "start_url": "/desk",
+  "display": "standalone",
+  "theme_color": "#1f2937",
+  "background_color": "#ffffff",
+  "description": "Innoblitz ERP",
+  "icons": [
+    {
+      "src": "/assets/company/icons/icon-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/assets/company/icons/icon-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
