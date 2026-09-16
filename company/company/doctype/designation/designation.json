@@ -33,8 +33,7 @@
    "fieldname": "department",
    "fieldtype": "Link",
    "label": "Department",
-   "options": "Department",
-   "reqd": 1
+   "options": "Department"
   },
   {
    "fieldname": "level",
