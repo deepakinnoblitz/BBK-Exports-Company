@@ -1,0 +1,168 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2026-09-17 11:30:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "connection_section",
+  "enabled",
+  "api_base_url",
+  "api_key",
+  "sync_rules_section",
+  "auto_sync_enabled",
+  "sync_mode",
+  "sync_interval_minutes",
+  "daily_sync_times",
+  "overlap_minutes",
+  "auto_reconciliation_enabled",
+  "history_section",
+  "last_successful_sync",
+  "last_sync_from",
+  "last_sync_to",
+  "last_sync_status",
+  "last_error_message"
+ ],
+ "fields": [
+  {
+   "fieldname": "connection_section",
+   "fieldtype": "Section Break",
+   "label": "SmartOffice Connection"
+  },
+  {
+   "default": "0",
+   "fieldname": "enabled",
+   "fieldtype": "Check",
+   "label": "Master Integration Enable"
+  },
+  {
+   "description": "Base URL of the SmartOffice API (e.g. http://192.168.1.100:89/api/v2/WebAPI)",
+   "fieldname": "api_base_url",
+   "fieldtype": "Data",
+   "label": "API Base URL",
+   "reqd": 1
+  },
+  {
+   "fieldname": "api_key",
+   "fieldtype": "Password",
+   "label": "API Key",
+   "reqd": 1
+  },
+  {
+   "fieldname": "sync_rules_section",
+   "fieldtype": "Section Break",
+   "label": "Sync Schedule Configuration (User-Defined)"
+  },
+  {
+   "default": "0",
+   "description": "When unchecked, automatic sync will NEVER run. Sync only happens on manual trigger.",
+   "fieldname": "auto_sync_enabled",
+   "fieldtype": "Check",
+   "label": "Enable Automatic Sync (Off by Default)"
+  },
+  {
+   "default": "Manual Only",
+   "fieldname": "sync_mode",
+   "fieldtype": "Select",
+   "label": "Sync Mode",
+   "options": "Manual Only\nInterval in Minutes\nSpecific Times Daily"
+  },
+  {
+   "default": "15",
+   "description": "Active when Sync Mode is 'Interval in Minutes'",
+   "fieldname": "sync_interval_minutes",
+   "fieldtype": "Int",
+   "label": "Sync Interval (Minutes)"
+  },
+  {
+   "description": "Comma-separated 24h times (e.g. 09:30, 13:30, 18:30). Active when Sync Mode is 'Specific Times Daily'",
+   "fieldname": "daily_sync_times",
+   "fieldtype": "Small Text",
+   "label": "Specific Daily Sync Times"
+  },
+  {
+   "default": "15",
+   "description": "Number of minutes of buffer/overlap to query before the last sync to catch delayed punches",
+   "fieldname": "overlap_minutes",
+   "fieldtype": "Int",
+   "label": "Overlap Window (Minutes)"
+  },
+  {
+   "default": "0",
+   "description": "Runs a nightly check over yesterday's logs to ensure no punches were missed",
+   "fieldname": "auto_reconciliation_enabled",
+   "fieldtype": "Check",
+   "label": "Enable Nightly Reconciliation"
+  },
+  {
+   "fieldname": "history_section",
+   "fieldtype": "Section Break",
+   "label": "Sync Status & History"
+  },
+  {
+   "fieldname": "last_successful_sync",
+   "fieldtype": "Datetime",
+   "label": "Last Successful Sync",
+   "read_only": 1
+  },
+  {
+   "fieldname": "last_sync_from",
+   "fieldtype": "Datetime",
+   "label": "Last Sync Window From",
+   "read_only": 1
+  },
+  {
+   "fieldname": "last_sync_to",
+   "fieldtype": "Datetime",
+   "label": "Last Sync Window To",
+   "read_only": 1
+  },
+  {
+   "default": "Never Run",
+   "fieldname": "last_sync_status",
+   "fieldtype": "Select",
+   "label": "Last Sync Status",
+   "options": "Never Run\nSuccess\nFailed",
+   "read_only": 1
+  },
+  {
+   "fieldname": "last_error_message",
+   "fieldtype": "Small Text",
+   "label": "Last Error Message",
+   "read_only": 1
+  }
+ ],
+ "issingle": 1,
+ "links": [],
+ "modified": "2026-09-17 11:30:00.000000",
+ "modified_by": "Administrator",
+ "module": "Company",
+ "name": "Biometric Settings",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "role": "HR",
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "sort_field": "modified",
+ "sort_order": "DESC",
+ "states": []
+}

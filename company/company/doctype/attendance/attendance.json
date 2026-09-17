@@ -20,7 +20,10 @@
   "working_hours_decimal",
   "overtime_display",
   "overtime_decimal",
-  "manual"
+  "manual",
+  "attendance_source",
+  "punches_section",
+  "attendance_punches"
  ],
  "fields": [
   {
@@ -124,6 +127,25 @@
   {
    "fieldname": "column_break_rxsb",
    "fieldtype": "Column Break"
+  },
+  {
+   "default": "Biometric",
+   "fieldname": "attendance_source",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Attendance Source",
+   "options": "Biometric\nManual\nImport\nSystem"
+  },
+  {
+   "fieldname": "punches_section",
+   "fieldtype": "Section Break",
+   "label": "Attendance Punches"
+  },
+  {
+   "fieldname": "attendance_punches",
+   "fieldtype": "Table",
+   "label": "Attendance Punches",
+   "options": "Attendance Punch"
   }
  ],
  "grid_page_length": 50,
