@@ -1,9 +1,30 @@
 frappe.ui.form.on("Attendance", {
     onload: function (frm) {
-        // Set default date on load
         if (!frm.doc.attendance_date) {
             frm.set_value("attendance_date", frappe.datetime.get_today());
         }
+        frm.add_fetch("employee", "shift", "shift");
+        if (frm.doc.employee && !frm.doc.shift) {
+            frappe.db.get_value("Employee", frm.doc.employee, "shift", function (r) {
+                if (r && r.shift) {
+                    frm.set_value("shift", r.shift);
+                }
+            });
+        }
+        calculate_working_hours(frm);
+    },
+
+    employee: function (frm) {
+        if (frm.doc.employee) {
+            frappe.db.get_value("Employee", frm.doc.employee, "shift", function (r) {
+                if (r && r.shift) {
+                    frm.set_value("shift", r.shift);
+                }
+            });
+        }
+    },
+
+    shift: function (frm) {
         calculate_working_hours(frm);
     },
 
@@ -16,43 +37,32 @@ frappe.ui.form.on("Attendance", {
     },
 
     status: function (frm) {
-        // Handle Absent
         if (frm.doc.status === "Absent") {
             frm.set_value("in_time", "00:00:00");
             frm.set_value("out_time", "00:00:00");
             reset_hours(frm);
         }
 
-        // Handle On Leave
         frm.set_df_property("leave_type", "reqd", frm.doc.status === "On Leave");
 
-        // Recalculate if present
         if (frm.doc.status === "Present" || frm.doc.status === "Half Day") {
             calculate_working_hours(frm);
         }
     },
 
     before_save: function (frm) {
-        // Always recalc before saving
+        update_times_from_punches(frm);
         calculate_working_hours(frm);
 
-        // Auto-fill approver if workflow approved
         if (frm.doc.workflow_state === "Approved" && !frm.doc.approver_name) {
             frm.set_value("approver_name", frappe.session.user);
         }
     },
 
     validate: function (frm) {
+        update_times_from_punches(frm);
         calculate_working_hours(frm);
 
-        // Prevent future date
-        if (frm.doc.attendance_date && frm.doc.attendance_date > frappe.datetime.get_today()) {
-            frappe.msgprint(__('Attendance date cannot be a future date'));
-            frappe.validated = false;
-            return;
-        }
-
-        // Prevent duplicate attendance (same employee + date)
         if (frm.doc.employee && frm.doc.attendance_date) {
             frappe.db.exists('Attendance', {
                 employee: frm.doc.employee,
@@ -66,14 +76,12 @@ frappe.ui.form.on("Attendance", {
             });
         }
 
-        // Leave type required for On Leave
         if (frm.doc.status === "On Leave" && !frm.doc.leave_type) {
             frappe.msgprint(__('Please select a Leave Type when status is On Leave'));
             frappe.validated = false;
             return;
         }
 
-        // Status corrections based on working hours
         if (frm.doc.status === "Half Day" && frm.doc.working_hours_decimal >= 4) {
             frappe.msgprint(__('Working hours are {0} hours. Status cannot be Half Day.', [frm.doc.working_hours_decimal]));
             frm.set_value("status", "Present");
@@ -91,38 +99,111 @@ frappe.ui.form.on("Attendance", {
 });
 
 // ============================================================
-// 🔹 Working Hours + Overtime Calculation (Decimal Display)
+// 🔹 Child Table: Attendance Punch
+// ============================================================
+frappe.ui.form.on("Attendance Punch", {
+    punch_time: function (frm) {
+        update_times_from_punches(frm);
+    },
+    punch_type: function (frm) {
+        update_times_from_punches(frm);
+    },
+    attendance_punches_remove: function (frm) {
+        update_times_from_punches(frm);
+    }
+});
+
+function update_times_from_punches(frm) {
+    let punches = frm.doc.attendance_punches || [];
+    let valid_punches = punches.filter(p => p.punch_time);
+    if (!valid_punches.length) return;
+
+    valid_punches.sort((a, b) => (String(a.punch_time) > String(b.punch_time) ? 1 : -1));
+
+    let in_punches = valid_punches.filter(p => p.punch_type === "IN");
+    let out_punches = valid_punches.filter(p => p.punch_type === "OUT");
+
+    let first_in = in_punches.length ? in_punches[0] : valid_punches[0];
+    let last_out = out_punches.length ? out_punches[out_punches.length - 1] : (valid_punches.length > 1 ? valid_punches[valid_punches.length - 1] : null);
+
+    function extractTime(val) {
+        if (!val) return null;
+        let parts = String(val).trim().split(" ");
+        let t = parts[parts.length - 1];
+        if (t.length === 5) t += ":00";
+        return t;
+    }
+
+    if (first_in) {
+        let in_t = extractTime(first_in.punch_time);
+        if (in_t && (!frm.doc.manual || !frm.doc.in_time || frm.doc.in_time === "00:00:00")) {
+            frm.set_value("in_time", in_t);
+        }
+    }
+
+    if (last_out) {
+        let out_t = extractTime(last_out.punch_time);
+        if (out_t && (!frm.doc.manual || !frm.doc.out_time || frm.doc.out_time === "00:00:00")) {
+            frm.set_value("out_time", out_t);
+        }
+    }
+
+    if (!frm.doc.shift && frm.doc.employee) {
+        frappe.db.get_value("Employee", frm.doc.employee, "shift", function (r) {
+            if (r && r.shift) {
+                frm.set_value("shift", r.shift);
+            }
+            calculate_working_hours(frm);
+        });
+    } else {
+        calculate_working_hours(frm);
+    }
+}
+
+// ============================================================
+// 🔹 Working Hours + Overtime Calculation
 // ============================================================
 
 function calculate_working_hours(frm) {
     let inTimeRaw = frm.doc.in_time;
     let outTimeRaw = frm.doc.out_time;
 
-    // Consider empty, "00:00", or "00:00:00" as no time
-    const inTime = (!inTimeRaw || inTimeRaw === "00:00" || inTimeRaw === "00:00:00") ? null : inTimeRaw;
-    const outTime = (!outTimeRaw || outTimeRaw === "00:00" || outTimeRaw === "00:00:00") ? null : outTimeRaw;
+    const isZero = (val) => !val || val === "00:00" || val === "00:00:00";
 
-    // Reset all fields first
+    // If times are zero or missing, but punches exist, extract from punches
+    if (isZero(inTimeRaw) && isZero(outTimeRaw) && frm.doc.attendance_punches && frm.doc.attendance_punches.length > 0) {
+        update_times_from_punches(frm);
+        return;
+    }
+
+    const inTime = isZero(inTimeRaw) ? null : inTimeRaw;
+    const outTime = isZero(outTimeRaw) ? null : outTimeRaw;
+
     reset_hours(frm);
 
-    // Both times empty → Absent
     if (!inTime && !outTime) {
-        frm.set_value("status", "Absent");
+        if (frm.doc.leave_type) {
+            frm.set_value("status", "On Leave");
+        } else {
+            frm.set_value("status", "Absent");
+        }
         return;
     }
 
-    // Only one time filled → Missing
     if ((inTime && !outTime) || (!inTime && outTime)) {
-        frm.set_value("status", "Missing");
+        if (frm.doc.leave_type) {
+            frm.set_value("status", "On Leave");
+        } else {
+            frm.set_value("status", "Missing");
+        }
         return;
     }
 
-    // Both times exist → calculate working hours
     let start = moment(inTime, "HH:mm:ss");
     let end = moment(outTime, "HH:mm:ss");
 
     if (!start.isValid() || !end.isValid()) return;
-    if (end.isBefore(start)) end.add(1, "day"); // handle overnight shifts
+    if (end.isBefore(start)) end.add(1, "day");
 
     let total_minutes = end.diff(start, "minutes");
     if (total_minutes <= 0) {
@@ -130,59 +211,56 @@ function calculate_working_hours(frm) {
         return;
     }
 
-    // Regular working minutes (up to 9 hours)
     let reg_hours = Math.floor(total_minutes / 60);
     let reg_minutes = total_minutes % 60;
     let hours_decimal = (total_minutes / 60).toFixed(2);
 
-
-    // Set working hours display as HH:MM
-    frm.set_value("working_hours_display", `${reg_hours}:${reg_minutes.toString().padStart(2,'0')}`);
+    frm.set_value("working_hours_display", `${reg_hours}:${reg_minutes.toString().padStart(2, '0')}`);
     frm.set_value("working_hours_decimal", hours_decimal);
 
-    // Status based on total hours
-    if (total_minutes < 4 * 60) {
-        frm.set_value("status", "Half Day");
-    } else {
-        frm.set_value("status", "Present");
+    if (!frm.doc.leave_type) {
+        if (total_minutes < 4 * 60) {
+            frm.set_value("status", "Half Day");
+        } else {
+            frm.set_value("status", "Present");
+        }
     }
 
-    // Overtime (beyond 9 hours)
-    let overtime_minutes = total_minutes - 9 * 60;
-    if (overtime_minutes > 0) {
+    // Overtime Calculation
+    if (frm.doc.shift) {
+        frappe.db.get_value("Shift", frm.doc.shift, ["start_time", "end_time", "allow_overtime", "overtime_hours", "min_overtime_minutes"], function (shift) {
+            if (shift && shift.end_time) {
+                let s_end = moment(shift.end_time, "HH:mm:ss");
+                let extra_mins = Math.max(0, end.diff(s_end, "minutes"));
+                let min_thresh = parseInt(shift.min_overtime_minutes) || 0;
+                if (extra_mins < min_thresh) extra_mins = 0;
+
+                let unoff_h = Math.floor(extra_mins / 60);
+                let unoff_m = extra_mins % 60;
+                frm.set_value("unofficial_overtime", `${unoff_h}:${unoff_m.toString().padStart(2, '0')}`);
+
+                let off_mins = 0;
+                if (shift.allow_overtime) {
+                    let max_off = (parseFloat(shift.overtime_hours) || 0) * 60;
+                    off_mins = Math.min(extra_mins, max_off);
+                }
+                let off_h = Math.floor(off_mins / 60);
+                let off_m = off_mins % 60;
+                frm.set_value("official_overtime", `${off_h}:${off_m.toString().padStart(2, '0')}`);
+            }
+        });
+    } else {
+        let overtime_minutes = Math.max(0, total_minutes - 9 * 60);
         let ot_hours = Math.floor(overtime_minutes / 60);
         let ot_mins = overtime_minutes % 60;
-        let ot_decimal = (overtime_minutes / 60).toFixed(2);
-
-        frm.set_value("overtime_display", `${ot_hours}:${ot_mins.toString().padStart(2,'0')}`);
-        frm.set_value("overtime_decimal", ot_decimal);
-    } else {
-        frm.set_value("overtime_display", "0:00");
-        frm.set_value("overtime_decimal", 0);
+        frm.set_value("official_overtime", `${ot_hours}:${ot_mins.toString().padStart(2, '0')}`);
+        frm.set_value("unofficial_overtime", `${ot_hours}:${ot_mins.toString().padStart(2, '0')}`);
     }
-}
-
-
-
-// ============================================================
-// 🔧 Helpers
-// ============================================================
-
-function normalize_time(value) {
-    if (!value) return null;
-    if (typeof value === "object" && value._d) {
-        return moment(value).format("HH:mm:ss");
-    }
-    if (typeof value === "string") {
-        if (value.length === 5) value += ":00"; // handle HH:mm
-        return value;
-    }
-    return null;
 }
 
 function reset_hours(frm) {
-    frm.set_value("working_hours_display", "0.00");
+    frm.set_value("working_hours_display", "0:00");
     frm.set_value("working_hours_decimal", 0);
-    frm.set_value("overtime_display", "0.00");
-    frm.set_value("overtime_decimal", 0);
+    frm.set_value("official_overtime", "0:00");
+    frm.set_value("unofficial_overtime", "0:00");
 }

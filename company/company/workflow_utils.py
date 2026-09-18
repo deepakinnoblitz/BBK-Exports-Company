@@ -127,11 +127,11 @@ def update_lead_workflow_v2():
     }
 
 # -------------------------------------------------------------------------------------------------------------------
-# bench --site erp.localhost.innoblitz execute company.company.workflow_utils.create_lead_workflow
-# bench --site erp.localhost.innoblitz execute company.company.workflow_utils.create_reimbursement_workflow
-# bench --site erp.localhost.innoblitz execute company.company.workflow_utils.create_request_workflow
-# bench --site erp.localhost.innoblitz execute company.company.workflow_utils.create_wfh_attendance_workflow
-# bench --site erp.localhost.innoblitz execute company.company.workflow_utils.create_leave_application_workflow
+# bench --site erp.localhost.bbkexports.in execute company.company.workflow_utils.create_lead_workflow
+# bench --site erp.localhost.bbkexports.in execute company.company.workflow_utils.create_reimbursement_workflow
+# bench --site erp.localhost.bbkexports.in execute company.company.workflow_utils.create_request_workflow
+# bench --site erp.localhost.bbkexports.in execute company.company.workflow_utils.create_wfh_attendance_workflow
+# bench --site erp.localhost.bbkexports.in execute company.company.workflow_utils.create_leave_application_workflow
 # -------------------------------------------------------------------------------------------------------------------
 
 @frappe.whitelist()

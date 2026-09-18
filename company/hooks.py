@@ -13,7 +13,7 @@ app_include_js = [
     "/assets/company/js/purchase.js",
     # "/assets/company/js/expenses.js",
     "/assets/company/js/custom.js?v=1",
-    "/assets/company/js/attendance.js",
+    "/assets/company/js/attendance.js?v=2",
     "/assets/company/js/salary_slip.js",
     "/assets/company/js/salary_list.js",
     "/assets/company/js/attendance_list.js",
