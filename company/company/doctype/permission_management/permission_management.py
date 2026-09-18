@@ -67,6 +67,7 @@ class PermissionManagement(Document):
                 ("master_asset_category", "Asset Category"),
                 ("master_criteria_category", "Criteria Category"),
                 ("master_designation", "Designation"),
+                ("master_employee_type", "Employee Type"),
                 ("master_salary_component", "Salary Component"),
                 ("master_leave_type", "Leave Type"),
                 ("master_blood_group", "Blood Group"),
