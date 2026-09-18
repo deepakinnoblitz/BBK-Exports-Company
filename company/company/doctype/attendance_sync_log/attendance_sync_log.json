@@ -1,0 +1,141 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "autoname": "SYNC.#####",
+ "creation": "2026-09-17 11:30:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "started_at",
+  "completed_at",
+  "from_date",
+  "to_date",
+  "sync_type",
+  "records_received",
+  "records_created",
+  "duplicates_skipped",
+  "processed_count",
+  "error_count",
+  "status",
+  "error_details"
+ ],
+ "fields": [
+  {
+   "fieldname": "started_at",
+   "fieldtype": "Datetime",
+   "in_list_view": 1,
+   "label": "Started At",
+   "reqd": 1
+  },
+  {
+   "fieldname": "completed_at",
+   "fieldtype": "Datetime",
+   "in_list_view": 1,
+   "label": "Completed At"
+  },
+  {
+   "fieldname": "from_date",
+   "fieldtype": "Datetime",
+   "label": "From Date"
+  },
+  {
+   "fieldname": "to_date",
+   "fieldtype": "Datetime",
+   "label": "To Date"
+  },
+  {
+   "default": "Manual",
+   "fieldname": "sync_type",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Sync Type",
+   "options": "Manual\nScheduled Interval\nScheduled Daily Time"
+  },
+  {
+   "default": "0",
+   "fieldname": "records_received",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Records Received"
+  },
+  {
+   "default": "0",
+   "fieldname": "records_created",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "New Logs Created"
+  },
+  {
+   "default": "0",
+   "fieldname": "duplicates_skipped",
+   "fieldtype": "Int",
+   "label": "Duplicates Skipped"
+  },
+  {
+   "default": "0",
+   "fieldname": "processed_count",
+   "fieldtype": "Int",
+   "label": "Punches Processed"
+  },
+  {
+   "default": "0",
+   "fieldname": "error_count",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Errors"
+  },
+  {
+   "default": "Started",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Status",
+   "options": "Started\nCompleted\nFailed"
+  },
+  {
+   "fieldname": "error_details",
+   "fieldtype": "Text",
+   "label": "Error Details"
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-09-17 11:30:00.000000",
+ "modified_by": "Administrator",
+ "module": "Company",
+ "name": "Attendance Sync Log",
+ "naming_rule": "Expression (old style)",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "HR",
+   "select": 1,
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "sort_field": "started_at",
+ "sort_order": "DESC",
+ "states": []
+}

@@ -151,7 +151,8 @@ scheduler_events = {
         "company.company.employee_remainder_api.process_remainder_queue",
         "company.company.presence_api.process_auto_breaks",
         "company.company.reminders.run_email_reminders",
-        "company.company.doctype.crm_email_automation.crm_email_automation.process_email_automations"
+        "company.company.doctype.crm_email_automation.crm_email_automation.process_email_automations",
+        "company.company.biometric.biometric_sync.evaluate_and_run_scheduled_sync"
     ],
     "daily": [
         "company.company.api.update_expired_renewals",

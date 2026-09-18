@@ -36,8 +36,18 @@ class Attendance(Document):
         # ------------------------------
         # 2️⃣ TIME NORMALIZATION
         #-------------------------------
-        in_time = self.in_time if self.in_time not in ["00:00", "00:00:00", None] else None
-        out_time = self.out_time if self.out_time not in ["00:00", "00:00:00", None] else None
+        def _to_time_str(val):
+            if not val or val in ["00:00", "00:00:00"]:
+                return None
+            if isinstance(val, timedelta):
+                total_sec = int(val.total_seconds())
+                return f"{total_sec // 3600:02d}:{(total_sec % 3600) // 60:02d}:{total_sec % 60:02d}"
+            if hasattr(val, "strftime"):
+                return val.strftime("%H:%M:%S")
+            return str(val)
+
+        in_time = _to_time_str(self.in_time)
+        out_time = _to_time_str(self.out_time)
 
         # No time → Absent
         if not in_time and not out_time:

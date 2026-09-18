@@ -1,0 +1,75 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "autoname": "autoincrement",
+ "creation": "2026-09-17 11:30:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "punch_time",
+  "punch_type",
+  "device",
+  "serial_number",
+  "biometric_log",
+  "source"
+ ],
+ "fields": [
+  {
+   "fieldname": "punch_time",
+   "fieldtype": "Datetime",
+   "in_list_view": 1,
+   "label": "Punch Time",
+   "reqd": 1
+  },
+  {
+   "fieldname": "punch_type",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Punch Type",
+   "options": "IN\nOUT",
+   "reqd": 1
+  },
+  {
+   "fieldname": "device",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Biometric Device",
+   "options": "Biometric Device"
+  },
+  {
+   "fieldname": "serial_number",
+   "fieldtype": "Data",
+   "label": "Serial Number"
+  },
+  {
+   "fieldname": "biometric_log",
+   "fieldtype": "Link",
+   "label": "Biometric Log",
+   "options": "Biometric Log"
+  },
+  {
+   "default": "Biometric",
+   "fieldname": "source",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Source",
+   "options": "Biometric\nManual\nMobile"
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "istable": 1,
+ "links": [],
+ "modified": "2026-09-17 11:30:00.000000",
+ "modified_by": "Administrator",
+ "module": "Company",
+ "name": "Attendance Punch",
+ "naming_rule": "Autoincrement",
+ "owner": "Administrator",
+ "permissions": [],
+ "row_format": "Dynamic",
+ "sort_field": "punch_time",
+ "sort_order": "ASC",
+ "states": []
+}

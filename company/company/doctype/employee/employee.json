@@ -60,7 +60,8 @@
    "fieldtype": "Data",
    "in_list_view": 1,
    "label": "Employee ID",
-   "read_only": 1,
+   "read_only": 0,
+   "reqd": 1,
    "unique": 1
   },
   {
@@ -278,11 +279,11 @@
   },
   {
    "fieldname": "employee_type",
-   "fieldtype": "Select",
+   "fieldtype": "Link",
    "in_list_view": 1,
    "in_standard_filter": 1,
    "label": "Employee Type",
-   "options": "Staff\nNorth Indian Staff\nWorkers\nDrivers\nContractor\nHouse Keeping\nSecurity\nSTP Employees"
+   "options": "Employee Type"
   },
   {
    "fieldname": "marital_status",
