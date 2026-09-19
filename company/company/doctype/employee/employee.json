@@ -36,6 +36,7 @@
   "line_order",
   "shift",
   "bus_travel_route",
+  "bus_route_point",
   "status",
   "date_of_leaving",
   "user",
@@ -331,6 +332,12 @@
    "fieldtype": "Link",
    "label": "Bus - Travel Route",
    "options": "Bus Travel Route"
+  },
+  {
+   "depends_on": "eval:doc.bus_travel_route",
+   "fieldname": "bus_route_point",
+   "fieldtype": "Data",
+   "label": "Bus Route Point"
   }
  ],
  "grid_page_length": 50,

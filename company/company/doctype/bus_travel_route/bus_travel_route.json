@@ -10,7 +10,9 @@
   "bus_number",
   "driver_contact",
   "status",
-  "description"
+  "description",
+  "points_section",
+  "points"
  ],
  "fields": [
   {
@@ -42,6 +44,17 @@
    "fieldname": "description",
    "fieldtype": "Small Text",
    "label": "Description"
+  },
+  {
+   "fieldname": "points_section",
+   "fieldtype": "Section Break",
+   "label": "Route Points"
+  },
+  {
+   "fieldname": "points",
+   "fieldtype": "Table",
+   "label": "Route Points",
+   "options": "Bus Route Point"
   }
  ],
  "grid_page_length": 50,
