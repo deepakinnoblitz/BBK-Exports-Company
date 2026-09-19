@@ -589,16 +589,27 @@ class LeaveApplication(Document):
         </div>
         """
 
-        frappe.sendmail(
-            recipients=[r for r in recipients if r],
-            cc=cc,
-            subject=subject,
-            message=message,
-            sender=sender,
-            reply_to=reply_to,
-            reference_doctype="Leave Application",
-            reference_name=self.name
-        )
+        try:
+            valid_recipients = [r for r in recipients if r]
+            if valid_recipients:
+                frappe.sendmail(
+                    recipients=valid_recipients,
+                    cc=cc,
+                    subject=subject,
+                    message=message,
+                    sender=sender,
+                    reply_to=reply_to,
+                    reference_doctype="Leave Application",
+                    reference_name=self.name
+                )
+        except Exception:
+            frappe.flags.email_not_configured = True
+            if hasattr(frappe.local, "message_log"):
+                frappe.local.message_log = [
+                    msg for msg in frappe.local.message_log
+                    if not (isinstance(msg, (dict, str)) and ("Email Account" in str(msg) or "outgoing" in str(msg).lower()))
+                ]
+            frappe.log_error(title="Leave Application Email Notification Failed", message=frappe.get_traceback())
 
 
 def send_submit_notification(doc_name, submitter_user):

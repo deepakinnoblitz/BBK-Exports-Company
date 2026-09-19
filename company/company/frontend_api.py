@@ -1994,6 +1994,7 @@ def apply_workflow_action(doctype, name, action, comment=None, payment_details=N
         doc.update(ud)
         doc.save(ignore_permissions=True) # Save updates before advancing workflow
         
+    frappe.flags.email_not_configured = False
     apply_workflow(doc, action)
     
     # Reload doc to ensure we get the latest state including paid field
@@ -2021,7 +2022,13 @@ def apply_workflow_action(doctype, name, action, comment=None, payment_details=N
             message={"name": name, "action": action},
         )
 
-    return {"status": "success", "message": f"Action {action} applied successfully"}
+    email_warning = "Email not configured, so email not sent" if frappe.flags.get("email_not_configured") else None
+
+    return {
+        "status": "success",
+        "message": f"Action {action} applied successfully",
+        "email_warning": email_warning
+    }
 
 
 def _get_attendance_status(hours, p_threshold, h_threshold):
