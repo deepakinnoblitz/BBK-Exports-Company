@@ -8,12 +8,18 @@
  "field_order": [
   "leave_type_name",
   "is_paid",
+  "is_permission",
   "max_leaves",
   "status",
   "carry_forward",
   "reset_frequency",
   "restrict_during_probation",
-  "probation_period_months"
+  "probation_period_months",
+  "allocation_basis",
+  "min_present_days",
+  "days_worked_per_leave",
+  "count_half_day_as",
+  "include_approved_paid_leaves"
  ],
  "fields": [
   {
@@ -29,6 +35,12 @@
    "fieldname": "is_paid",
    "fieldtype": "Check",
    "label": "Is Paid"
+  },
+  {
+   "default": "0",
+   "fieldname": "is_permission",
+   "fieldtype": "Check",
+   "label": "Is Permission"
   },
   {
    "fieldname": "max_leaves",
@@ -66,6 +78,41 @@
    "label": "Probation Period (Months)",
    "mandatory_depends_on": "eval:doc.restrict_during_probation",
    "options": "3"
+  },
+  {
+   "default": "Fixed / Unconditional",
+   "fieldname": "allocation_basis",
+   "fieldtype": "Select",
+   "label": "Allocation Basis",
+   "options": "Fixed / Unconditional\nFull Month Present (100% Attendance)\nMinimum Present Days\nPer N Days Worked"
+  },
+  {
+   "depends_on": "eval:doc.allocation_basis == 'Minimum Present Days'",
+   "fieldname": "min_present_days",
+   "fieldtype": "Int",
+   "label": "Minimum Present Days"
+  },
+  {
+   "default": "20",
+   "depends_on": "eval:doc.allocation_basis == 'Per N Days Worked'",
+   "fieldname": "days_worked_per_leave",
+   "fieldtype": "Int",
+   "label": "Days Worked Per Leave"
+  },
+  {
+   "default": "0.5 Day",
+   "depends_on": "eval:doc.allocation_basis != 'Fixed / Unconditional'",
+   "fieldname": "count_half_day_as",
+   "fieldtype": "Select",
+   "label": "Count Half Day As",
+   "options": "0.5 Day\n0 (Not Present)"
+  },
+  {
+   "default": "0",
+   "depends_on": "eval:doc.allocation_basis != 'Fixed / Unconditional'",
+   "fieldname": "include_approved_paid_leaves",
+   "fieldtype": "Check",
+   "label": "Include Approved Paid Leaves in Presence"
   }
  ],
  "grid_page_length": 50,

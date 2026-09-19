@@ -1044,17 +1044,34 @@ def update_leave_allocation_from_attendance(doc, method=None):
             frappe.db.set_value("Leave Allocation", allocation.name, "total_leaves_taken", total_taken - 1)
 
 
+def is_permission_leave_type(leave_type):
+    """
+    Checks if a leave type is configured as Permission (is_permission=1)
+    or named 'Permission' as a fallback.
+    """
+    if not leave_type:
+        return False
+    is_perm = frappe.db.get_value("Leave Type", leave_type, "is_permission")
+    if is_perm:
+        return True
+    return str(leave_type).strip().lower() == "permission"
+
 
 @frappe.whitelist()
 def check_leave_balance(employee, leave_type, from_date, to_date, permission_hours=None, half_day=False):
     """
-    Check available leave balance for given employee and leave type.
-    Returns {"allowed": True/False, "remaining": <float>}
+    Returns dict:
+    {
+        "allowed": True/False,
+        "remaining": float,
+        "requested": float,
+        "unit": "Minutes" | "Days"
+    }
     """
     from_date = getdate(from_date)
     to_date = getdate(to_date)
 
-    # Fetch leave allocation
+    # Fetch active allocations overlapping the range
     allocations = frappe.get_all(
         "Leave Allocation",
         filters={
@@ -1074,7 +1091,7 @@ def check_leave_balance(employee, leave_type, from_date, to_date, permission_hou
         remaining = total_allocated - total_taken
 
     # --- Permission logic ---
-    if leave_type.lower() == "permission":
+    if is_permission_leave_type(leave_type):
         requested = flt(permission_hours or 0)
         if not requested:
             frappe.throw("Please enter Permission Hours in minutes")
@@ -1129,19 +1146,25 @@ def validate_leave_balance(doc, method=None):
         )
 
     # --- 2️⃣ Prevent overlapping (normal leave only) ---
-    if doc.leave_type.lower() != "permission":
+    if not is_permission_leave_type(doc.leave_type):
         if has_approved_leave(doc.employee, doc.from_date, doc.to_date, exclude_doc=doc.name):
             frappe.throw(
                 f"Employee {doc.employee} already has an approved leave in the selected date range."
             )
 
     # --- 3️⃣ Prevent duplicate permission ---
-    if doc.leave_type.lower() == "permission":
+    if is_permission_leave_type(doc.leave_type):
+        perm_types = frappe.get_all("Leave Type", filters={"is_permission": 1}, pluck="name")
+        if "Permission" not in perm_types:
+            perm_types.append("Permission")
+        if doc.leave_type not in perm_types:
+            perm_types.append(doc.leave_type)
+
         existing = frappe.db.exists(
             "Leave Application",
             {
                 "employee": doc.employee,
-                "leave_type": "Permission",
+                "leave_type": ["in", perm_types],
                 "from_date": doc.from_date,
                 "workflow_state": ["in", ["Approved", "Pending Approval"]],
                 "name": ["!=", doc.name]
@@ -1306,7 +1329,7 @@ def update_leave_allocation(doc, method=None):
     # -----------------------------
     # Calculate Leave Amount
     # -----------------------------
-    if leave_type_lower == "permission":
+    if is_permission_leave_type(doc.leave_type):
         if not doc.permission_hours:
             frappe.throw("Permission Hours are required.")
 
@@ -1523,7 +1546,7 @@ def handle_leave_status_change(doc, method=None):
     # 🔹 Add Permission Hours if Leave Type = Permission
     # ============================================
     permission_row = ""
-    if str(doc.leave_type).strip().lower() == "permission":
+    if is_permission_leave_type(doc.leave_type):
         permission_hours = getattr(doc, "permission_hours", None)
         if permission_hours is not None:
             hrs = int(permission_hours) // 60
