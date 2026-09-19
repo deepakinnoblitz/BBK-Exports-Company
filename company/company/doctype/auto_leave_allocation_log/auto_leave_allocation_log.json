@@ -1,0 +1,148 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "autoname": "ALL-LOG-.YYYY.-.#####",
+ "creation": "2026-09-19 12:45:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "execution_date",
+  "month",
+  "year",
+  "target_period",
+  "attendance_evaluated_month",
+  "executed_by",
+  "execution_type",
+  "created_count",
+  "skipped_count",
+  "error_count",
+  "status",
+  "details",
+  "errors_json"
+ ],
+ "fields": [
+  {
+   "fieldname": "execution_date",
+   "fieldtype": "Datetime",
+   "in_list_view": 1,
+   "label": "Execution Date",
+   "reqd": 1
+  },
+  {
+   "fieldname": "month",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Month"
+  },
+  {
+   "fieldname": "year",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Year"
+  },
+  {
+   "fieldname": "target_period",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Target Period"
+  },
+  {
+   "fieldname": "attendance_evaluated_month",
+   "fieldtype": "Data",
+   "label": "Attendance Evaluated Month"
+  },
+  {
+   "fieldname": "executed_by",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Executed By"
+  },
+  {
+   "default": "Manual Run",
+   "fieldname": "execution_type",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Execution Type",
+   "options": "Manual Run\nScheduled Cron"
+  },
+  {
+   "default": "0",
+   "fieldname": "created_count",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Created Allocations"
+  },
+  {
+   "default": "0",
+   "fieldname": "skipped_count",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Skipped Count"
+  },
+  {
+   "default": "0",
+   "fieldname": "error_count",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Error Count"
+  },
+  {
+   "default": "Success",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Status",
+   "options": "Success\nPartial\nFailed"
+  },
+  {
+   "fieldname": "details",
+   "fieldtype": "Long Text",
+   "label": "Details JSON"
+  },
+  {
+   "fieldname": "errors_json",
+   "fieldtype": "Long Text",
+   "label": "Errors JSON"
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-09-19 12:45:00.000000",
+ "modified_by": "Administrator",
+ "module": "Company",
+ "name": "Auto Leave Allocation Log",
+ "naming_rule": "Expression (old style)",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "HR",
+   "select": 1,
+   "share": 1,
+   "write": 1
+  }
+ ],
+ "row_format": "Dynamic",
+ "sort_field": "execution_date",
+ "sort_order": "DESC",
+ "states": []
+}

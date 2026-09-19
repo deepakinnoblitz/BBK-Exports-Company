@@ -4540,6 +4540,20 @@ def auto_allocate_monthly_leaves(
 
         frappe.db.commit()
 
+        # Create Auto Leave Allocation Log record
+        log_type = "Scheduled Cron" if (only_conditional and frappe.session.user == "Administrator") else "Manual Run"
+        create_auto_leave_allocation_log(
+            year=year,
+            month=month,
+            created_count=created_count,
+            skipped_count=skipped_count,
+            created_details=created_details,
+            errors=errors,
+            execution_type=log_type,
+            attendance_month=att_month,
+            attendance_year=att_year,
+        )
+
         return {
             "created_count": created_count,
             "skipped_count": skipped_count,
@@ -4549,6 +4563,170 @@ def auto_allocate_monthly_leaves(
 
     except Exception as e:
         frappe.throw(f"Error in auto leave allocation: {e}")
+
+
+def create_auto_leave_allocation_log(
+    year,
+    month,
+    created_count,
+    skipped_count,
+    created_details,
+    errors,
+    execution_type="Manual Run",
+    attendance_month=None,
+    attendance_year=None,
+):
+    import json
+    from frappe.utils import now_datetime, get_first_day, get_last_day
+    from datetime import datetime
+
+    try:
+        month_start = get_first_day(datetime(int(year), int(month), 1))
+        month_end = get_last_day(datetime(int(year), int(month), 1))
+        target_period = f"{month_start.strftime('%d %b %Y')} - {month_end.strftime('%d %b %Y')}"
+
+        att_month_str = ""
+        if attendance_month and attendance_year:
+            att_date = datetime(int(attendance_year), int(attendance_month), 1)
+            att_month_str = att_date.strftime('%B %Y')
+
+        status = "Success"
+        if errors and created_count == 0:
+            status = "Failed"
+        elif errors:
+            status = "Partial"
+
+        log_doc = frappe.get_doc({
+            "doctype": "Auto Leave Allocation Log",
+            "execution_date": now_datetime(),
+            "month": int(month),
+            "year": int(year),
+            "target_period": target_period,
+            "attendance_evaluated_month": att_month_str,
+            "executed_by": frappe.session.user or "Administrator",
+            "execution_type": execution_type,
+            "created_count": int(created_count),
+            "skipped_count": int(skipped_count),
+            "error_count": len(errors) if errors else 0,
+            "status": status,
+            "details": json.dumps(created_details or [], default=str),
+            "errors_json": json.dumps(errors or [], default=str),
+        })
+        log_doc.insert(ignore_permissions=True)
+        frappe.db.commit()
+        return log_doc.name
+    except Exception as e:
+        frappe.log_error(f"Failed to create Auto Leave Allocation Log: {e}", "Auto Leave Allocation Log")
+        return None
+
+
+@frappe.whitelist()
+def get_auto_leave_allocation_logs(page=1, limit=10, search=None, status=None, execution_type=None, year=None, month=None, sort_by="execution_date_desc"):
+    page = int(page or 1)
+    limit = int(limit or 10)
+    start = (page - 1) * limit
+
+    filters = {}
+    if status and status != "all":
+        filters["status"] = status
+    if execution_type and execution_type != "all":
+        filters["execution_type"] = execution_type
+    if year and str(year) != "all":
+        filters["year"] = int(year)
+    if month and str(month) != "all":
+        filters["month"] = int(month)
+
+    or_filters = []
+    if search and search.strip():
+        s = f"%{search.strip()}%"
+        or_filters = [
+            ["Auto Leave Allocation Log", "name", "like", s],
+            ["Auto Leave Allocation Log", "target_period", "like", s],
+            ["Auto Leave Allocation Log", "executed_by", "like", s],
+            ["Auto Leave Allocation Log", "execution_type", "like", s],
+        ]
+
+    order_by = "execution_date desc"
+    if sort_by in ("creation_asc", "execution_date_asc"):
+        order_by = "execution_date asc"
+    elif sort_by == "created_count_desc":
+        order_by = "created_count desc"
+    elif sort_by == "created_count_asc":
+        order_by = "created_count asc"
+
+    if or_filters:
+        total = len(frappe.get_all("Auto Leave Allocation Log", filters=filters, or_filters=or_filters, pluck="name"))
+    else:
+        total = frappe.db.count("Auto Leave Allocation Log", filters=filters)
+
+    logs = frappe.get_all(
+        "Auto Leave Allocation Log",
+        filters=filters,
+        or_filters=or_filters if or_filters else None,
+        fields=[
+            "name",
+            "execution_date",
+            "month",
+            "year",
+            "target_period",
+            "attendance_evaluated_month",
+            "executed_by",
+            "execution_type",
+            "created_count",
+            "skipped_count",
+            "error_count",
+            "status",
+        ],
+        order_by=order_by,
+        start=start,
+        page_length=limit
+    )
+
+    return {
+        "data": logs,
+        "total": total,
+        "page": page,
+        "limit": limit
+    }
+
+
+@frappe.whitelist()
+def get_auto_leave_allocation_log_details(log_id):
+    import json
+    if not log_id:
+        frappe.throw("log_id is required")
+
+    log = frappe.get_doc("Auto Leave Allocation Log", log_id)
+    details = []
+    errors = []
+    if log.details:
+        try:
+            details = json.loads(log.details)
+        except Exception:
+            details = []
+    if log.errors_json:
+        try:
+            errors = json.loads(log.errors_json)
+        except Exception:
+            errors = []
+
+    return {
+        "name": log.name,
+        "execution_date": log.execution_date,
+        "month": log.month,
+        "year": log.year,
+        "target_period": log.target_period,
+        "attendance_evaluated_month": log.attendance_evaluated_month,
+        "executed_by": log.executed_by,
+        "execution_type": log.execution_type,
+        "created_count": log.created_count,
+        "skipped_count": log.skipped_count,
+        "error_count": log.error_count,
+        "status": log.status,
+        "details": details,
+        "errors": errors,
+    }
+
 
 def cron_allocate_conditional_leaves():
     """

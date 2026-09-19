@@ -575,6 +575,20 @@ def auto_allocate_monthly_leaves(year: int, month: int):
 
         frappe.db.commit()
 
+        try:
+            from company.company.frontend_api import create_auto_leave_allocation_log
+            create_auto_leave_allocation_log(
+                year=year,
+                month=month,
+                created_count=created_count,
+                skipped_count=skipped_count,
+                created_details=created_details,
+                errors=errors,
+                execution_type="Manual Run",
+            )
+        except Exception as log_err:
+            frappe.log_error(f"Failed to log auto leave allocation: {log_err}", "Auto Leave Allocation Log")
+
         return {
             "created_count": created_count,
             "skipped_count": skipped_count,
