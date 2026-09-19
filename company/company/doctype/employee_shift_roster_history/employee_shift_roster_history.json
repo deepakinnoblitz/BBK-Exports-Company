@@ -1,0 +1,139 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "autoname": "format:ROST-HIST-{YYYY}-{#####}",
+ "creation": "2026-09-19 12:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "roster_id",
+  "employee",
+  "employee_name",
+  "effective_from",
+  "effective_to",
+  "previous_shift",
+  "new_shift",
+  "source",
+  "changed_by",
+  "changed_at",
+  "reason"
+ ],
+ "fields": [
+  {
+   "fieldname": "roster_id",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Roster ID"
+  },
+  {
+   "fieldname": "employee",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Employee",
+   "options": "Employee"
+  },
+  {
+   "fieldname": "employee_name",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Employee Name"
+  },
+  {
+   "fieldname": "effective_from",
+   "fieldtype": "Date",
+   "in_list_view": 1,
+   "label": "Effective From"
+  },
+  {
+   "fieldname": "effective_to",
+   "fieldtype": "Date",
+   "in_list_view": 1,
+   "label": "Effective To"
+  },
+  {
+   "fieldname": "previous_shift",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Previous Shift",
+   "options": "Shift"
+  },
+  {
+   "fieldname": "new_shift",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "New Shift",
+   "options": "Shift"
+  },
+  {
+   "fieldname": "source",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Source",
+   "options": "MANUAL\nBULK\nROTATION\nOVERRIDE\nSHIFT_CHANGE"
+  },
+  {
+   "fieldname": "changed_by",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Changed By",
+   "options": "User"
+  },
+  {
+   "fieldname": "changed_at",
+   "fieldtype": "Datetime",
+   "in_list_view": 1,
+   "label": "Changed At"
+  },
+  {
+   "fieldname": "reason",
+   "fieldtype": "Small Text",
+   "label": "Reason"
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-09-19 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Company",
+ "name": "Employee Shift Roster History",
+ "naming_rule": "Expression",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "HR",
+   "select": 1,
+   "share": 1,
+   "write": 1
+  },
+  {
+   "read": 1,
+   "role": "Employee",
+   "select": 1
+  }
+ ],
+ "quick_entry": 1,
+ "row_format": "Dynamic",
+ "sort_field": "changed_at",
+ "sort_order": "DESC",
+ "states": []
+}

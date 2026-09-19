@@ -1,0 +1,52 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "creation": "2026-09-19 12:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "step_number",
+  "shift",
+  "shift_name"
+ ],
+ "fields": [
+  {
+   "fieldname": "step_number",
+   "fieldtype": "Int",
+   "in_list_view": 1,
+   "label": "Step Number",
+   "reqd": 1
+  },
+  {
+   "fieldname": "shift",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Shift",
+   "options": "Shift",
+   "reqd": 1
+  },
+  {
+   "fetch_from": "shift.shift_name",
+   "fieldname": "shift_name",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Shift Name",
+   "read_only": 1
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "istable": 1,
+ "links": [],
+ "modified": "2026-09-19 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Company",
+ "name": "Shift Rotation Sequence",
+ "owner": "Administrator",
+ "permissions": [],
+ "row_format": "Dynamic",
+ "sort_field": "step_number",
+ "sort_order": "ASC",
+ "states": []
+}
