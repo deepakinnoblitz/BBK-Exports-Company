@@ -4186,7 +4186,7 @@ def get_leave_allocation_preview(
             if leave_in_probation:
                 continue
 
-            # Already allocated?
+            # Already allocated via Manual?
             exists = frappe.db.exists(
                 "Leave Allocation",
                 {
@@ -4194,58 +4194,15 @@ def get_leave_allocation_preview(
                     "leave_type": leave.name,
                     "from_date": month_start,
                     "to_date": month_end,
+                    "allocation_source": "Manual",
                     "status": "Approved",
                 },
             )
 
-            # Attendance criteria evaluation
             basis = leave.get("allocation_basis") or "Fixed / Unconditional"
-            min_present = leave.get("min_present_days")
-            days_per_leave = leave.get("days_worked_per_leave") or 20
-            half_day_weight = 0.0 if leave.get("count_half_day_as") == "0 (Not Present)" else 0.5
-            include_paid = bool(leave.get("include_approved_paid_leaves"))
-
-            if half_day_weight != 0.5 or include_paid:
-                lt_att = get_employee_month_attendance_summary(
-                    emp.name,
-                    att_month_start,
-                    att_month_end,
-                    att_working_days,
-                    include_paid_leaves=include_paid,
-                    half_day_weight=half_day_weight,
-                    paid_leave_names=paid_lts
-                )
-            else:
-                lt_att = emp_att
-
             criteria_met = True
-            criteria_reason = "Fixed / Unconditional"
+            criteria_reason = "Fixed / Standard Allocation"
             base_count = leave.max_leaves or 0
-
-            if basis == "Full Month Present (100% Attendance)":
-                if not lt_att["is_full_month_present"]:
-                    criteria_met = False
-                    base_count = 0
-                    criteria_reason = f"Required 100% attendance; achieved {lt_att['present_days']}/{lt_att['working_days']} days ({lt_att['attendance_pct']}%)"
-                else:
-                    criteria_reason = f"Full month attendance verified ({lt_att['present_days']}/{lt_att['working_days']} days)"
-
-            elif basis == "Minimum Present Days":
-                target = min_present or lt_att["working_days"]
-                if lt_att["present_days"] < target:
-                    criteria_met = False
-                    base_count = 0
-                    criteria_reason = f"Requires {target} present days; achieved {lt_att['present_days']} days"
-                else:
-                    criteria_reason = f"Met minimum attendance: {lt_att['present_days']}/{target} days"
-
-            elif basis == "Per N Days Worked":
-                ratio = days_per_leave or 20
-                earned = int(lt_att["present_days"] // ratio)
-                base_count = earned
-                criteria_reason = f"{earned} leaves earned ({lt_att['present_days']} days worked / {ratio})"
-                if earned <= 0:
-                    criteria_met = False
 
             # Carry Forward Calculation
             carry_forward_balance = 0
@@ -4417,8 +4374,11 @@ def auto_allocate_monthly_leaves(
                 leave_type = leave.leave_type_name
                 base_leave_count = leave.max_leaves or 0
 
+                is_cron = bool(only_conditional)
+                source = "Auto" if is_cron else "Manual"
+
                 try:
-                    # Skip if already allocated
+                    # Skip if already allocated for this source
                     if frappe.db.exists(
                         "Leave Allocation",
                         {
@@ -4426,49 +4386,55 @@ def auto_allocate_monthly_leaves(
                             "leave_type": leave.name,
                             "from_date": month_start,
                             "to_date": month_end,
+                            "allocation_source": source,
                             "status": "Approved",
                         },
                     ):
                         skipped_count += 1
                         continue
 
-                    # Evaluate Attendance Criteria
-                    basis = leave.get("allocation_basis") or "Fixed / Unconditional"
-                    min_present = leave.get("min_present_days")
-                    days_per_leave = leave.get("days_worked_per_leave") or 20
-                    half_day_weight = 0.0 if leave.get("count_half_day_as") == "0 (Not Present)" else 0.5
-                    include_paid = bool(leave.get("include_approved_paid_leaves"))
+                    # Attendance Criteria Evaluation (Only for Scheduled Cron)
+                    if is_cron:
+                        basis = leave.get("allocation_basis") or "Fixed / Unconditional"
+                        min_present = leave.get("min_present_days")
+                        days_per_leave = leave.get("days_worked_per_leave") or 20
+                        half_day_weight = 0.0 if leave.get("count_half_day_as") == "0 (Not Present)" else 0.5
+                        include_paid = bool(leave.get("include_approved_paid_leaves"))
 
-                    if half_day_weight != 0.5 or include_paid:
-                        lt_att = get_employee_month_attendance_summary(
-                            emp.name,
-                            att_month_start,
-                            att_month_end,
-                            att_working_days,
-                            include_paid_leaves=include_paid,
-                            half_day_weight=half_day_weight,
-                            paid_leave_names=paid_lts
-                        )
+                        if half_day_weight != 0.5 or include_paid:
+                            lt_att = get_employee_month_attendance_summary(
+                                emp.name,
+                                att_month_start,
+                                att_month_end,
+                                att_working_days,
+                                include_paid_leaves=include_paid,
+                                half_day_weight=half_day_weight,
+                                paid_leave_names=paid_lts
+                            )
+                        else:
+                            lt_att = emp_att
+
+                        criteria_met = True
+                        earned_count = base_leave_count
+
+                        if basis == "Full Month Present (100% Attendance)":
+                            if not lt_att["is_full_month_present"]:
+                                criteria_met = False
+                                earned_count = 0
+                        elif basis == "Minimum Present Days":
+                            target = min_present or lt_att["working_days"]
+                            if lt_att["present_days"] < target:
+                                criteria_met = False
+                                earned_count = 0
+                        elif basis == "Per N Days Worked":
+                            ratio = days_per_leave or 20
+                            earned_count = int(lt_att["present_days"] // ratio)
+                            if earned_count <= 0:
+                                criteria_met = False
                     else:
-                        lt_att = emp_att
-
-                    criteria_met = True
-                    earned_count = base_leave_count
-
-                    if basis == "Full Month Present (100% Attendance)":
-                        if not lt_att["is_full_month_present"]:
-                            criteria_met = False
-                            earned_count = 0
-                    elif basis == "Minimum Present Days":
-                        target = min_present or lt_att["working_days"]
-                        if lt_att["present_days"] < target:
-                            criteria_met = False
-                            earned_count = 0
-                    elif basis == "Per N Days Worked":
-                        ratio = days_per_leave or 20
-                        earned_count = int(lt_att["present_days"] // ratio)
-                        if earned_count <= 0:
-                            criteria_met = False
+                        # Manual / UI Run: No attendance calculation, direct standard allocation
+                        criteria_met = True
+                        earned_count = base_leave_count
 
                     # Carry Forward Calculation
                     carry_forward_balance = 0
@@ -4521,6 +4487,7 @@ def auto_allocate_monthly_leaves(
                             "total_leaves_allocated": total_allocation,
                             "total_leaves_taken": 0,
                             "status": "Approved",
+                            "allocation_source": source,
                         }
                     )
                     allocation.insert(ignore_permissions=True, ignore_mandatory=True)
@@ -4550,8 +4517,8 @@ def auto_allocate_monthly_leaves(
             created_details=created_details,
             errors=errors,
             execution_type=log_type,
-            attendance_month=att_month,
-            attendance_year=att_year,
+            attendance_month=attendance_month,
+            attendance_year=attendance_year,
         )
 
         return {
@@ -5030,3 +4997,37 @@ def get_meta_lead_info(lead_id):
     return None
 
 
+@frappe.whitelist()
+def get_employee_applied_leave_dates(employee):
+    """
+    Returns list of date strings (YYYY-MM-DD) for which the employee
+    already has an approved or pending leave application.
+    """
+    if not employee:
+        return []
+
+    leaves = frappe.get_all(
+        "Leave Application",
+        filters={
+            "employee": employee,
+            "workflow_state": ["in", ["Approved", "Pending", "Pending Approval"]],
+            "docstatus": ["<", 2],
+        },
+        fields=["from_date", "to_date"],
+    )
+
+    from frappe.utils import getdate
+    from datetime import timedelta
+
+    applied_dates = set()
+    for l in leaves:
+        if not l.from_date or not l.to_date:
+            continue
+        start = getdate(l.from_date)
+        end = getdate(l.to_date)
+        curr = start
+        while curr <= end:
+            applied_dates.add(curr.strftime("%Y-%m-%d"))
+            curr += timedelta(days=1)
+
+    return sorted(list(applied_dates))
