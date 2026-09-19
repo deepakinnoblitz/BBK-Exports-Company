@@ -15,7 +15,10 @@ def execute(filters: dict | None = None):
 
 def get_columns() -> list[dict]:
 	"""Return columns for the report."""
-	return [
+	user_roles = frappe.get_roles(frappe.session.user)
+	is_system_manager = any(r in ["System Manager", "Administrator"] for r in user_roles)
+
+	columns = [
 		{"label": _("Date"), "fieldname": "attendance_date", "fieldtype": "Date", "width": 120},
 		{"label": _("Employee"), "fieldname": "employee", "fieldtype": "Link", "options": "Employee", "width": 200},
 		{"label": _("Employee Name"), "fieldname": "employee_name", "fieldtype": "Data", "width": 200},
@@ -23,10 +26,17 @@ def get_columns() -> list[dict]:
 		{"label": _("In Time"), "fieldname": "in_time", "fieldtype": "Time", "width": 100},
 		{"label": _("Out Time"), "fieldname": "out_time", "fieldtype": "Time", "width": 100},
 		{"label": _("Working Hours"), "fieldname": "working_hours_display", "fieldtype": "Data", "width": 120},
-		{"label": _("Overtime"), "fieldname": "overtime_display", "fieldtype": "Data", "width": 120},
+		{"label": _("Overtime"), "fieldname": "official_overtime", "fieldtype": "Data", "width": 130},
+	]
+
+	if is_system_manager:
+		columns.append({"label": _("Extra Overtime"), "fieldname": "unofficial_overtime", "fieldtype": "Data", "width": 150})
+
+	columns.extend([
 		{"label": _("Manual"), "fieldname": "manual", "fieldtype": "Check", "width": 80},
 		{"label": _("Name"), "fieldname": "name", "fieldtype": "Data", "width": 120},
-	]
+	])
+	return columns
 
 
 def get_data(filters: dict | None) -> list[dict]:
@@ -86,8 +96,8 @@ def get_data(filters: dict | None) -> list[dict]:
 			"Attendance",
 			fields=[
 				"attendance_date", "employee", "employee_name", "status",
-				"in_time", "out_time", "working_hours_display", "overtime_display",
-				"manual", "name", "docstatus"
+				"in_time", "out_time", "working_hours_display", "official_overtime",
+				"unofficial_overtime", "manual", "name", "docstatus"
 			],
 			filters=attendance_conditions,
 			order_by="attendance_date desc"
@@ -160,7 +170,8 @@ def get_data(filters: dict | None) -> list[dict]:
 							"in_time": None,
 							"out_time": None,
 							"working_hours_display": h_record.description, # Show description here
-							"overtime_display": None,
+							"official_overtime": None,
+							"unofficial_overtime": None,
 							"name": "",
 							"manual": 0
 						}
@@ -178,7 +189,8 @@ def get_data(filters: dict | None) -> list[dict]:
 						"in_time": None,
 						"out_time": None,
 						"working_hours_display": "00:00",
-						"overtime_display": None,
+						"official_overtime": None,
+						"unofficial_overtime": None,
 						"name": "",
 						"manual": 0
 					}

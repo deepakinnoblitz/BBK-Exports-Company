@@ -1,9 +1,20 @@
 import frappe
 from frappe.model.document import Document
 
+from frappe.utils import getdate
+
 class Employee(Document):
 	def validate(self):
 		self.validate_duplicate_components()
+		self.validate_status_and_dol()
+
+	def validate_status_and_dol(self):
+		if self.status == "Active":
+			self.date_of_leaving = None
+		elif self.status == "Inactive":
+			if self.date_of_leaving and self.date_of_joining:
+				if getdate(self.date_of_leaving) < getdate(self.date_of_joining):
+					frappe.throw("Date of Leaving cannot be before Date of Joining")
 
 	def validate_duplicate_components(self):
 		components = []

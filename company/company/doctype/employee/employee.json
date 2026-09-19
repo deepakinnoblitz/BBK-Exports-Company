@@ -36,7 +36,9 @@
   "line_order",
   "shift",
   "bus_travel_route",
+  "bus_route_point",
   "status",
+  "date_of_leaving",
   "user",
   "evaluation_score",
   "evaluation_status",
@@ -125,6 +127,12 @@
    "in_standard_filter": 1,
    "label": "Status",
    "options": "Active\nInactive"
+  },
+  {
+   "depends_on": "eval:doc.status == 'Inactive'",
+   "fieldname": "date_of_leaving",
+   "fieldtype": "Date",
+   "label": "Date of Leaving (DOL)"
   },
   {
    "fieldname": "bank_account",
@@ -324,6 +332,12 @@
    "fieldtype": "Link",
    "label": "Bus - Travel Route",
    "options": "Bus Travel Route"
+  },
+  {
+   "depends_on": "eval:doc.bus_travel_route",
+   "fieldname": "bus_route_point",
+   "fieldtype": "Data",
+   "label": "Bus Route Point"
   }
  ],
  "grid_page_length": 50,
