@@ -219,6 +219,23 @@ class ReimbursementClaim(Document):
         )
 
 
+    def _send_email_safe(self, **kwargs):
+        try:
+            recipients = kwargs.get("recipients", [])
+            valid_recipients = [r for r in recipients if r]
+            if not valid_recipients:
+                return
+            kwargs["recipients"] = valid_recipients
+            frappe.sendmail(**kwargs)
+        except Exception:
+            frappe.flags.email_not_configured = True
+            if hasattr(frappe.local, "message_log"):
+                frappe.local.message_log = [
+                    msg for msg in frappe.local.message_log
+                    if not (isinstance(msg, (dict, str)) and ("Email Account" in str(msg) or "outgoing" in str(msg).lower()))
+                ]
+            frappe.log_error(title=f"Reimbursement Claim Email Notification Failed: {self.name}", message=frappe.get_traceback())
+
     # -------------------------------------------------------------------
     # 1️⃣ Email — Notify HR on Submission (Blue Theme)
     # -------------------------------------------------------------------
@@ -300,7 +317,7 @@ class ReimbursementClaim(Document):
         </div>
         """
 
-        frappe.sendmail(
+        self._send_email_safe(
             recipients=[hr_email],
             cc=cc_list,
             subject=f"🧾 Reimbursement Claim Submitted - {self.employee_name}",
@@ -381,7 +398,7 @@ class ReimbursementClaim(Document):
         hr_name = hr_settings.get("hr_name") or "HR Team"
         sender = f"{hr_name} <{hr_email}>" if hr_email else None
 
-        frappe.sendmail(
+        self._send_email_safe(
             recipients=recipients,
             subject=f"✅ Reimbursement Approved - {self.claim_type}",
             message=message,
@@ -461,7 +478,7 @@ class ReimbursementClaim(Document):
         hr_name = hr_settings.get("hr_name") or "HR Team"
         sender = f"{hr_name} <{hr_email}>" if hr_email else None
 
-        frappe.sendmail(
+        self._send_email_safe(
             recipients=recipients,
             subject=f"❌ Reimbursement Rejected - {self.claim_type}",
             message=message,
@@ -544,7 +561,7 @@ class ReimbursementClaim(Document):
         hr_name = hr_settings.get("hr_name") or "HR Team"
         sender = f"{hr_name} <{hr_email}>" if hr_email else None
 
-        frappe.sendmail(
+        self._send_email_safe(
             recipients=recipients,
             subject=f"💰 Reimbursement Paid - {self.claim_type}",
             message=message,
