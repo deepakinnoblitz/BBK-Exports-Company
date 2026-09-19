@@ -575,6 +575,20 @@ def auto_allocate_monthly_leaves(year: int, month: int):
 
         frappe.db.commit()
 
+        try:
+            from company.company.frontend_api import create_auto_leave_allocation_log
+            create_auto_leave_allocation_log(
+                year=year,
+                month=month,
+                created_count=created_count,
+                skipped_count=skipped_count,
+                created_details=created_details,
+                errors=errors,
+                execution_type="Manual Run",
+            )
+        except Exception as log_err:
+            frappe.log_error(f"Failed to log auto leave allocation: {log_err}", "Auto Leave Allocation Log")
+
         return {
             "created_count": created_count,
             "skipped_count": skipped_count,
@@ -1044,17 +1058,34 @@ def update_leave_allocation_from_attendance(doc, method=None):
             frappe.db.set_value("Leave Allocation", allocation.name, "total_leaves_taken", total_taken - 1)
 
 
+def is_permission_leave_type(leave_type):
+    """
+    Checks if a leave type is configured as Permission (is_permission=1)
+    or named 'Permission' as a fallback.
+    """
+    if not leave_type:
+        return False
+    is_perm = frappe.db.get_value("Leave Type", leave_type, "is_permission")
+    if is_perm:
+        return True
+    return str(leave_type).strip().lower() == "permission"
+
 
 @frappe.whitelist()
 def check_leave_balance(employee, leave_type, from_date, to_date, permission_hours=None, half_day=False):
     """
-    Check available leave balance for given employee and leave type.
-    Returns {"allowed": True/False, "remaining": <float>}
+    Returns dict:
+    {
+        "allowed": True/False,
+        "remaining": float,
+        "requested": float,
+        "unit": "Minutes" | "Days"
+    }
     """
     from_date = getdate(from_date)
     to_date = getdate(to_date)
 
-    # Fetch leave allocation
+    # Fetch active allocations overlapping the range
     allocations = frappe.get_all(
         "Leave Allocation",
         filters={
@@ -1074,12 +1105,9 @@ def check_leave_balance(employee, leave_type, from_date, to_date, permission_hou
         remaining = total_allocated - total_taken
 
     # --- Permission logic ---
-    if leave_type.lower() == "permission":
+    if is_permission_leave_type(leave_type):
         requested = flt(permission_hours or 0)
-        if not requested:
-            frappe.throw("Please enter Permission Hours in minutes")
-
-        allowed = remaining >= requested
+        allowed = (remaining >= requested) if requested > 0 else True
         return {
             "allowed": allowed,
             "remaining": remaining,
@@ -1112,6 +1140,9 @@ def validate_leave_balance(doc, method=None):
     if not doc.employee or not doc.leave_type:
         frappe.throw("Employee and Leave Type are required.")
 
+    if is_permission_leave_type(doc.leave_type) and not flt(doc.permission_hours or 0):
+        frappe.throw("Please enter Permission Hours in minutes.")
+
     # --- 1️⃣ Check balance ---
     res = check_leave_balance(
         employee=doc.employee,
@@ -1129,19 +1160,25 @@ def validate_leave_balance(doc, method=None):
         )
 
     # --- 2️⃣ Prevent overlapping (normal leave only) ---
-    if doc.leave_type.lower() != "permission":
+    if not is_permission_leave_type(doc.leave_type):
         if has_approved_leave(doc.employee, doc.from_date, doc.to_date, exclude_doc=doc.name):
             frappe.throw(
                 f"Employee {doc.employee} already has an approved leave in the selected date range."
             )
 
     # --- 3️⃣ Prevent duplicate permission ---
-    if doc.leave_type.lower() == "permission":
+    if is_permission_leave_type(doc.leave_type):
+        perm_types = frappe.get_all("Leave Type", filters={"is_permission": 1}, pluck="name")
+        if "Permission" not in perm_types:
+            perm_types.append("Permission")
+        if doc.leave_type not in perm_types:
+            perm_types.append(doc.leave_type)
+
         existing = frappe.db.exists(
             "Leave Application",
             {
                 "employee": doc.employee,
-                "leave_type": "Permission",
+                "leave_type": ["in", perm_types],
                 "from_date": doc.from_date,
                 "workflow_state": ["in", ["Approved", "Pending Approval"]],
                 "name": ["!=", doc.name]
@@ -1156,13 +1193,14 @@ def validate_leave_balance(doc, method=None):
 
 def has_approved_leave(employee, from_date, to_date, exclude_doc=None):
     """
-    Checks if employee already has approved leave overlapping the given range.
+    Checks if employee already has approved or pending leave overlapping the given range.
     """
     filters = {
         "employee": employee,
-        "status": "Approved",
+        "workflow_state": ["in", ["Approved", "Pending", "Pending Approval"]],
+        "docstatus": ["<", 2],
         "from_date": ["<=", to_date],
-        "to_date": [">=", from_date]
+        "to_date": [">=", from_date],
     }
     if exclude_doc:
         filters["name"] = ["!=", exclude_doc]
@@ -1306,69 +1344,84 @@ def update_leave_allocation(doc, method=None):
     # -----------------------------
     # Calculate Leave Amount
     # -----------------------------
-    if leave_type_lower == "permission":
+    if is_permission_leave_type(doc.leave_type):
         if not doc.permission_hours:
             frappe.throw("Permission Hours are required.")
 
         to_add = flt(doc.permission_hours)
         unit = "minutes"
 
-        allocation = frappe.get_value(
+        allocations = frappe.get_all(
             "Leave Allocation",
-            {
+            filters={
                 "employee": doc.employee,
                 "leave_type": doc.leave_type,
                 "status": "Approved",
                 "from_date": ["<=", doc.from_date],
                 "to_date": [">=", doc.from_date],
             },
-            [
+            fields=[
                 "name",
                 "from_date",
                 "total_leaves_allocated",
                 "total_leaves_taken",
             ],
-            as_dict=True,
+            order_by="creation asc",
         )
 
-        if not allocation:
+        if not allocations:
             frappe.throw(
                 f"No Leave Allocation found for {doc.employee} on {doc.from_date}"
             )
 
-        allocated = flt(allocation.total_leaves_allocated)
-        taken = flt(allocation.total_leaves_taken)
-        available = allocated - taken
+        total_available = sum(max(0.0, flt(a.total_leaves_allocated) - flt(a.total_leaves_taken)) for a in allocations)
 
-        if available < to_add:
+        if total_available < to_add:
             frappe.throw(
-                f"Only {available} {unit} available."
+                f"Only {total_available} {unit} available."
             )
 
-        new_taken = taken + to_add
-        frappe.db.set_value(
-            "Leave Allocation",
-            allocation.name,
-            "total_leaves_taken",
-            new_taken
-        )
+        remaining = to_add
+        for a in allocations:
+            if remaining <= 0:
+                break
+            alloc_val = flt(a.total_leaves_allocated)
+            taken_val = flt(a.total_leaves_taken)
+            avail_val = max(0.0, alloc_val - taken_val)
+            if avail_val <= 0:
+                continue
 
-        previous_balance = max(0, allocated - new_taken)
-        sync_future_leave_allocations(
-            doc.employee,
-            doc.leave_type,
-            allocation.from_date,
-            previous_balance
-        )
+            deduct = min(avail_val, remaining)
+            new_taken = taken_val + deduct
+            frappe.db.set_value(
+                "Leave Allocation",
+                a.name,
+                "total_leaves_taken",
+                new_taken
+            )
+            remaining -= deduct
+
+            prev_balance = max(0, alloc_val - new_taken)
+            sync_future_leave_allocations(
+                doc.employee,
+                doc.leave_type,
+                a.from_date,
+                prev_balance
+            )
+
         frappe.db.commit()
+
+        total_allocated = sum(flt(a.total_leaves_allocated) for a in allocations)
+        total_taken = sum(flt(frappe.db.get_value("Leave Allocation", a.name, "total_leaves_taken") or 0) for a in allocations)
+        rem_balance = max(0, total_allocated - total_taken)
 
         frappe.msgprint(
             f"""
             <b>{doc.leave_type}</b> updated successfully.<br><br>
 
-            Allocated : <b>{allocated}</b><br>
-            Taken : <b>{new_taken}</b><br>
-            Remaining : <b>{previous_balance}</b>
+            Allocated : <b>{total_allocated}</b><br>
+            Taken : <b>{total_taken}</b><br>
+            Remaining : <b>{rem_balance}</b>
             """
         )
 
@@ -1382,47 +1435,56 @@ def update_leave_allocation(doc, method=None):
         updated_allocations = set()
 
         while current_date <= end_date:
-            allocation = frappe.get_value(
+            allocations = frappe.get_all(
                 "Leave Allocation",
-                {
+                filters={
                     "employee": doc.employee,
                     "leave_type": doc.leave_type,
                     "status": "Approved",
                     "from_date": ["<=", current_date],
                     "to_date": [">=", current_date],
                 },
-                [
+                fields=[
                     "name",
                     "from_date",
                     "total_leaves_allocated",
                     "total_leaves_taken",
                 ],
-                as_dict=True,
+                order_by="creation asc",
             )
 
-            if not allocation:
+            if not allocations:
                 frappe.throw(
                     f"No Leave Allocation found for {doc.employee} ({doc.leave_type}) on {current_date}"
                 )
 
-            allocated = flt(allocation.total_leaves_allocated)
-            taken = flt(allocation.total_leaves_taken)
-            available = allocated - taken
+            # Find an allocation that has available balance >= day_cost
+            selected_alloc = None
+            total_available = 0.0
 
-            if available < day_cost:
+            for a in allocations:
+                avail = flt(a.total_leaves_allocated) - flt(a.total_leaves_taken)
+                if avail > 0:
+                    total_available += avail
+                    if not selected_alloc and avail >= day_cost:
+                        selected_alloc = a
+
+            if not selected_alloc:
                 frappe.throw(
-                    f"Insufficient leave balance on {current_date}. Available: {available} days, Required: {day_cost} day."
+                    f"Insufficient leave balance on {current_date}. Available: {total_available} days, Required: {day_cost} day."
                 )
 
+            allocated = flt(selected_alloc.total_leaves_allocated)
+            taken = flt(selected_alloc.total_leaves_taken)
             new_taken = taken + day_cost
             frappe.db.set_value(
                 "Leave Allocation",
-                allocation.name,
+                selected_alloc.name,
                 "total_leaves_taken",
                 new_taken
             )
 
-            updated_allocations.add((allocation.name, allocation.from_date, allocated))
+            updated_allocations.add((selected_alloc.name, selected_alloc.from_date, allocated))
             current_date += timedelta(days=1)
 
         # Sync future leave allocations for all modified monthly allocations
@@ -1523,7 +1585,7 @@ def handle_leave_status_change(doc, method=None):
     # 🔹 Add Permission Hours if Leave Type = Permission
     # ============================================
     permission_row = ""
-    if str(doc.leave_type).strip().lower() == "permission":
+    if is_permission_leave_type(doc.leave_type):
         permission_hours = getattr(doc, "permission_hours", None)
         if permission_hours is not None:
             hrs = int(permission_hours) // 60
@@ -1597,14 +1659,14 @@ def handle_leave_status_change(doc, method=None):
 
 def has_approved_leave(employee, from_date, to_date, exclude_doc=None):
     """
-    Returns True if there is already an approved leave for the employee
+    Returns True if there is already an approved or pending leave for the employee
     that overlaps with the given date range.
     exclude_doc: optional Leave Application name to exclude from check (useful during updates)
     """
     filters = {
         "employee": employee,
-        "workflow_state": "Approved",
-        "docstatus": 1,
+        "workflow_state": ["in", ["Approved", "Pending", "Pending Approval"]],
+        "docstatus": ["<", 2],
         "from_date": ["<=", to_date],
         "to_date": [">=", from_date],
     }
@@ -1612,8 +1674,7 @@ def has_approved_leave(employee, from_date, to_date, exclude_doc=None):
     if exclude_doc:
         filters["name"] = ["!=", exclude_doc]
 
-    existing = frappe.get_all("Leave Application", filters=filters, fields=["name"])
-    return bool(existing)
+    return bool(frappe.db.exists("Leave Application", filters))
 
 
 @frappe.whitelist()

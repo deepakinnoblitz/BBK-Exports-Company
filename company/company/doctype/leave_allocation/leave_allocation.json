@@ -14,7 +14,8 @@
   "employee_name",
   "total_leaves_allocated",
   "total_leaves_taken",
-  "status"
+  "status",
+  "allocation_source"
  ],
  "fields": [
   {
@@ -74,6 +75,15 @@
    "in_standard_filter": 1,
    "label": "Employee Name",
    "read_only": 1
+  },
+  {
+   "default": "Manual",
+   "fieldname": "allocation_source",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Allocation Source",
+   "options": "Manual\nAuto"
   }
  ],
  "grid_page_length": 50,

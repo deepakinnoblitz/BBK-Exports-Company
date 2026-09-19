@@ -28,12 +28,15 @@ class LeaveAllocation(Document):
         if not self.from_date or not self.to_date:
             return
 
+        source = self.allocation_source or "Manual"
+
         overlapping = frappe.db.sql(
             """
             SELECT name
             FROM `tabLeave Allocation`
             WHERE employee=%s
             AND leave_type=%s
+            AND allocation_source=%s
             AND docstatus < 2
             AND name != %s
             AND (
@@ -47,6 +50,7 @@ class LeaveAllocation(Document):
             (
                 self.employee,
                 self.leave_type,
+                source,
                 self.name or "New",
                 self.from_date,
                 self.to_date,
@@ -59,10 +63,11 @@ class LeaveAllocation(Document):
         if overlapping:
             frappe.throw(
                 _(
-                    "Employee {0} already has a {1} allocation for an overlapping period: {2}"
+                    "Employee {0} already has a {1} ({2}) allocation for an overlapping period: {3}"
                 ).format(
                     self.employee,
                     self.leave_type,
+                    source,
                     overlapping[0].name,
                 )
             )

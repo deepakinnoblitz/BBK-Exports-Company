@@ -2251,7 +2251,8 @@ def get_employee_dashboard_data(attendance_range="This Month"):
                 la.leave_type,
                 la.total_leaves_allocated,
                 la.total_leaves_taken,
-                lt.is_paid
+                lt.is_paid,
+                lt.is_permission
             FROM `tabLeave Allocation` la
             INNER JOIN `tabLeave Type` lt
                 ON lt.name = la.leave_type
@@ -2278,7 +2279,7 @@ def get_employee_dashboard_data(attendance_range="This Month"):
             taken = flt(l.total_leaves_taken)
 
             # Permission (separate)
-            if l.leave_type == "Permission":
+            if l.is_permission or l.leave_type == "Permission":
                 permission_allocated += allocated
                 permission_taken += taken
 
@@ -3969,17 +3970,125 @@ def get_active_leave_types():
             "reset_frequency",
             "restrict_during_probation",
             "probation_period_months",
+            "allocation_basis",
+            "min_present_days",
+            "days_worked_per_leave",
+            "count_half_day_as",
+            "include_approved_paid_leaves",
         ],
         order_by="creation asc",
     )
 
+def get_month_working_days(year: int, month: int):
+    """
+    Computes scheduled working days in a month.
+    Excludes Sundays, 2nd and 4th Saturdays, and non-working days from Holiday List.
+    """
+    import calendar
+    from frappe.utils import getdate
+
+    num_days = calendar.monthrange(year, month)[1]
+    month_start = getdate(f"{year}-{month:02d}-01")
+    month_end = getdate(f"{year}-{month:02d}-{num_days:02d}")
+
+    holiday_list = frappe.db.get_value(
+        "Holiday List",
+        {"month_year": str(month), "year": year},
+        "name"
+    ) or frappe.db.get_value("Holiday List", {}, "name")
+
+    holiday_dates = set()
+    if holiday_list:
+        h_records = frappe.db.sql("""
+            SELECT holiday_date
+            FROM `tabHolidays`
+            WHERE parent = %s
+            AND holiday_date BETWEEN %s AND %s
+            AND is_working_day = 0
+        """, (holiday_list, str(month_start), str(month_end)), as_dict=True)
+        holiday_dates = {getdate(h.holiday_date) for h in h_records}
+
+    working_days = 0
+    saturday_count = 0
+    for day in range(1, num_days + 1):
+        d = getdate(f"{year}-{month:02d}-{day:02d}")
+        weekday = d.weekday()  # Monday=0, Sunday=6
+        is_off = False
+        if weekday == 6:  # Sunday
+            is_off = True
+        elif weekday == 5:  # Saturday
+            saturday_count += 1
+            if saturday_count in [2, 4]:
+                is_off = True
+        if d in holiday_dates:
+            is_off = True
+        if not is_off:
+            working_days += 1
+
+    return working_days, num_days
+
+def get_employee_month_attendance_summary(
+    employee: str,
+    month_start,
+    month_end,
+    working_days: int,
+    include_paid_leaves: bool = False,
+    half_day_weight: float = 0.5,
+    paid_leave_names: set = None,
+):
+    attendances = frappe.get_all(
+        "Attendance",
+        filters={
+            "employee": employee,
+            "attendance_date": ["between", [month_start, month_end]],
+            "docstatus": ["<", 2],
+        },
+        fields=["attendance_date", "status", "leave_type"],
+    )
+
+    present_days = 0.0
+    half_days = 0
+    absent_days = 0
+    paid_leaves_counted = 0
+
+    for att in attendances:
+        st = att.status
+        if st == "Present":
+            present_days += 1.0
+        elif st == "Half Day":
+            present_days += float(half_day_weight)
+            half_days += 1
+        elif st in ["On Leave", "Leave"]:
+            if include_paid_leaves and paid_leave_names and (att.leave_type in paid_leave_names):
+                present_days += 1.0
+                paid_leaves_counted += 1
+        elif st == "Absent":
+            absent_days += 1
+
+    attendance_pct = round((present_days / working_days * 100), 1) if working_days > 0 else 0.0
+    is_full_month = (present_days >= working_days) and (working_days > 0)
+
+    return {
+        "working_days": working_days,
+        "present_days": present_days,
+        "half_days": half_days,
+        "absent_days": absent_days,
+        "paid_leaves_counted": paid_leaves_counted,
+        "attendance_pct": attendance_pct,
+        "is_full_month_present": is_full_month,
+    }
+
 @frappe.whitelist()
-def get_leave_allocation_preview(year: int, month: int):
+def get_leave_allocation_preview(
+    year: int,
+    month: int,
+    attendance_month: int = None,
+    attendance_year: int = None
+):
     """
     Returns a preview of leave allocations for all active employees
-    based on the Leave Type master.
+    based on the Leave Type master and attendance criteria.
     """
-
     year = int(year)
     month = int(month)
 
@@ -3988,6 +4097,21 @@ def get_leave_allocation_preview(year: int, month: int):
 
     prev_month_start = get_first_day(add_months(month_start, -1))
     prev_month_end = get_last_day(add_months(month_start, -1))
+
+    # Attendance evaluation month
+    if not attendance_month:
+        att_date = add_months(datetime(year, month, 1), -1)
+        attendance_year = att_date.year
+        attendance_month = att_date.month
+    else:
+        attendance_month = int(attendance_month)
+        attendance_year = int(attendance_year or year)
+
+    att_month_start = get_first_day(datetime(attendance_year, attendance_month, 1))
+    att_month_end = get_last_day(datetime(attendance_year, attendance_month, 1))
+    att_working_days, _ = get_month_working_days(attendance_year, attendance_month)
+
+    paid_lts = set(frappe.get_all("Leave Type", filters={"is_paid": 1}, pluck="name"))
 
     freq_map = {
         "Every 3 months": 3,
@@ -4015,18 +4139,14 @@ def get_leave_allocation_preview(year: int, month: int):
     preview_data = []
 
     for emp in employees:
-
         allocations = []
 
         # ---------------------------------
         # Employee Probation Status (UI)
         # ---------------------------------
         in_probation = False
-
         if emp.date_of_joining and not emp.skip_probation:
-
             current_date = getdate(today())
-
             in_probation = any(
                 add_months(
                     getdate(emp.date_of_joining),
@@ -4036,13 +4156,22 @@ def get_leave_allocation_preview(year: int, month: int):
                 if lt.restrict_during_probation
             )
 
-        for leave in leave_types:
+        # Baseline attendance for this employee
+        emp_att = get_employee_month_attendance_summary(
+            emp.name,
+            att_month_start,
+            att_month_end,
+            att_working_days,
+            include_paid_leaves=False,
+            half_day_weight=0.5,
+            paid_leave_names=paid_lts
+        )
 
+        for leave in leave_types:
             # ---------------------------------
             # Leave Type Probation Check
             # ---------------------------------
             leave_in_probation = False
-
             if (
                 leave.restrict_during_probation
                 and not emp.skip_probation
@@ -4052,13 +4181,12 @@ def get_leave_allocation_preview(year: int, month: int):
                     getdate(emp.date_of_joining),
                     leave.probation_period_months or 3,
                 )
-
                 leave_in_probation = probation_end > month_end
 
             if leave_in_probation:
                 continue
 
-            # Already allocated?
+            # Already allocated via Manual?
             exists = frappe.db.exists(
                 "Leave Allocation",
                 {
@@ -4066,31 +4194,24 @@ def get_leave_allocation_preview(year: int, month: int):
                     "leave_type": leave.name,
                     "from_date": month_start,
                     "to_date": month_end,
+                    "allocation_source": "Manual",
                     "status": "Approved",
                 },
             )
 
-            carry_forward_balance = 0
+            basis = leave.get("allocation_basis") or "Fixed / Unconditional"
+            criteria_met = True
+            criteria_reason = "Fixed / Standard Allocation"
             base_count = leave.max_leaves or 0
 
-            # -----------------------------
             # Carry Forward Calculation
-            # -----------------------------
+            carry_forward_balance = 0
             if leave.carry_forward:
-
                 frequency = leave.reset_frequency or "Every 3 months"
-
-                reset_interval = freq_map.get(
-                    frequency,
-                    3,
-                )
-
-                is_reset_month = (
-                    (month - 1) % reset_interval
-                ) == 0
+                reset_interval = freq_map.get(frequency, 3)
+                is_reset_month = ((month - 1) % reset_interval) == 0
 
                 if not is_reset_month:
-
                     prev_alloc = frappe.get_value(
                         "Leave Allocation",
                         {
@@ -4108,21 +4229,21 @@ def get_leave_allocation_preview(year: int, month: int):
                     )
 
                     if prev_alloc:
-
-                        balance = (
-                            flt(prev_alloc.total_leaves_allocated)
-                            - flt(prev_alloc.total_leaves_taken)
-                        )
-
+                        balance = flt(prev_alloc.total_leaves_allocated) - flt(prev_alloc.total_leaves_taken)
                         if balance > 0:
                             carry_forward_balance = balance
+
+            total_leaves = base_count + carry_forward_balance
 
             allocations.append({
                 "leave_type": leave.name,
                 "leave_type_name": leave.leave_type_name,
+                "allocation_basis": basis,
+                "criteria_met": criteria_met,
+                "criteria_reason": criteria_reason,
                 "base_leaves": base_count,
                 "carry_forward_balance": carry_forward_balance,
-                "total_leaves": base_count + carry_forward_balance,
+                "total_leaves": total_leaves,
                 "exists": bool(exists),
                 "is_paid": leave.is_paid,
                 "carry_forward": leave.carry_forward,
@@ -4135,20 +4256,32 @@ def get_leave_allocation_preview(year: int, month: int):
             "employee_name": emp.employee_name,
             "date_of_joining": emp.date_of_joining,
             "in_probation": in_probation,
+            "working_days": emp_att["working_days"],
+            "present_days": emp_att["present_days"],
+            "attendance_pct": emp_att["attendance_pct"],
+            "is_full_month_present": emp_att["is_full_month_present"],
+            "attendance_evaluated_month": f"{attendance_year}-{attendance_month:02d}",
             "allocations": allocations,
         })
 
     return preview_data
 
 @frappe.whitelist()
-def auto_allocate_monthly_leaves(year: int, month: int):
+def auto_allocate_monthly_leaves(
+    year: int,
+    month: int,
+    only_conditional: bool = False,
+    attendance_month: int = None,
+    attendance_year: int = None
+):
     """
     Automatically allocate leaves for all active employees
-    based on the Leave Type master.
+    based on the Leave Type master and attendance criteria.
+    If only_conditional=True, only allocates leave types with attendance criteria.
     """
-
     year = int(year)
     month = int(month)
+    only_conditional = str(only_conditional).lower() in ("1", "true", "yes")
 
     try:
         month_start = get_first_day(datetime(year, month, 1))
@@ -4156,6 +4289,21 @@ def auto_allocate_monthly_leaves(year: int, month: int):
 
         prev_month_start = get_first_day(add_months(month_start, -1))
         prev_month_end = get_last_day(add_months(month_start, -1))
+
+        # Attendance evaluation month
+        if not attendance_month:
+            att_date = add_months(datetime(year, month, 1), -1)
+            attendance_year = att_date.year
+            attendance_month = att_date.month
+        else:
+            attendance_month = int(attendance_month)
+            attendance_year = int(attendance_year or year)
+
+        att_month_start = get_first_day(datetime(attendance_year, attendance_month, 1))
+        att_month_end = get_last_day(datetime(attendance_year, attendance_month, 1))
+        att_working_days, _ = get_month_working_days(attendance_year, attendance_month)
+
+        paid_lts = set(frappe.get_all("Leave Type", filters={"is_paid": 1}, pluck="name"))
 
         # Active Employees
         employees = frappe.get_all(
@@ -4172,6 +4320,19 @@ def auto_allocate_monthly_leaves(year: int, month: int):
 
         # Active Leave Types
         leave_types = get_active_leave_types()
+        if only_conditional:
+            leave_types = [
+                lt for lt in leave_types
+                if (lt.allocation_basis or "Fixed / Unconditional") != "Fixed / Unconditional"
+            ]
+            if not leave_types:
+                return {
+                    "created_count": 0,
+                    "skipped_count": 0,
+                    "created_details": [],
+                    "errors": [],
+                    "message": "No conditional leave types configured",
+                }
 
         freq_map = {
             "Every 3 months": 3,
@@ -4186,13 +4347,18 @@ def auto_allocate_monthly_leaves(year: int, month: int):
         created_details = []
 
         for emp in employees:
+            emp_att = get_employee_month_attendance_summary(
+                emp.name,
+                att_month_start,
+                att_month_end,
+                att_working_days,
+                include_paid_leaves=False,
+                half_day_weight=0.5,
+                paid_leave_names=paid_lts
+            )
 
-            # ------------------------
-            # Loop Through Leave Types
-            # ------------------------
             for leave in leave_types:
-
-                # Probation
+                # Probation check
                 if (
                     leave.restrict_during_probation
                     and not emp.skip_probation
@@ -4202,16 +4368,17 @@ def auto_allocate_monthly_leaves(year: int, month: int):
                         getdate(emp.date_of_joining),
                         leave.probation_period_months or 3,
                     )
-
                     if probation_end > month_end:
                         continue
 
                 leave_type = leave.leave_type_name
                 base_leave_count = leave.max_leaves or 0
 
-                try:
+                is_cron = bool(only_conditional)
+                source = "Auto" if is_cron else "Manual"
 
-                    # Skip if already allocated
+                try:
+                    # Skip if already allocated for this source
                     if frappe.db.exists(
                         "Leave Allocation",
                         {
@@ -4219,75 +4386,97 @@ def auto_allocate_monthly_leaves(year: int, month: int):
                             "leave_type": leave.name,
                             "from_date": month_start,
                             "to_date": month_end,
+                            "allocation_source": source,
                             "status": "Approved",
                         },
                     ):
                         skipped_count += 1
                         continue
 
-                    # Previous Allocation
-                    prev_alloc = frappe.get_value(
-                        "Leave Allocation",
-                        {
-                            "employee": emp.name,
-                            "leave_type": leave.name,
-                            "from_date": prev_month_start,
-                            "to_date": prev_month_end,
-                            "status": "Approved",
-                        },
-                        [
-                            "total_leaves_allocated",
-                            "total_leaves_taken",
-                        ],
-                        as_dict=True,
-                    )
+                    # Attendance Criteria Evaluation (Only for Scheduled Cron)
+                    if is_cron:
+                        basis = leave.get("allocation_basis") or "Fixed / Unconditional"
+                        min_present = leave.get("min_present_days")
+                        days_per_leave = leave.get("days_worked_per_leave") or 20
+                        half_day_weight = 0.0 if leave.get("count_half_day_as") == "0 (Not Present)" else 0.5
+                        include_paid = bool(leave.get("include_approved_paid_leaves"))
 
-                    carry_forward_balance = 0
-                    leave_count = base_leave_count
-
-                    # ------------------------
-                    # Carry Forward Logic
-                    # ------------------------
-                    if leave.carry_forward:
-
-                        frequency = (
-                            leave.reset_frequency
-                            or "Every 3 months"
-                        )
-
-                        reset_interval = freq_map.get(
-                            frequency,
-                            3,
-                        )
-
-                        is_reset_month = (
-                            (month - 1) % reset_interval
-                        ) == 0
-
-                        if is_reset_month:
-                            carry_forward_balance = 0
-
-                        elif prev_alloc:
-
-                            balance = (
-                                flt(
-                                    prev_alloc.total_leaves_allocated
-                                )
-                                - flt(
-                                    prev_alloc.total_leaves_taken
-                                )
+                        if half_day_weight != 0.5 or include_paid:
+                            lt_att = get_employee_month_attendance_summary(
+                                emp.name,
+                                att_month_start,
+                                att_month_end,
+                                att_working_days,
+                                include_paid_leaves=include_paid,
+                                half_day_weight=half_day_weight,
+                                paid_leave_names=paid_lts
                             )
+                        else:
+                            lt_att = emp_att
 
-                            if balance > 0:
-                                carry_forward_balance = balance
+                        criteria_met = True
+                        earned_count = base_leave_count
 
-                    total_allocation = (
-                        leave_count + carry_forward_balance
-                    )
+                        if basis == "Full Month Present (100% Attendance)":
+                            if not lt_att["is_full_month_present"]:
+                                criteria_met = False
+                                earned_count = 0
+                        elif basis == "Minimum Present Days":
+                            target = min_present or lt_att["working_days"]
+                            if lt_att["present_days"] < target:
+                                criteria_met = False
+                                earned_count = 0
+                        elif basis == "Per N Days Worked":
+                            ratio = days_per_leave or 20
+                            earned_count = int(lt_att["present_days"] // ratio)
+                            if earned_count <= 0:
+                                criteria_met = False
+                    else:
+                        # Manual / UI Run: No attendance calculation, direct standard allocation
+                        criteria_met = True
+                        earned_count = base_leave_count
 
-                    # ------------------------
+                    # Carry Forward Calculation
+                    carry_forward_balance = 0
+                    if leave.carry_forward:
+                        frequency = leave.reset_frequency or "Every 3 months"
+                        reset_interval = freq_map.get(frequency, 3)
+                        is_reset_month = ((month - 1) % reset_interval) == 0
+
+                        if not is_reset_month:
+                            prev_alloc = frappe.get_value(
+                                "Leave Allocation",
+                                {
+                                    "employee": emp.name,
+                                    "leave_type": leave.name,
+                                    "from_date": prev_month_start,
+                                    "to_date": prev_month_end,
+                                    "status": "Approved",
+                                },
+                                [
+                                    "total_leaves_allocated",
+                                    "total_leaves_taken",
+                                ],
+                                as_dict=True,
+                            )
+                            if prev_alloc:
+                                balance = flt(prev_alloc.total_leaves_allocated) - flt(prev_alloc.total_leaves_taken)
+                                if balance > 0:
+                                    carry_forward_balance = balance
+
+                    total_allocation = earned_count + carry_forward_balance
+
+                    # If not eligible and no carry forward balance, do not allocate
+                    if not criteria_met and carry_forward_balance <= 0:
+                        skipped_count += 1
+                        continue
+
+                    # If total allocation is 0, skip
+                    if total_allocation <= 0:
+                        skipped_count += 1
+                        continue
+
                     # Create Allocation
-                    # ------------------------
                     allocation = frappe.get_doc(
                         {
                             "doctype": "Leave Allocation",
@@ -4298,16 +4487,11 @@ def auto_allocate_monthly_leaves(year: int, month: int):
                             "total_leaves_allocated": total_allocation,
                             "total_leaves_taken": 0,
                             "status": "Approved",
+                            "allocation_source": source,
                         }
                     )
-
-                    allocation.insert(
-                        ignore_permissions=True,
-                        ignore_mandatory=True,
-                    )
-
+                    allocation.insert(ignore_permissions=True, ignore_mandatory=True)
                     created_count += 1
-
                     created_details.append(
                         {
                             "employee_name": emp.employee_name,
@@ -4319,11 +4503,23 @@ def auto_allocate_monthly_leaves(year: int, month: int):
                     )
 
                 except Exception as e:
-                    errors.append(
-                        f"{emp.employee_id} - {leave_type} - {str(e)}"
-                    )
+                    errors.append(f"{emp.employee_id} - {leave_type} - {str(e)}")
 
         frappe.db.commit()
+
+        # Create Auto Leave Allocation Log record
+        log_type = "Scheduled Cron" if (only_conditional and frappe.session.user == "Administrator") else "Manual Run"
+        create_auto_leave_allocation_log(
+            year=year,
+            month=month,
+            created_count=created_count,
+            skipped_count=skipped_count,
+            created_details=created_details,
+            errors=errors,
+            execution_type=log_type,
+            attendance_month=attendance_month,
+            attendance_year=attendance_year,
+        )
 
         return {
             "created_count": created_count,
@@ -4334,6 +4530,204 @@ def auto_allocate_monthly_leaves(year: int, month: int):
 
     except Exception as e:
         frappe.throw(f"Error in auto leave allocation: {e}")
+
+
+def create_auto_leave_allocation_log(
+    year,
+    month,
+    created_count,
+    skipped_count,
+    created_details,
+    errors,
+    execution_type="Manual Run",
+    attendance_month=None,
+    attendance_year=None,
+):
+    import json
+    from frappe.utils import now_datetime, get_first_day, get_last_day
+    from datetime import datetime
+
+    try:
+        month_start = get_first_day(datetime(int(year), int(month), 1))
+        month_end = get_last_day(datetime(int(year), int(month), 1))
+        target_period = f"{month_start.strftime('%d %b %Y')} - {month_end.strftime('%d %b %Y')}"
+
+        att_month_str = ""
+        if attendance_month and attendance_year:
+            att_date = datetime(int(attendance_year), int(attendance_month), 1)
+            att_month_str = att_date.strftime('%B %Y')
+
+        status = "Success"
+        if errors and created_count == 0:
+            status = "Failed"
+        elif errors:
+            status = "Partial"
+
+        log_doc = frappe.get_doc({
+            "doctype": "Auto Leave Allocation Log",
+            "execution_date": now_datetime(),
+            "month": int(month),
+            "year": int(year),
+            "target_period": target_period,
+            "attendance_evaluated_month": att_month_str,
+            "executed_by": frappe.session.user or "Administrator",
+            "execution_type": execution_type,
+            "created_count": int(created_count),
+            "skipped_count": int(skipped_count),
+            "error_count": len(errors) if errors else 0,
+            "status": status,
+            "details": json.dumps(created_details or [], default=str),
+            "errors_json": json.dumps(errors or [], default=str),
+        })
+        log_doc.insert(ignore_permissions=True)
+        frappe.db.commit()
+        return log_doc.name
+    except Exception as e:
+        frappe.log_error(f"Failed to create Auto Leave Allocation Log: {e}", "Auto Leave Allocation Log")
+        return None
+
+
+@frappe.whitelist()
+def get_auto_leave_allocation_logs(page=1, limit=10, search=None, status=None, execution_type=None, year=None, month=None, sort_by="execution_date_desc"):
+    page = int(page or 1)
+    limit = int(limit or 10)
+    start = (page - 1) * limit
+
+    filters = {}
+    if status and status != "all":
+        filters["status"] = status
+    if execution_type and execution_type != "all":
+        filters["execution_type"] = execution_type
+    if year and str(year) != "all":
+        filters["year"] = int(year)
+    if month and str(month) != "all":
+        filters["month"] = int(month)
+
+    or_filters = []
+    if search and search.strip():
+        s = f"%{search.strip()}%"
+        or_filters = [
+            ["Auto Leave Allocation Log", "name", "like", s],
+            ["Auto Leave Allocation Log", "target_period", "like", s],
+            ["Auto Leave Allocation Log", "executed_by", "like", s],
+            ["Auto Leave Allocation Log", "execution_type", "like", s],
+        ]
+
+    order_by = "execution_date desc"
+    if sort_by in ("creation_asc", "execution_date_asc"):
+        order_by = "execution_date asc"
+    elif sort_by == "created_count_desc":
+        order_by = "created_count desc"
+    elif sort_by == "created_count_asc":
+        order_by = "created_count asc"
+
+    if or_filters:
+        total = len(frappe.get_all("Auto Leave Allocation Log", filters=filters, or_filters=or_filters, pluck="name"))
+    else:
+        total = frappe.db.count("Auto Leave Allocation Log", filters=filters)
+
+    logs = frappe.get_all(
+        "Auto Leave Allocation Log",
+        filters=filters,
+        or_filters=or_filters if or_filters else None,
+        fields=[
+            "name",
+            "execution_date",
+            "month",
+            "year",
+            "target_period",
+            "attendance_evaluated_month",
+            "executed_by",
+            "execution_type",
+            "created_count",
+            "skipped_count",
+            "error_count",
+            "status",
+        ],
+        order_by=order_by,
+        start=start,
+        page_length=limit
+    )
+
+    return {
+        "data": logs,
+        "total": total,
+        "page": page,
+        "limit": limit
+    }
+
+
+@frappe.whitelist()
+def get_auto_leave_allocation_log_details(log_id):
+    import json
+    if not log_id:
+        frappe.throw("log_id is required")
+
+    log = frappe.get_doc("Auto Leave Allocation Log", log_id)
+    details = []
+    errors = []
+    if log.details:
+        try:
+            details = json.loads(log.details)
+        except Exception:
+            details = []
+    if log.errors_json:
+        try:
+            errors = json.loads(log.errors_json)
+        except Exception:
+            errors = []
+
+    return {
+        "name": log.name,
+        "execution_date": log.execution_date,
+        "month": log.month,
+        "year": log.year,
+        "target_period": log.target_period,
+        "attendance_evaluated_month": log.attendance_evaluated_month,
+        "executed_by": log.executed_by,
+        "execution_type": log.execution_type,
+        "created_count": log.created_count,
+        "skipped_count": log.skipped_count,
+        "error_count": log.error_count,
+        "status": log.status,
+        "details": details,
+        "errors": errors,
+    }
+
+
+def cron_allocate_conditional_leaves():
+    """
+    Scheduled cron job running on the 1st of every month at 1:00 AM.
+    Automatically allocates leaves ONLY for Leave Types configured with
+    attendance/service-day criteria, based on the previous completed month's attendance.
+    Regular (Fixed / Unconditional) leaves are NOT touched.
+    """
+    from frappe.utils import today, getdate, add_months
+
+    current_date = getdate(today())
+    target_year = current_date.year
+    target_month = current_date.month
+
+    # Previous completed month attendance
+    prev_date = add_months(current_date, -1)
+    att_year = prev_date.year
+    att_month = prev_date.month
+
+    frappe.logger().info(
+        f"[Leave Allocation Cron] Running conditional leave allocation for {target_year}-{target_month:02d} "
+        f"evaluating attendance of {att_year}-{att_month:02d}"
+    )
+
+    result = auto_allocate_monthly_leaves(
+        year=target_year,
+        month=target_month,
+        only_conditional=True,
+        attendance_month=att_month,
+        attendance_year=att_year,
+    )
+
+    frappe.logger().info(f"[Leave Allocation Cron] Completed: {result}")
+    return result
 
 
 @frappe.whitelist()
@@ -4603,3 +4997,37 @@ def get_meta_lead_info(lead_id):
     return None
 
 
+@frappe.whitelist()
+def get_employee_applied_leave_dates(employee):
+    """
+    Returns list of date strings (YYYY-MM-DD) for which the employee
+    already has an approved or pending leave application.
+    """
+    if not employee:
+        return []
+
+    leaves = frappe.get_all(
+        "Leave Application",
+        filters={
+            "employee": employee,
+            "workflow_state": ["in", ["Approved", "Pending", "Pending Approval"]],
+            "docstatus": ["<", 2],
+        },
+        fields=["from_date", "to_date"],
+    )
+
+    from frappe.utils import getdate
+    from datetime import timedelta
+
+    applied_dates = set()
+    for l in leaves:
+        if not l.from_date or not l.to_date:
+            continue
+        start = getdate(l.from_date)
+        end = getdate(l.to_date)
+        curr = start
+        while curr <= end:
+            applied_dates.add(curr.strftime("%Y-%m-%d"))
+            curr += timedelta(days=1)
+
+    return sorted(list(applied_dates))
