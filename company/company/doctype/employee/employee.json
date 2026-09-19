@@ -37,6 +37,7 @@
   "shift",
   "bus_travel_route",
   "status",
+  "date_of_leaving",
   "user",
   "evaluation_score",
   "evaluation_status",
@@ -125,6 +126,12 @@
    "in_standard_filter": 1,
    "label": "Status",
    "options": "Active\nInactive"
+  },
+  {
+   "depends_on": "eval:doc.status == 'Inactive'",
+   "fieldname": "date_of_leaving",
+   "fieldtype": "Date",
+   "label": "Date of Leaving (DOL)"
   },
   {
    "fieldname": "bank_account",

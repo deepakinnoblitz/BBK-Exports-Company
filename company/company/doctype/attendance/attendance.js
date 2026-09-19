@@ -210,50 +210,80 @@ function calculate_working_hours(frm) {
         return;
     }
 
-    let reg_hours = Math.floor(total_minutes / 60);
-    let reg_minutes = total_minutes % 60;
-    let hours_decimal = (total_minutes / 60).toFixed(2);
+    function parseDurationMinutes(timeStr) {
+        if (!timeStr || timeStr === "00:00" || timeStr === "00:00:00") return 0;
+        let parts = String(timeStr).split(":");
+        let h = parseInt(parts[0]) || 0;
+        let m = parseInt(parts[1]) || 0;
+        return h * 60 + m;
+    }
 
-    frm.set_value("working_hours_display", `${reg_hours}:${reg_minutes.toString().padStart(2, '0')}`);
-    frm.set_value("working_hours_decimal", hours_decimal);
+    function applyHoursAndOvertime(shift) {
+        let totalBreakMinutes = 0;
+        if (shift) {
+            totalBreakMinutes = parseDurationMinutes(shift.lunch_hours) + parseDurationMinutes(shift.break_hours);
+        }
 
-    if (!frm.doc.leave_type) {
-        if (total_minutes < 4 * 60) {
-            frm.set_value("status", "Half Day");
+        let netWorkingMinutes = total_minutes > totalBreakMinutes ? (total_minutes - totalBreakMinutes) : total_minutes;
+
+        let reg_hours = Math.floor(netWorkingMinutes / 60);
+        let reg_minutes = netWorkingMinutes % 60;
+        let hours_decimal = (netWorkingMinutes / 60).toFixed(2);
+
+        frm.set_value("working_hours_display", `${reg_hours}:${reg_minutes.toString().padStart(2, '0')}`);
+        frm.set_value("working_hours_decimal", hours_decimal);
+
+        if (!frm.doc.leave_type) {
+            if (netWorkingMinutes < 4 * 60) {
+                frm.set_value("status", "Half Day");
+            } else {
+                frm.set_value("status", "Present");
+            }
+        }
+
+        if (shift && shift.end_time) {
+            let s_end = moment(shift.end_time, "HH:mm:ss");
+            let s_duration_mins = 9 * 60;
+            if (shift.start_time) {
+                let s_start = moment(shift.start_time, "HH:mm:ss");
+                if (s_end.isBefore(s_start)) s_end.add(1, "day");
+                s_duration_mins = s_end.diff(s_start, "minutes");
+            }
+            let shift_standard_mins = Math.max(0, s_duration_mins - totalBreakMinutes);
+            let post_shift_mins = Math.max(0, end.diff(s_end, "minutes"));
+            let excess_worked_mins = Math.max(0, netWorkingMinutes - shift_standard_mins);
+
+            let extra_mins = post_shift_mins > 0 ? Math.min(post_shift_mins, excess_worked_mins) : 0;
+            let min_thresh = parseInt(shift.min_overtime_minutes) || 0;
+            if (extra_mins < min_thresh) extra_mins = 0;
+
+            let unoff_h = Math.floor(extra_mins / 60);
+            let unoff_m = extra_mins % 60;
+            frm.set_value("unofficial_overtime", `${unoff_h}:${unoff_m.toString().padStart(2, '0')}`);
+
+            let off_mins = 0;
+            if (shift.allow_overtime) {
+                let max_off = (parseFloat(shift.overtime_hours) || 0) * 60;
+                off_mins = Math.min(extra_mins, max_off);
+            }
+            let off_h = Math.floor(off_mins / 60);
+            let off_m = off_mins % 60;
+            frm.set_value("official_overtime", `${off_h}:${off_m.toString().padStart(2, '0')}`);
         } else {
-            frm.set_value("status", "Present");
+            let overtime_minutes = Math.max(0, netWorkingMinutes - 9 * 60);
+            let ot_hours = Math.floor(overtime_minutes / 60);
+            let ot_mins = overtime_minutes % 60;
+            frm.set_value("official_overtime", `${ot_hours}:${ot_mins.toString().padStart(2, '0')}`);
+            frm.set_value("unofficial_overtime", `${ot_hours}:${ot_mins.toString().padStart(2, '0')}`);
         }
     }
 
-    // Overtime Calculation
     if (frm.doc.shift) {
-        frappe.db.get_value("Shift", frm.doc.shift, ["start_time", "end_time", "allow_overtime", "overtime_hours", "min_overtime_minutes"], function (shift) {
-            if (shift && shift.end_time) {
-                let s_end = moment(shift.end_time, "HH:mm:ss");
-                let extra_mins = Math.max(0, end.diff(s_end, "minutes"));
-                let min_thresh = parseInt(shift.min_overtime_minutes) || 0;
-                if (extra_mins < min_thresh) extra_mins = 0;
-
-                let unoff_h = Math.floor(extra_mins / 60);
-                let unoff_m = extra_mins % 60;
-                frm.set_value("unofficial_overtime", `${unoff_h}:${unoff_m.toString().padStart(2, '0')}`);
-
-                let off_mins = 0;
-                if (shift.allow_overtime) {
-                    let max_off = (parseFloat(shift.overtime_hours) || 0) * 60;
-                    off_mins = Math.min(extra_mins, max_off);
-                }
-                let off_h = Math.floor(off_mins / 60);
-                let off_m = off_mins % 60;
-                frm.set_value("official_overtime", `${off_h}:${off_m.toString().padStart(2, '0')}`);
-            }
+        frappe.db.get_value("Shift", frm.doc.shift, ["start_time", "end_time", "lunch_hours", "break_hours", "allow_overtime", "overtime_hours", "min_overtime_minutes"], function (shift) {
+            applyHoursAndOvertime(shift);
         });
     } else {
-        let overtime_minutes = Math.max(0, total_minutes - 9 * 60);
-        let ot_hours = Math.floor(overtime_minutes / 60);
-        let ot_mins = overtime_minutes % 60;
-        frm.set_value("official_overtime", `${ot_hours}:${ot_mins.toString().padStart(2, '0')}`);
-        frm.set_value("unofficial_overtime", `${ot_hours}:${ot_mins.toString().padStart(2, '0')}`);
+        applyHoursAndOvertime(null);
     }
 }
 

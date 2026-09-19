@@ -10,6 +10,8 @@
   "start_time",
   "end_time",
   "status",
+  "lunch_hours",
+  "break_hours",
   "allow_overtime",
   "overtime_hours",
   "min_overtime_minutes",
@@ -40,6 +42,18 @@
    "fieldtype": "Select",
    "label": "Status",
    "options": "Active\nInactive"
+  },
+  {
+   "fieldname": "lunch_hours",
+   "fieldtype": "Time",
+   "in_list_view": 1,
+   "label": "Lunch Hours"
+  },
+  {
+   "fieldname": "break_hours",
+   "fieldtype": "Time",
+   "in_list_view": 1,
+   "label": "Break Hours"
   },
   {
    "default": "0",

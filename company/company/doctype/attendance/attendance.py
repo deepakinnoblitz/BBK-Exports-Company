@@ -135,7 +135,46 @@ class Attendance(Document):
             return
 
         # ------------------------------
-        # 3️⃣ CALCULATE WORKING HOURS
+        # 3️⃣ FETCH SHIFT & DURATION SETTINGS
+        #------------------------------
+        if not self.shift and self.employee:
+            self.shift = frappe.db.get_value("Employee", self.employee, "shift")
+
+        shift_doc = None
+        if self.shift:
+            shift_doc = frappe.db.get_value(
+                "Shift",
+                self.shift,
+                [
+                    "start_time",
+                    "end_time",
+                    "lunch_hours",
+                    "break_hours",
+                    "allow_overtime",
+                    "overtime_hours",
+                    "min_overtime_minutes"
+                ],
+                as_dict=True
+            )
+
+        def _parse_duration_minutes(time_val):
+            time_str = _to_time_str(time_val)
+            if not time_str:
+                return 0
+            try:
+                parts = time_str.split(":")
+                h = int(parts[0])
+                m = int(parts[1]) if len(parts) > 1 else 0
+                return h * 60 + m
+            except Exception:
+                return 0
+
+        lunch_minutes = _parse_duration_minutes(shift_doc.get("lunch_hours")) if shift_doc else 0
+        break_minutes = _parse_duration_minutes(shift_doc.get("break_hours")) if shift_doc else 0
+        total_break_minutes = lunch_minutes + break_minutes
+
+        # ------------------------------
+        # 4️⃣ CALCULATE WORKING HOURS
         #------------------------------
         fmt = "%H:%M:%S"
         start = datetime.strptime(in_time, fmt)
@@ -155,38 +194,31 @@ class Attendance(Document):
             self.unofficial_overtime = "0:00"
             return
 
-        reg_hours = total_minutes // 60
-        reg_minutes = total_minutes % 60
+        # Deduct lunch & break hours from elapsed time
+        if total_minutes > total_break_minutes:
+            net_working_minutes = total_minutes - total_break_minutes
+        else:
+            net_working_minutes = total_minutes
+
+        reg_hours = net_working_minutes // 60
+        reg_minutes = net_working_minutes % 60
         self.working_hours_display = f"{reg_hours}:{reg_minutes:02d}"
-        self.working_hours_decimal = round(total_minutes / 60, 2)
+        self.working_hours_decimal = round(net_working_minutes / 60, 2)
 
         # ------------------------------
-        # 4️⃣ AUTO STATUS BASED ON HOURS
+        # 5️⃣ AUTO STATUS BASED ON HOURS
         #------------------------------
         # Only auto-set if user did NOT pick a leave type
         if not self.leave_type:
-            if total_minutes < 5 * 60:
+            if net_working_minutes < 4 * 60:
                 self.status = "Half Day"
             else:
                 self.status = "Present"
         # If leave type is selected AND user set status to Half Day → allow it
 
         # ------------------------------
-        # 5️⃣ OVERTIME CALCULATION (OFFICIAL & UNOFFICIAL)
+        # 6️⃣ OVERTIME CALCULATION (OFFICIAL & UNOFFICIAL)
         #------------------------------
-        # Fetch Shift details
-        if not self.shift and self.employee:
-            self.shift = frappe.db.get_value("Employee", self.employee, "shift")
-
-        shift_doc = None
-        if self.shift:
-            shift_doc = frappe.db.get_value(
-                "Shift",
-                self.shift,
-                ["start_time", "end_time", "allow_overtime", "overtime_hours", "min_overtime_minutes"],
-                as_dict=True
-            )
-
         if shift_doc and shift_doc.get("end_time"):
             s_end_str = _to_time_str(shift_doc.end_time)
             s_end = datetime.strptime(s_end_str, fmt)
@@ -197,10 +229,20 @@ class Attendance(Document):
                 s_start = datetime.strptime(s_start_str, fmt)
                 if s_end < s_start:
                     s_end += timedelta(days=1)
+                shift_duration_minutes = int((s_end - s_start).total_seconds() / 60)
+                shift_standard_minutes = max(0, shift_duration_minutes - total_break_minutes)
+            else:
+                shift_standard_minutes = max(0, 9 * 60 - total_break_minutes)
 
             # Extra time worked after shift end
             extra_seconds = (end - s_end).total_seconds()
-            extra_minutes = max(0, int(extra_seconds / 60))
+            post_shift_minutes = max(0, int(extra_seconds / 60))
+            excess_worked_minutes = max(0, net_working_minutes - shift_standard_minutes)
+
+            if post_shift_minutes > 0:
+                extra_minutes = min(post_shift_minutes, excess_worked_minutes)
+            else:
+                extra_minutes = 0
 
             min_threshold = int(shift_doc.get("min_overtime_minutes") or 0)
             if extra_minutes < min_threshold:
@@ -225,7 +267,7 @@ class Attendance(Document):
 
         else:
             # Fallback when no shift is assigned: standard 9 hours threshold
-            overtime_minutes = max(0, total_minutes - 9 * 60)
+            overtime_minutes = max(0, net_working_minutes - 9 * 60)
             ot_hours = overtime_minutes // 60
             ot_minutes = overtime_minutes % 60
 
