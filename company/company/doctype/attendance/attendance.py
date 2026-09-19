@@ -20,7 +20,12 @@ class Attendance(Document):
 
     def populate_shift(self):
         if not self.shift and self.employee:
-            self.shift = frappe.db.get_value("Employee", self.employee, "shift")
+            from company.company.shift_roster_api import get_applicable_shift
+            res = get_applicable_shift(self.employee, self.attendance_date)
+            if res and res.get("shift"):
+                self.shift = res["shift"]
+            else:
+                self.shift = frappe.db.get_value("Employee", self.employee, "shift")
 
     def sync_punches_data(self):
         if not self.get("attendance_punches"):
@@ -138,7 +143,12 @@ class Attendance(Document):
         # 3️⃣ FETCH SHIFT & DURATION SETTINGS
         #------------------------------
         if not self.shift and self.employee:
-            self.shift = frappe.db.get_value("Employee", self.employee, "shift")
+            from company.company.shift_roster_api import get_applicable_shift
+            res = get_applicable_shift(self.employee, self.attendance_date)
+            if res and res.get("shift"):
+                self.shift = res["shift"]
+            else:
+                self.shift = frappe.db.get_value("Employee", self.employee, "shift")
 
         shift_doc = None
         if self.shift:

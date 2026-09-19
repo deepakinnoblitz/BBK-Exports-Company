@@ -71,6 +71,8 @@ class PermissionManagement(Document):
                 ("master_salary_component", "Salary Component"),
                 ("master_leave_type", "Leave Type"),
                 ("master_blood_group", "Blood Group"),
+                ("shift_roster", "Employee Shift Roster"),
+                ("shift_rotation", "Shift Rotation"),
                 ("reminders", "Reminders")
             ]
         elif role == "Employee":
