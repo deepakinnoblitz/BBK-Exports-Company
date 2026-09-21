@@ -541,6 +541,16 @@ def get_monthly_roster(month, year, department=None, employee=None):
 	if employee and employee != "all":
 		if isinstance(employee, list):
 			emp_filters["name"] = ["in", employee]
+		elif isinstance(employee, str) and (employee.startswith("[") or "," in employee):
+			try:
+				import json
+				parsed = json.loads(employee)
+				if isinstance(parsed, list):
+					emp_filters["name"] = ["in", parsed]
+				else:
+					emp_filters["name"] = employee
+			except Exception:
+				emp_filters["name"] = ["in", [x.strip() for x in employee.split(",") if x.strip()]]
 		else:
 			emp_filters["name"] = employee
 
@@ -560,33 +570,33 @@ def get_monthly_roster(month, year, department=None, employee=None):
 	)
 	shift_lookup = {s.name: s for s in all_shifts}
 
-	# 4. Pre-fetch Roster Assignments in bulk for this month
-	roster_records = frappe.db.sql("""
-		SELECT name, employee, shift, shift_name, effective_from, effective_to, assignment_type
+	# 4. Fetch all active roster assignments for the entire month
+	# This avoids querying DB inside daily loops
+	roster_records = frappe.db.sql(
+		"""
+		SELECT 
+			name, employee, shift, shift_name, effective_from, effective_to, assignment_type, modified
 		FROM `tabEmployee Shift Roster`
 		WHERE status = 'Active'
-		  AND effective_from <= %(end_str)s
-		  AND (effective_to IS NULL OR effective_to >= %(start_str)s)
+		  AND (effective_from <= %s AND (effective_to >= %s OR effective_to IS NULL OR effective_to = ''))
 		ORDER BY modified ASC
-	""", {"start_str": start_str, "end_str": end_str}, as_dict=1)
+		""",
+		(end_str, start_str),
+		as_dict=True
+	)
 
-	# Organize roster by employee -> date
-	emp_roster_map = {}
+	# Group roster assignments by employee
+	emp_rosters = {}
 	for r in roster_records:
-		e_id = r.employee
-		if e_id not in emp_roster_map:
-			emp_roster_map[e_id] = []
-		emp_roster_map[e_id].append(r)
+		emp_rosters.setdefault(r.employee, []).append(r)
 
 	# 5. Build Employee Matrix
 	matrix = []
 	for emp in employees_data:
 		e_id = emp.name
+		r_list = emp_rosters.get(e_id, [])
+
 		emp_shifts = {}
-
-		# Pre-index employee's specific roster entries
-		r_list = emp_roster_map.get(e_id, [])
-
 		for day_info in days_list:
 			d_str = day_info["date"]
 			d_obj = getdate(d_str)
@@ -674,6 +684,16 @@ def get_calendar_roster(start_date, end_date, employee=None, department=None):
 	if employee and employee != "all":
 		if isinstance(employee, list):
 			emp_filters["name"] = ["in", employee]
+		elif isinstance(employee, str) and (employee.startswith("[") or "," in employee):
+			try:
+				import json
+				parsed = json.loads(employee)
+				if isinstance(parsed, list):
+					emp_filters["name"] = ["in", parsed]
+				else:
+					emp_filters["name"] = employee
+			except Exception:
+				emp_filters["name"] = ["in", [x.strip() for x in employee.split(",") if x.strip()]]
 		else:
 			emp_filters["name"] = employee
 
