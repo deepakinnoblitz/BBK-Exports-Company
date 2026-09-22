@@ -306,9 +306,10 @@ def delete_or_cancel_roster_assignment(name, reason=None, delete_permanently=Fal
 	if not frappe.db.exists("Employee Shift Roster", name):
 		frappe.throw(f"Employee Shift Roster {name} not found.")
 
+	is_delete = cint(delete_permanently) == 1 or str(delete_permanently).lower() in ("true", "1")
 	doc = frappe.get_doc("Employee Shift Roster", name)
 
-	if delete_permanently:
+	if is_delete:
 		record_roster_history(
 			roster_id=doc.name,
 			employee=doc.employee,
@@ -323,21 +324,10 @@ def delete_or_cancel_roster_assignment(name, reason=None, delete_permanently=Fal
 		)
 		doc.delete()
 	else:
-		doc.status = "Cancelled"
-		doc.reason = reason or "Cancelled by user"
-		doc.save()
-		record_roster_history(
-			roster_id=doc.name,
-			employee=doc.employee,
-			employee_name=doc.employee_name,
-			effective_from=doc.effective_from,
-			effective_to=doc.effective_to,
-			previous_shift=doc.shift,
-			new_shift=None,
-			changed_by=frappe.session.user,
-			reason=reason or "Cancelled assignment",
-			source="MANUAL"
-		)
+		if doc.status != "Cancelled":
+			doc.status = "Cancelled"
+			doc.reason = reason or "Cancelled by user"
+			doc.save()
 
 	frappe.db.commit()
 	return {"success": True, "name": name}
@@ -899,8 +889,8 @@ def get_roster_history(roster_id=None, employee=None):
 	return frappe.db.get_all(
 		"Employee Shift Roster History",
 		filters=filters,
-		fields=["name", "roster_id", "employee", "employee_name", "effective_from", "effective_to", "previous_shift", "new_shift", "source", "changed_by", "changed_at", "reason"],
-		order_by="changed_at desc",
+		fields=["name", "roster_id", "employee", "employee_name", "effective_from", "effective_to", "previous_shift", "new_shift", "source", "changed_by", "changed_at", "reason", "creation"],
+		order_by="changed_at desc, creation desc",
 		limit=100
 	)
 
