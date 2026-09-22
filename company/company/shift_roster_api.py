@@ -738,60 +738,125 @@ def get_calendar_roster(start_date, end_date, employee=None, department=None):
 # ----------------------------------------------------------------------
 
 @frappe.whitelist()
-def generate_rotation_assignments(rotation_name):
+def generate_rotation_assignments(rotation_name=None, employees=None, start_date=None, end_date=None, exclude_weekly_offs=1, exclude_holidays=1, override_conflicts=0, data=None):
 	"""
-	Generates concrete Employee Shift Roster entries from a Shift Rotation doc.
+	Generates concrete Employee Shift Roster entries from a Shift Rotation template,
+	for the selected employees and specified date range.
 	"""
+	if data:
+		if isinstance(data, str):
+			data = json.loads(data)
+		rotation_name = data.get("rotation_name", rotation_name)
+		employees = data.get("employees", employees)
+		start_date = data.get("start_date", start_date)
+		end_date = data.get("end_date", end_date)
+		exclude_weekly_offs = data.get("exclude_weekly_offs", exclude_weekly_offs)
+		exclude_holidays = data.get("exclude_holidays", exclude_holidays)
+		override_conflicts = data.get("override_conflicts", override_conflicts)
+
+	if isinstance(employees, str):
+		try:
+			employees = json.loads(employees)
+		except Exception:
+			employees = [e.strip() for e in employees.split(",") if e.strip()]
+
+	if not rotation_name:
+		frappe.throw("Shift Rotation is required.")
+
 	if not frappe.db.exists("Shift Rotation", rotation_name):
-		frappe.throw(f"Shift Rotation {rotation_name} not found.")
+		frappe.throw(f"Shift Rotation '{rotation_name}' not found.")
 
 	rot = frappe.get_doc("Shift Rotation", rotation_name)
 	if not rot.sequences:
 		frappe.throw("Shift Rotation has no shift sequences configured.")
 
-	assignees = [a.employee for a in rot.assignees]
-	if not assignees and rot.department:
-		assignees = frappe.db.get_all("Employee", filters={"department": rot.department, "status": "Active"}, pluck="name")
+	# Assignees determination
+	target_employees = employees or []
+	if not target_employees and getattr(rot, "assignees", None):
+		target_employees = [a.employee for a in rot.assignees if a.employee]
+	if not target_employees and getattr(rot, "department", None):
+		target_employees = frappe.db.get_all("Employee", filters={"department": rot.department, "status": "Active"}, pluck="name")
 
-	if not assignees:
-		frappe.throw("No employees assigned to this Shift Rotation.")
+	if not target_employees:
+		frappe.throw("Please select at least one employee to generate rosters for.")
 
-	start_dt = getdate(rot.start_date)
-	end_dt = getdate(rot.end_date)
+	# Date range determination
+	eff_start = getdate(start_date or getattr(rot, "start_date", None) or frappe.utils.nowdate())
+	eff_end = getdate(end_date or getattr(rot, "end_date", None) or eff_start)
+	if eff_end < eff_start:
+		frappe.throw("End Date cannot be earlier than Start Date.")
+
 	seq_count = len(rot.sequences)
 	freq = (rot.frequency or "Weekly").lower()
+	exclude_wo = cint(exclude_weekly_offs)
+	exclude_h = cint(exclude_holidays)
+	override = cint(override_conflicts)
 
 	created = 0
-	curr = start_dt
-	while curr <= end_dt:
+	skipped = 0
+	overridden = 0
+
+	curr = eff_start
+	while curr <= eff_end:
 		d_str = curr.strftime("%Y-%m-%d")
 		is_wo = curr.weekday() == 6
 		is_h = is_holiday_for_date(curr)
 
-		if rot.exclude_weekly_offs and is_wo:
+		if exclude_wo and is_wo:
 			curr += timedelta(days=1)
 			continue
-		if rot.exclude_holidays and is_h:
+		if exclude_h and is_h:
 			curr += timedelta(days=1)
 			continue
 
-		days_diff = (curr - start_dt).days
+		days_diff = (curr - eff_start).days
 		if freq == "daily":
 			step_idx = days_diff % seq_count
 		elif freq == "bi-weekly":
 			step_idx = (days_diff // 14) % seq_count
 		elif freq == "monthly":
-			months_diff = (curr.year - start_dt.year) * 12 + (curr.month - start_dt.month)
+			months_diff = (curr.year - eff_start.year) * 12 + (curr.month - eff_start.month)
 			step_idx = months_diff % seq_count
 		else:
 			step_idx = (days_diff // 7) % seq_count
 
 		selected_shift = rot.sequences[step_idx].shift
 
-		for emp_id in assignees:
-			# Check if explicit override exists or create assignment
+		for emp_id in target_employees:
 			conflicts = check_roster_conflict(emp_id, d_str, d_str)
-			if not conflicts:
+			if conflicts:
+				if override:
+					for c in conflicts:
+						frappe.db.set_value("Employee Shift Roster", c.name, {
+							"status": "Cancelled",
+							"reason": f"Overridden by Rotation '{rot.rotation_name}' generation for {selected_shift}"
+						})
+						record_roster_history(
+							roster_id=c.name,
+							employee=emp_id,
+							employee_name=None,
+							effective_from=c.effective_from,
+							effective_to=c.effective_to,
+							previous_shift=c.shift,
+							new_shift=selected_shift,
+							changed_by=frappe.session.user,
+							reason=f"Overridden by Rotation: {rot.rotation_name}",
+							source="ROTATION"
+						)
+						overridden += 1
+					doc = frappe.new_doc("Employee Shift Roster")
+					doc.employee = emp_id
+					doc.shift = selected_shift
+					doc.effective_from = d_str
+					doc.effective_to = d_str
+					doc.assignment_type = "Rotation"
+					doc.reason = f"Generated from Rotation: {rot.rotation_name}"
+					doc.status = "Active"
+					doc.insert(ignore_permissions=True)
+					created += 1
+				else:
+					skipped += 1
+			else:
 				doc = frappe.new_doc("Employee Shift Roster")
 				doc.employee = emp_id
 				doc.shift = selected_shift
@@ -806,7 +871,20 @@ def generate_rotation_assignments(rotation_name):
 		curr += timedelta(days=1)
 
 	frappe.db.commit()
-	return {"success": True, "created_records": created, "rotation_name": rotation_name}
+	msg = f"Generated {created} shift roster entries for {len(target_employees)} employees."
+	if skipped > 0:
+		msg += f" {skipped} dates skipped due to existing active assignments."
+	if overridden > 0:
+		msg += f" {overridden} conflicting assignments overridden."
+
+	return {
+		"success": True,
+		"created_records": created,
+		"skipped_records": skipped,
+		"overridden_records": overridden,
+		"rotation_name": rotation_name,
+		"message": msg
+	}
 
 
 @frappe.whitelist()
@@ -946,4 +1024,106 @@ def delete_shift_rotation_doc(name):
 	frappe.delete_doc("Shift Rotation", name, ignore_permissions=True)
 	frappe.db.commit()
 	return {"success": True}
+
+
+# ----------------------------------------------------------------------
+# 8. HIGH-VOLUME EMPLOYEE SELECTOR
+# ----------------------------------------------------------------------
+
+@frappe.whitelist()
+def get_filtered_employees(department=None, shift=None, line_order=None, search=None, page=1, page_size=25, status="Active"):
+	"""
+	Optimized paginated employee query supporting multi-dimensional filters
+	for Department, Shift, and Line Order in high-volume enterprise HRMS.
+	"""
+	page = cint(page) or 1
+	page_size = cint(page_size) or 25
+	start = (page - 1) * page_size
+
+	conditions = []
+	values = {}
+
+	if status and status != "all":
+		conditions.append("status = %(status)s")
+		values["status"] = status
+	else:
+		conditions.append("status NOT IN ('Left', 'Inactive')")
+
+	if department and department != "all":
+		conditions.append("department = %(department)s")
+		values["department"] = department
+
+	if shift and shift != "all":
+		conditions.append("shift = %(shift)s")
+		values["shift"] = shift
+
+	if line_order and line_order != "all":
+		conditions.append("line_order = %(line_order)s")
+		values["line_order"] = line_order
+
+	if search:
+		conditions.append("(name LIKE %(search)s OR employee_name LIKE %(search)s OR designation LIKE %(search)s)")
+		values["search"] = f"%{search}%"
+
+	where_clause = " WHERE " + " AND ".join(conditions) if conditions else ""
+
+	# Total count
+	total_res = frappe.db.sql(f"SELECT COUNT(name) as total FROM `tabEmployee` {where_clause}", values, as_dict=1)
+	total = total_res[0].total if total_res else 0
+
+	# Paginated data
+	values["limit"] = page_size
+	values["offset"] = start
+	employees = frappe.db.sql(f"""
+		SELECT name, employee_name, department, shift, line_order, designation, status
+		FROM `tabEmployee`
+		{where_clause}
+		ORDER BY employee_name ASC, name ASC
+		LIMIT %(limit)s OFFSET %(offset)s
+	""", values, as_dict=1)
+
+	return {
+		"employees": employees,
+		"total": total,
+		"page": page,
+		"page_size": page_size
+	}
+
+
+@frappe.whitelist()
+def get_filtered_employee_ids(department=None, shift=None, line_order=None, search=None, status="Active"):
+	"""
+	Returns a lightweight list of employee IDs matching the active filter criteria.
+	Powers instantaneous 'Select All Filtered' for hundreds or thousands of workers.
+	"""
+	conditions = []
+	values = {}
+
+	if status and status != "all":
+		conditions.append("status = %(status)s")
+		values["status"] = status
+	else:
+		conditions.append("status NOT IN ('Left', 'Inactive')")
+
+	if department and department != "all":
+		conditions.append("department = %(department)s")
+		values["department"] = department
+
+	if shift and shift != "all":
+		conditions.append("shift = %(shift)s")
+		values["shift"] = shift
+
+	if line_order and line_order != "all":
+		conditions.append("line_order = %(line_order)s")
+		values["line_order"] = line_order
+
+	if search:
+		conditions.append("(name LIKE %(search)s OR employee_name LIKE %(search)s OR designation LIKE %(search)s)")
+		values["search"] = f"%{search}%"
+
+	where_clause = " WHERE " + " AND ".join(conditions) if conditions else ""
+
+	ids = frappe.db.sql(f"SELECT name FROM `tabEmployee` {where_clause} ORDER BY employee_name ASC", values, pluck="name")
+	return ids
+
 
