@@ -9,6 +9,7 @@
   "employee_details_section",
   "employee_id",
   "employee_name",
+  "father_husband_name",
   "profile_picture",
   "country",
   "state",
@@ -73,6 +74,11 @@
    "in_standard_filter": 1,
    "label": "Employee Name",
    "reqd": 1
+  },
+  {
+   "fieldname": "father_husband_name",
+   "fieldtype": "Data",
+   "label": "Father/Husband Name"
   },
   {
    "fieldname": "email",
