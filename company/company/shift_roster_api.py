@@ -156,9 +156,9 @@ def get_shift_metadata(shift_id):
 
 
 def is_holiday_for_date(target_date):
-	"""Check if the given date is listed in any company Holiday List."""
-	date_str = target_date.strftime("%Y-%m-%d")
-	return frappe.db.exists("Holidays", {"holiday_date": date_str})
+	"""Check if the given date is listed as a non-working holiday in any company Holiday List."""
+	date_str = target_date.strftime("%Y-%m-%d") if isinstance(target_date, (date, datetime)) else str(target_date)
+	return frappe.db.exists("Holidays", {"holiday_date": date_str, "is_working_day": 0}) is not None
 
 
 def record_roster_history(roster_id, employee, employee_name, effective_from, effective_to, previous_shift, new_shift, changed_by, reason, source):
@@ -512,7 +512,7 @@ def get_monthly_roster(month, year, department=None, employee=None):
 		is_h = is_holiday_for_date(d)
 		h_name = ""
 		if is_h:
-			h_doc = frappe.db.get_value("Holidays", {"holiday_date": d_str}, "description")
+			h_doc = frappe.db.get_value("Holidays", {"holiday_date": d_str, "is_working_day": 0}, "description")
 			h_name = h_doc or "Holiday"
 
 		days_list.append({

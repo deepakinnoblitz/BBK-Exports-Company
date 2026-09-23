@@ -150,9 +150,9 @@ def get_line_metadata(line_order):
 
 
 def is_holiday_for_date(target_date):
-	"""Checks if given date is a registered holiday."""
+	"""Checks if given date is a non-working holiday in Holiday List."""
 	d_str = target_date.strftime("%Y-%m-%d") if isinstance(target_date, (date, datetime)) else str(target_date)
-	return frappe.db.exists("Holidays", {"holiday_date": d_str}) is not None
+	return frappe.db.exists("Holidays", {"holiday_date": d_str, "is_working_day": 0}) is not None
 
 
 def record_roster_history(roster_id, employee, employee_name, effective_from, effective_to, previous_line, new_line, changed_by, reason, source="MANUAL"):
@@ -508,7 +508,7 @@ def get_monthly_roster(month, year, department=None, employee=None):
 		is_h = is_holiday_for_date(d)
 		h_name = ""
 		if is_h:
-			h_doc = frappe.db.get_value("Holidays", {"holiday_date": d_str}, "description")
+			h_doc = frappe.db.get_value("Holidays", {"holiday_date": d_str, "is_working_day": 0}, "description")
 			h_name = h_doc or "Holiday"
 
 		days_list.append({
