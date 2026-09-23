@@ -484,10 +484,10 @@ def bulk_assign_shifts(employees, shift, effective_from, effective_to, assignmen
 # ----------------------------------------------------------------------
 
 @frappe.whitelist()
-def get_monthly_roster(month, year, department=None, employee=None):
+def get_monthly_roster(month=None, year=None, department=None, employee=None, search=None, start=0, limit=50):
 	"""
-	Returns workforce roster matrix: all employees as rows, month days as columns.
-	Each cell contains the resolved shift, source, timing, and day attributes.
+	Returns workforce shift roster matrix: all employees as rows, month days as columns.
+	Supports pagination (start, limit) and search for high-performance instant rendering.
 	"""
 	m = cint(month)
 	y = cint(year)
@@ -496,6 +496,11 @@ def get_monthly_roster(month, year, department=None, employee=None):
 		m = today.month
 		y = today.year
 
+	start = cint(start) if start is not None else 0
+	limit = cint(limit) if limit is not None else 50
+	if limit <= 0:
+		limit = 50
+
 	num_days = calendar.monthrange(y, m)[1]
 	start_date = date(y, m, 1)
 	end_date = date(y, m, num_days)
@@ -503,17 +508,27 @@ def get_monthly_roster(month, year, department=None, employee=None):
 	start_str = start_date.strftime("%Y-%m-%d")
 	end_str = end_date.strftime("%Y-%m-%d")
 
-	# 1. Generate Days list for the month
+	# 1. Pre-fetch Holidays for the month once
+	month_holidays = frappe.db.sql(
+		"""
+		SELECT holiday_date, description
+		FROM `tabHolidays`
+		WHERE holiday_date BETWEEN %s AND %s
+		  AND is_working_day = 0
+		""",
+		(start_str, end_str),
+		as_dict=True
+	)
+	holiday_map = {getdate(h.holiday_date): (h.description or "Holiday") for h in month_holidays}
+
+	# 2. Generate Days list for the month
 	days_list = []
 	for day_idx in range(1, num_days + 1):
 		d = date(y, m, day_idx)
 		d_str = d.strftime("%Y-%m-%d")
 		is_wo = d.weekday() == 6
-		is_h = is_holiday_for_date(d)
-		h_name = ""
-		if is_h:
-			h_doc = frappe.db.get_value("Holidays", {"holiday_date": d_str, "is_working_day": 0}, "description")
-			h_name = h_doc or "Holiday"
+		is_h = d in holiday_map
+		h_name = holiday_map.get(d, "")
 
 		days_list.append({
 			"date": d_str,
@@ -524,7 +539,7 @@ def get_monthly_roster(month, year, department=None, employee=None):
 			"holiday_name": h_name
 		})
 
-	# 2. Get Employees list
+	# 3. Build Employee Filters
 	emp_filters = {"status": "Active"}
 	if department and department != "all":
 		emp_filters["department"] = department
@@ -544,15 +559,20 @@ def get_monthly_roster(month, year, department=None, employee=None):
 		else:
 			emp_filters["name"] = employee
 
+	# Calculate Total Count for pagination
+	total_count = frappe.db.count("Employee", filters=emp_filters)
+
+	# Fetch Page of Employees
 	employees_data = frappe.db.get_all(
 		"Employee",
 		filters=emp_filters,
 		fields=["name", "employee_name", "department", "designation", "shift"],
 		order_by="employee_name asc",
-		limit=200
+		start=start,
+		page_length=limit
 	)
 
-	# 3. Pre-fetch all active Shift Master records for quick code lookup
+	# 4. Pre-fetch all active Shift Master records for quick code lookup
 	all_shifts = frappe.db.get_all(
 		"Shift",
 		filters={"status": "Active"},
@@ -560,27 +580,102 @@ def get_monthly_roster(month, year, department=None, employee=None):
 	)
 	shift_lookup = {s.name: s for s in all_shifts}
 
-	# 4. Fetch all active roster assignments for the entire month
-	# This avoids querying DB inside daily loops
-	roster_records = frappe.db.sql(
+	# 5. Fetch all active roster assignments for THIS page of employees
+	emp_ids = [e.name for e in employees_data]
+	emp_rosters = {}
+	if emp_ids:
+		roster_records = frappe.db.sql(
+			"""
+			SELECT 
+				name, employee, shift, shift_name, effective_from, effective_to, assignment_type, modified
+			FROM `tabEmployee Shift Roster`
+			WHERE status = 'Active'
+			  AND employee IN %(emp_ids)s
+			  AND (effective_from <= %(end_str)s AND (effective_to >= %(start_str)s OR effective_to IS NULL OR effective_to = ''))
+			ORDER BY modified ASC
+			""",
+			{"emp_ids": tuple(emp_ids), "start_str": start_str, "end_str": end_str},
+			as_dict=True
+		)
+		for r in roster_records:
+			emp_rosters.setdefault(r.employee, []).append(r)
+
+	# 6. Pre-fetch active Shift Rotations (if any)
+	rotations_emp = {}
+	rotations_dept = {}
+	rotation_seqs = {}
+	active_rotations = frappe.db.sql(
 		"""
-		SELECT 
-			name, employee, shift, shift_name, effective_from, effective_to, assignment_type, modified
-		FROM `tabEmployee Shift Roster`
-		WHERE status = 'Active'
-		  AND (effective_from <= %s AND (effective_to >= %s OR effective_to IS NULL OR effective_to = ''))
-		ORDER BY modified ASC
+		SELECT r.name, r.rotation_name, r.frequency, r.start_date, r.end_date,
+		       r.exclude_holidays, r.exclude_weekly_offs, r.department,
+		       a.employee
+		FROM `tabShift Rotation` r
+		LEFT JOIN `tabShift Rotation Assignee` a ON a.parent = r.name
+		WHERE r.status = 'Active'
+		  AND r.start_date <= %(end_str)s
+		  AND r.end_date >= %(start_str)s
+		ORDER BY r.modified DESC
 		""",
-		(end_str, start_str),
+		{"start_str": start_str, "end_str": end_str},
 		as_dict=True
 	)
+	if active_rotations:
+		rot_names = list({r.name for r in active_rotations})
+		seq_records = frappe.db.sql(
+			"""
+			SELECT parent, step_number, shift, shift_name
+			FROM `tabShift Rotation Sequence`
+			WHERE parent IN %(rot_names)s
+			ORDER BY step_number ASC
+			""",
+			{"rot_names": tuple(rot_names)},
+			as_dict=True
+		)
+		for s in seq_records:
+			rotation_seqs.setdefault(s.parent, []).append(s)
 
-	# Group roster assignments by employee
-	emp_rosters = {}
-	for r in roster_records:
-		emp_rosters.setdefault(r.employee, []).append(r)
+		for r in active_rotations:
+			if r.employee:
+				rotations_emp.setdefault(r.employee, []).append(r)
+			elif r.department:
+				rotations_dept.setdefault(r.department, []).append(r)
 
-	# 5. Build Employee Matrix
+	# Helper to resolve rotation in-memory without ANY SQL queries
+	def resolve_rotation_in_memory(emp_id, emp_dept, target_d, d_str):
+		rots = (rotations_emp.get(emp_id) or (rotations_dept.get(emp_dept) if emp_dept else None) or [])
+		is_wo = target_d.weekday() == 6
+		is_h = target_d in holiday_map
+
+		for rot in rots:
+			if getdate(rot.start_date) <= target_d <= getdate(rot.end_date):
+				if rot.exclude_weekly_offs and is_wo:
+					continue
+				if rot.exclude_holidays and is_h:
+					continue
+				seqs = rotation_seqs.get(rot.name, [])
+				if not seqs:
+					continue
+				diff_days = (target_d - getdate(rot.start_date)).days
+				freq = (rot.frequency or "Daily").lower()
+				if "week" in freq:
+					step_idx = (diff_days // 7) % len(seqs)
+				elif "month" in freq:
+					step_idx = ((target_d.year - rot.start_date.year) * 12 + target_d.month - rot.start_date.month) % len(seqs)
+				else:
+					step_idx = diff_days % len(seqs)
+				matched = seqs[step_idx]
+				s_meta = shift_lookup.get(matched.shift, {})
+				return {
+					"shift": matched.shift,
+					"shift_name": matched.shift_name or matched.shift,
+					"source": "ROTATION",
+					"roster_id": rot.name,
+					"start_time": str(s_meta.get("start_time") or ""),
+					"end_time": str(s_meta.get("end_time") or "")
+				}
+		return None
+
+	# 7. Build Employee Matrix
 	matrix = []
 	for emp in employees_data:
 		e_id = emp.name
@@ -598,7 +693,6 @@ def get_monthly_roster(month, year, department=None, employee=None):
 				r_to = getdate(r.effective_to) if r.effective_to else r_from
 				if r_from <= d_obj <= r_to:
 					assigned_roster = r
-					# Continue loop to take latest modified if multiple
 
 			if assigned_roster:
 				s_name = assigned_roster.shift
@@ -615,16 +709,27 @@ def get_monthly_roster(month, year, department=None, employee=None):
 					"is_holiday": day_info["is_holiday"]
 				}
 			else:
-				# B. Central resolver for rotation / default
-				resolved = get_applicable_shift(e_id, d_str)
-				if resolved:
-					s_name = resolved["shift"]
+				# Resolve rotation or default shift in-memory (0 database queries!)
+				rot_match = resolve_rotation_in_memory(e_id, emp.department, d_obj, d_str)
+				if rot_match:
+					emp_shifts[d_str] = {
+						"shift": rot_match["shift"],
+						"shift_name": rot_match.get("shift_name") or rot_match["shift"],
+						"source": "ROTATION",
+						"roster_id": rot_match.get("roster_id"),
+						"start_time": rot_match.get("start_time", ""),
+						"end_time": rot_match.get("end_time", ""),
+						"is_weekly_off": day_info["is_weekend"],
+						"is_holiday": day_info["is_holiday"]
+					}
+				elif emp.shift:
+					s_name = emp.shift
 					s_meta = shift_lookup.get(s_name, {})
 					emp_shifts[d_str] = {
 						"shift": s_name,
-						"shift_name": resolved.get("shift_name", s_name),
-						"source": resolved.get("source", "DEFAULT"),
-						"roster_id": resolved.get("roster_id"),
+						"shift_name": s_meta.get("shift_name", s_name),
+						"source": "DEFAULT",
+						"roster_id": None,
 						"start_time": str(s_meta.get("start_time") or ""),
 						"end_time": str(s_meta.get("end_time") or ""),
 						"is_weekly_off": day_info["is_weekend"],
@@ -654,6 +759,8 @@ def get_monthly_roster(month, year, department=None, employee=None):
 		"month_name": calendar.month_name[m],
 		"days": days_list,
 		"employees": matrix,
+		"total_count": total_count,
+		"has_more": (start + len(matrix)) < total_count,
 		"shifts": all_shifts
 	}
 
