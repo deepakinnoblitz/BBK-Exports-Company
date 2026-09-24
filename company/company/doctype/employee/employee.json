@@ -1,7 +1,7 @@
 {
  "actions": [],
  "allow_rename": 1,
- "autoname": "EMP.#####",
+ "autoname": "BEPL.#####",
  "creation": "2025-09-18 11:50:11.083982",
  "doctype": "DocType",
  "engine": "InnoDB",
