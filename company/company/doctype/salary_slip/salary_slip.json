@@ -288,6 +288,17 @@
    "label": "Holiday Handling"
   },
   {
+   "fieldname": "working_days_basis",
+   "fieldtype": "Data",
+   "label": "Working Days Basis"
+  },
+  {
+   "fieldname": "fixed_working_days",
+   "fieldtype": "Float",
+   "label": "Fixed Working Days",
+   "precision": "2"
+  },
+  {
    "fetch_from": "employee.bank_account",
    "fieldname": "bank_account",
    "fieldtype": "Link",

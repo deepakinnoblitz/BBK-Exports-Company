@@ -75,6 +75,8 @@ def preview_salary_slip(employee, start_date, end_date):
     # 0. Fetch Settings
     settings = frappe.get_single("HRMS Settings")
     calc_source = settings.salary_calculation_source or "Attendance"
+    working_days_basis = settings.salary_working_days_basis or "Actual Days in Month"
+    fixed_working_days = flt(settings.salary_fixed_working_days) or 26.0
     holiday_handling = settings.salary_holiday_handling or "Include in Working Days"
     present_threshold = flt(settings.salary_slip_present_threshold) or 5.0
     half_day_threshold = flt(settings.salary_slip_half_day_threshold) or 3.0
@@ -159,9 +161,12 @@ def preview_salary_slip(employee, start_date, end_date):
         mh_doc = frappe.get_doc("Holiday List", month_holiday_list[0].name)
         month_holiday_dates = [getdate(row.holiday_date) for row in mh_doc.holidays if not row.is_working_day and m_start <= getdate(row.holiday_date) <= m_end]
 
-    month_working_days = total_month_days
-    if holiday_handling == "Exclude from Working Days":
-        month_working_days -= len(month_holiday_dates)
+    if working_days_basis == "Fixed Number of Days":
+        month_working_days = fixed_working_days
+    else:
+        month_working_days = total_month_days
+        if holiday_handling == "Exclude from Working Days":
+            month_working_days -= len(month_holiday_dates)
 
     present_days = 0
     absent_days = 0
@@ -263,7 +268,11 @@ def preview_salary_slip(employee, start_date, end_date):
     # 5. Calculate Earnings & Deductions
     unpaid_leave_days = total_leave_days - paid_leave_days
     
-    period_factor = (total_days / month_working_days) if month_working_days else 1.0
+    is_full_month = (start_date == m_start and end_date == m_end)
+    if is_full_month:
+        period_factor = 1.0
+    else:
+        period_factor = min(1.0, total_days / month_working_days) if month_working_days else 1.0
 
     # Use the new dynamic totals from employee doc
     gross_pay = flt(emp.total_earnings)
@@ -322,6 +331,8 @@ def preview_salary_slip(employee, start_date, end_date):
         "half_day_count": half_day_count,
         "calc_source": calc_source,
         "holiday_handling": holiday_handling,
+        "working_days_basis": working_days_basis,
+        "fixed_working_days": fixed_working_days if working_days_basis == "Fixed Number of Days" else None,
         "days_breakdown": days_breakdown
     }
 
@@ -399,6 +410,8 @@ def get_salary_slip_with_details(name):
     settings          = frappe.get_single("HRMS Settings")
     calc_source       = getattr(doc, "calc_source", None) or settings.salary_calculation_source or "Attendance"
     holiday_handling  = getattr(doc, "holiday_handling", None) or settings.salary_holiday_handling or "Include in Working Days"
+    working_days_basis = getattr(doc, "working_days_basis", None) or settings.salary_working_days_basis or "Actual Days in Month"
+    fixed_working_days = getattr(doc, "fixed_working_days", None) or flt(settings.salary_fixed_working_days) or 26.0
     present_threshold = flt(settings.salary_slip_present_threshold) or 5.0
     half_day_threshold= flt(settings.salary_slip_half_day_threshold) or 3.0
 
@@ -597,6 +610,8 @@ def generate_salary_slips_from_employee(year=None, month=None, employees=None, s
                 "half_day_count": data["half_day_count"],
                 "calc_source": data["calc_source"],
                 "holiday_handling": data["holiday_handling"],
+                "working_days_basis": data.get("working_days_basis"),
+                "fixed_working_days": data.get("fixed_working_days"),
                 "gross_pay": data["gross_pay"],
                 "grand_gross_pay": data["grand_gross_pay"],
                 "net_pay": data["net_pay"],
