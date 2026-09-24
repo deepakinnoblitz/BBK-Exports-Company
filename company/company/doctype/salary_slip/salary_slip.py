@@ -302,6 +302,7 @@ def preview_salary_slip(employee, start_date, end_date):
         "employee": emp.name,
         "employee_id": emp.employee_id,
         "employee_name": emp.employee_name,
+        "father_husband_name": emp.father_husband_name,
         "phone_number": emp.phone,
         "designation": emp.designation,
         "department": emp.department,
@@ -375,6 +376,7 @@ def get_salary_slip_with_details(name):
         emp = frappe.get_doc("Employee", doc.employee)
 
         res.update({
+            "father_husband_name": emp.father_husband_name,
             "personal_email": emp.personal_email,
             "phone_number": emp.phone,
             "date_of_joining": emp.date_of_joining,
@@ -595,6 +597,7 @@ def generate_salary_slips_from_employee(year=None, month=None, employees=None, s
                 "doctype": "Salary Slip",
                 "employee": data["employee"],
                 "employee_name": data["employee_name"],
+                "father_husband_name": data.get("father_husband_name"),
                 "email": data.get("email"),
                 "bank_account": data.get("account_number"),
                 "personal_email": data.get("personal_email"),
