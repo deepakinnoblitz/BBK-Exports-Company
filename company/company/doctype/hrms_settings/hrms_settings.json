@@ -13,10 +13,17 @@
   "half_day_threshold",
   "salary_slip_tab",
   "salary_calculation_source",
+  "salary_working_days_basis",
+  "salary_fixed_working_days",
   "salary_holiday_handling",
   "salary_slip_present_threshold",
   "salary_slip_half_day_threshold",
   "salary_slip_absent_threshold",
+  "pt_deduction_frequency",
+  "pt_half_yearly_months",
+  "workers_ot_rate_multiplier",
+  "north_indian_ot_rate",
+  "workers_attendance_bonus",
   "notification_tab",
   "leave_notification",
   "wfh_notification",
@@ -122,6 +129,39 @@
    "fieldname": "salary_slip_absent_threshold",
    "fieldtype": "Float",
    "label": "Absent Threshold (Hours)"
+  },
+  {
+   "default": "Half-Yearly Deduction",
+   "fieldname": "pt_deduction_frequency",
+   "fieldtype": "Select",
+   "label": "Professional Tax (PT) Frequency",
+   "options": "Half-Yearly Deduction\nEvery Month Deduction"
+  },
+  {
+   "default": "April, September",
+   "depends_on": "eval:doc.pt_deduction_frequency == 'Half-Yearly Deduction'",
+   "fieldname": "pt_half_yearly_months",
+   "fieldtype": "Select",
+   "label": "PT Half-Yearly Cycle Months",
+   "options": "April, September\nMarch, September\nApril, October"
+  },
+  {
+   "default": "2",
+   "fieldname": "workers_ot_rate_multiplier",
+   "fieldtype": "Float",
+   "label": "Workers OT Rate Multiplier"
+  },
+  {
+   "default": "100",
+   "fieldname": "north_indian_ot_rate",
+   "fieldtype": "Currency",
+   "label": "North Indian OT Rate (₹/Hour)"
+  },
+  {
+   "default": "1500",
+   "fieldname": "workers_attendance_bonus",
+   "fieldtype": "Currency",
+   "label": "Workers Attendance Bonus (Full Present)"
   },
   {
    "fieldname": "notification_tab",
@@ -235,7 +275,7 @@
  ],
  "issingle": 1,
  "links": [],
- "modified": "2026-04-04 15:18:40.334840",
+ "modified": "2026-09-25 12:30:00.000000",
  "modified_by": "Administrator",
  "module": "Company",
  "name": "HRMS Settings",
