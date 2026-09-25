@@ -15,7 +15,7 @@ def get_invoice_count():
     return frappe.db.count("Invoice")
 
 @frappe.whitelist()
-def get_doctype_list(doctype, txt=None, fields=None, filters=None):
+def get_doctype_list(doctype, txt=None, fields=None, filters=None, limit=0, order_by=None):
     """
     Fetch a list of documents for a given DocType.
     Useful for populating dropdowns on the frontend.
@@ -33,18 +33,29 @@ def get_doctype_list(doctype, txt=None, fields=None, filters=None):
 
     if filters:
         import json
-        extra_filters = json.loads(filters)
+        extra_filters = json.loads(filters) if isinstance(filters, str) else filters
         query_filters.update(extra_filters)
 
     # Use get_all for Payment Terms to bypass strict system manager check
     fetch_fn = frappe.get_all if doctype == "Payment Terms" else frappe.get_list
 
+    limit_val = int(limit) if limit is not None else 0
+    order = order_by or "name asc"
+
+    kwargs = {
+        "filters": query_filters,
+        "order_by": order,
+        "limit_page_length": limit_val,
+    }
+
     if fields:
         import json
-        field_list = json.loads(fields)
-        return fetch_fn(doctype, filters=query_filters, fields=field_list, limit=1000)
+        field_list = json.loads(fields) if isinstance(fields, str) else fields
+        kwargs["fields"] = field_list
+        return fetch_fn(doctype, **kwargs)
 
-    return fetch_fn(doctype, filters=query_filters, pluck="name", limit=1000)
+    kwargs["pluck"] = "name"
+    return fetch_fn(doctype, **kwargs)
 
 
 @frappe.whitelist()
