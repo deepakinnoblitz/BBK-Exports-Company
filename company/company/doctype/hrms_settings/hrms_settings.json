@@ -85,6 +85,20 @@
    "options": "Attendance\nDaily Log"
   },
   {
+   "default": "Actual Days in Month",
+   "fieldname": "salary_working_days_basis",
+   "fieldtype": "Select",
+   "label": "Working Days Basis",
+   "options": "Actual Days in Month\nFixed Number of Days"
+  },
+  {
+   "default": "26",
+   "depends_on": "eval:doc.salary_working_days_basis == 'Fixed Number of Days'",
+   "fieldname": "salary_fixed_working_days",
+   "fieldtype": "Float",
+   "label": "Fixed Working Days"
+  },
+  {
    "default": "Include in Working Days",
    "fieldname": "salary_holiday_handling",
    "fieldtype": "Select",
@@ -234,6 +248,16 @@
    "print": 1,
    "read": 1,
    "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "print": 1,
+   "read": 1,
+   "role": "HR",
    "share": 1,
    "write": 1
   },

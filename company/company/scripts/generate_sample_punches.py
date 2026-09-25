@@ -154,7 +154,13 @@ def run(batch_size=10000):
         frappe.db.bulk_insert("Attendance Punch", cols, batch_values, chunk_size=batch_size)
         frappe.db.commit()
 
-    # Update series counter in tabSeries
+    # Update sequence in database and tabSeries
+    try:
+        from frappe.database.sequence import set_next_val
+        set_next_val("Attendance Punch", punch_counter + 1, is_val_used=False)
+    except Exception as e:
+        print(f"Warning: Failed to set sequence nextval: {e}")
+
     frappe.db.sql("INSERT INTO `tabSeries` (`name`, `current`) VALUES ('', %s) ON DUPLICATE KEY UPDATE `current` = GREATEST(`current`, %s)", (punch_counter, punch_counter))
     frappe.db.commit()
 
