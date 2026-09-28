@@ -10,6 +10,7 @@
   "employee",
   "employee_name",
   "father_husband_name",
+  "employee_type",
   "department",
   "designation",
   "date_of_joining",
@@ -32,6 +33,7 @@
   "physical_attendance_days",
   "unpaid_leave_days",
   "half_day_count",
+  "ot_hours",
   "calc_source",
   "holiday_handling",
   "no_of_leave",
@@ -41,7 +43,11 @@
   "column_break_egim",
   "gross_pay",
   "grand_gross_pay",
+  "ot_amount",
+  "attendance_bonus",
   "total_deduction",
+  "canteen_deduction",
+  "pt_amount",
   "lop",
   "net_pay",
   "grand_net_pay",
@@ -121,6 +127,13 @@
    "fieldname": "father_husband_name",
    "fieldtype": "Data",
    "label": "Father/Husband Name",
+   "read_only": 1
+  },
+  {
+   "fetch_from": "employee.employee_type",
+   "fieldname": "employee_type",
+   "fieldtype": "Data",
+   "label": "Employee Type",
    "read_only": 1
   },
   {
@@ -226,6 +239,36 @@
    "read_only": 1
   },
   {
+   "fieldname": "ot_hours",
+   "fieldtype": "Float",
+   "label": "Overtime Hours",
+   "precision": "2"
+  },
+  {
+   "fieldname": "ot_amount",
+   "fieldtype": "Currency",
+   "label": "Overtime Pay (OT)",
+   "precision": "2"
+  },
+  {
+   "fieldname": "attendance_bonus",
+   "fieldtype": "Currency",
+   "label": "Attendance Bonus",
+   "precision": "2"
+  },
+  {
+   "fieldname": "canteen_deduction",
+   "fieldtype": "Currency",
+   "label": "Canteen Deduction",
+   "precision": "2"
+  },
+  {
+   "fieldname": "pt_amount",
+   "fieldtype": "Currency",
+   "label": "Professional Tax (PT)",
+   "precision": "2"
+  },
+  {
    "fetch_from": "employee.email",
    "fieldname": "email",
    "fieldtype": "Data",
@@ -319,7 +362,7 @@
  "index_web_pages_for_search": 1,
  "is_submittable": 1,
  "links": [],
- "modified": "2026-04-10 13:00:18.847961",
+ "modified": "2026-09-25 12:30:00.000000",
  "modified_by": "Administrator",
  "module": "Company",
  "name": "Salary Slip",

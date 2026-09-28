@@ -62,6 +62,80 @@ class SalarySlip(Document):
             frappe.log_error(message=frappe.get_traceback(), title=f"Email Error for {self.employee_name}")
 
 
+def parse_time_to_hours(val):
+    if not val:
+        return 0.0
+    if isinstance(val, (int, float)):
+        return flt(val)
+    if isinstance(val, timedelta):
+        return val.total_seconds() / 3600.0
+    val_str = str(val).strip()
+    if ":" in val_str:
+        parts = val_str.split(":")
+        try:
+            return flt(parts[0]) + (flt(parts[1]) / 60.0)
+        except Exception:
+            return 0.0
+    return flt(val_str)
+
+
+def calculate_overtime_pay(emp, gross_salary, ot_hours, settings):
+    ot_h = flt(ot_hours)
+    if ot_h <= 0:
+        return 0.0
+    
+    emp_type = (emp.get("employee_type") or "").lower()
+    designation = (emp.get("designation") or "").lower()
+    
+    if "worker" in emp_type or "worker" in designation:
+        multiplier = flt(getattr(settings, "workers_ot_rate_multiplier", 2.0)) or 2.0
+        # Formula: (Gross Salary / 26 / 8) * OT Hours * multiplier
+        hourly_rate = flt(gross_salary) / 26.0 / 8.0
+        return round(hourly_rate * ot_h * multiplier, 2)
+    elif "north indian" in emp_type or "north indian" in designation:
+        rate = flt(getattr(settings, "north_indian_ot_rate", 100.0)) or 100.0
+        # Formula: rate * OT Hours
+        return round(rate * ot_h, 2)
+    return 0.0
+
+
+def calculate_attendance_bonus(emp, absent_days, settings):
+    emp_type = (emp.get("employee_type") or "").lower()
+    designation = (emp.get("designation") or "").lower()
+    
+    if ("worker" in emp_type or "worker" in designation) and flt(absent_days) <= 0.0:
+        return flt(getattr(settings, "workers_attendance_bonus", 1500.0)) or 1500.0
+    return 0.0
+
+
+def calculate_professional_tax(gross_salary, pay_period_start, settings):
+    gross = flt(gross_salary)
+    if gross <= 20000.0:
+        slab_amount = 0.0
+    elif gross <= 30000.0:
+        slab_amount = 155.0
+    elif gross <= 45000.0:
+        slab_amount = 375.0
+    elif gross <= 60000.0:
+        slab_amount = 750.0
+    elif gross <= 75000.0:
+        slab_amount = 1115.0
+    else:
+        slab_amount = 1250.0
+
+    frequency = getattr(settings, "pt_deduction_frequency", "Half-Yearly Deduction") or "Half-Yearly Deduction"
+    if frequency == "Every Month Deduction":
+        return slab_amount
+    
+    # Half-Yearly Deduction
+    cycle_months_str = getattr(settings, "pt_half_yearly_months", "April, September") or "April, September"
+    month_name = formatdate(pay_period_start, "MMMM")
+    cycle_months = [m.strip().lower() for m in cycle_months_str.split(",")]
+    
+    if month_name.lower() in cycle_months:
+        return slab_amount
+    return 0.0
+
 
 @frappe.whitelist()
 def preview_salary_slip(employee, start_date, end_date):
@@ -115,7 +189,7 @@ def preview_salary_slip(employee, start_date, end_date):
                 "attendance_date": ["between", [start_date, end_date]],
                 "docstatus": ["in", [0, 1]]
             },
-            fields=["status", "attendance_date"]
+            fields=["status", "attendance_date", "official_overtime", "unofficial_overtime", "working_hours_decimal"]
         )
     else:
         daily_sessions = frappe.get_all(
@@ -174,6 +248,7 @@ def preview_salary_slip(employee, start_date, end_date):
     total_leave_days = 0
     half_day_count = 0
     physical_attendance_days = 0
+    total_ot_hours = 0.0
 
     days_breakdown = []
     for i in range(total_days):
@@ -184,11 +259,20 @@ def preview_salary_slip(employee, start_date, end_date):
         day_leave = next((l for l in leave_applications if l.from_date <= single_day_date <= l.to_date), None)
         day_hours = 0
         day_attendance = None
+        day_ot = 0.0
         
         if calc_source == "Daily Log":
             day_hours = sum(flt(s["total_work_hours"]) for s in daily_sessions if getdate(s["login_date"]) == single_day_date)
+            if day_hours > 8.0:
+                day_ot = day_hours - 8.0
         elif calc_source == "Attendance":
             day_attendance = next((a for a in attendance_records if getdate(a["attendance_date"]) == single_day_date), None)
+            if day_attendance:
+                day_hours = flt(day_attendance.get("working_hours_decimal") or 0)
+                ot_raw = day_attendance.get("official_overtime") or day_attendance.get("unofficial_overtime")
+                day_ot = parse_time_to_hours(ot_raw)
+
+        total_ot_hours += day_ot
 
         # Determine Physical Recognition
         physical_val = 0
@@ -211,7 +295,7 @@ def preview_salary_slip(employee, start_date, end_date):
             if holiday_handling == "Include in Working Days":
                 holiday_val = 1.0 - physical_val
 
-        # Determine Leave Recognition (only use if physical_val + holiday_val < 1.0)
+        # Determine Leave Recognition
         leave_val = 0
         is_paid_leave = False
         if day_leave and (physical_val + holiday_val) < 1.0:
@@ -219,7 +303,7 @@ def preview_salary_slip(employee, start_date, end_date):
             if leave_unit == 0.5:
                 half_day_count += 1
             leave_val = min(leave_unit, 1.0 - (physical_val + holiday_val))
-            is_paid_leave = is_paid_map.get(day_leave.leave_type, 1)
+            is_paid_leave = bool(is_paid_map.get(day_leave.leave_type, 1))
 
         # Update Counters
         physical_attendance_days += physical_val
@@ -242,7 +326,8 @@ def preview_salary_slip(employee, start_date, end_date):
         days_breakdown.append({
             "date": single_day_date.strftime("%Y-%m-%d"),
             "status": day_status,
-            "hours": round(day_hours, 2)
+            "hours": round(day_hours, 2),
+            "ot_hours": round(day_ot, 2)
         })
         
         # Present Days = Work + Paid Leave + Holiday
@@ -251,19 +336,15 @@ def preview_salary_slip(employee, start_date, end_date):
             present_days += leave_val
             paid_leave_days += leave_val
         else:
-            # Unpaid leaves count as absent/LOP
             absent_days += leave_val
             total_leave_days += leave_val
             
         present_days += holiday_val
 
-        # If still gaps, it's just pure Absence
         day_total = physical_val + leave_val + holiday_val
         if day_total < 1.0:
             gap = 1.0 - day_total
             absent_days += gap
-            # total_leave_days += gap # Removed: Absence is not a Leave Application
-        # --- DAY CALCULATION END ---
 
     # 5. Calculate Earnings & Deductions
     unpaid_leave_days = total_leave_days - paid_leave_days
@@ -274,24 +355,65 @@ def preview_salary_slip(employee, start_date, end_date):
     else:
         period_factor = min(1.0, total_days / month_working_days) if month_working_days else 1.0
 
-    # Use the new dynamic totals from employee doc
     gross_pay = flt(emp.total_earnings)
     base_deductions = flt(emp.total_deductions)
     
-    # Calculate individual components based on the period factor (Proration)
+    # Calculate individual components based on period factor
     prorated_earnings = []
     for e in emp.earnings:
+        c_name = e.component_name or e.salary_component or ""
+        # Skip legacy auto-calculated dynamic components from employee structure
+        if c_name in ["Overtime Pay (OT)", "Overtime Allowance", "Attendance Bonus"]:
+            continue
         item = e.as_dict()
         item["amount"] = flt(e.amount) * period_factor
         prorated_earnings.append(item)
 
+    # 5.1. Overtime Pay Calculation
+    ot_amount = calculate_overtime_pay(emp, gross_pay, total_ot_hours, settings)
+    if ot_amount > 0:
+        prorated_earnings.append({
+            "component_name": "Overtime Pay (OT)",
+            "salary_component": "Overtime Pay (OT)",
+            "type": "Earning",
+            "amount": ot_amount
+        })
+
+    # 5.2. Workers Attendance Bonus Calculation
+    attendance_bonus = calculate_attendance_bonus(emp, absent_days, settings)
+    if attendance_bonus > 0:
+        prorated_earnings.append({
+            "component_name": "Attendance Bonus",
+            "salary_component": "Attendance Bonus",
+            "type": "Earning",
+            "amount": attendance_bonus
+        })
+
+    # 5.3. Deductions & Professional Tax
+    pt_amount = calculate_professional_tax(gross_pay, start_date, settings)
+
     prorated_deductions = []
     for d in emp.deductions:
+        c_name = d.component_name or d.salary_component or ""
         item = d.as_dict()
-        item["amount"] = flt(d.amount) * period_factor
+        if c_name in ["Prof.Tax", "Professional Tax", "PT"]:
+            # Override PT amount according to slab and cycle
+            item["amount"] = pt_amount
+        else:
+            item["amount"] = flt(d.amount) * period_factor
         prorated_deductions.append(item)
 
-    # LOP is applied on top for any absent/unpaid days within the period
+    # If Prof.Tax wasn't in employee structure but pt_amount > 0, add it
+    has_pt = any((d.get("component_name") or d.get("salary_component")) in ["Prof.Tax", "Professional Tax", "PT"] for d in prorated_deductions)
+    if not has_pt and pt_amount > 0:
+        prorated_deductions.append({
+            "component_name": "Prof.Tax",
+            "salary_component": "Prof.Tax",
+            "type": "Deduction",
+            "amount": pt_amount
+        })
+
+    # LOP is applied for any absent/unpaid days within the period
     lop_amount = gross_pay * (absent_days / month_working_days) if month_working_days else 0
     
     grand_gross_pay = sum(flt(e["amount"]) for e in prorated_earnings)
@@ -303,6 +425,7 @@ def preview_salary_slip(employee, start_date, end_date):
         "employee_id": emp.employee_id,
         "employee_name": emp.employee_name,
         "father_husband_name": emp.father_husband_name,
+        "employee_type": emp.employee_type,
         "phone_number": emp.phone,
         "designation": emp.designation,
         "department": emp.department,
@@ -313,7 +436,7 @@ def preview_salary_slip(employee, start_date, end_date):
         "pay_period_end": end_date,
         "no_of_leave": total_leave_days,
         "no_of_paid_leave": paid_leave_days,
-        "gross_pay": grand_gross_pay, # Prorated Gross for the period
+        "gross_pay": grand_gross_pay,
         "grand_gross_pay": grand_gross_pay,
         "net_pay": grand_net_pay,
         "grand_net_pay": grand_net_pay,
@@ -321,6 +444,10 @@ def preview_salary_slip(employee, start_date, end_date):
         "total_working_days": month_working_days,
         "lop": lop_amount,
         "lop_days": absent_days,
+        "ot_hours": round(total_ot_hours, 2),
+        "ot_amount": ot_amount,
+        "attendance_bonus": attendance_bonus,
+        "pt_amount": pt_amount,
         "earnings": prorated_earnings,
         "deductions": prorated_deductions,
         # Detailed Breakdown Fields
@@ -348,7 +475,6 @@ def preview_salary_slip(employee, start_date, end_date):
     if emp.bank_account:
         try:
             ba = frappe.get_doc("Bank Account", emp.bank_account)
-
             res.update({
                 "bank_account_name": ba.bank_account_name or "",
                 "account_number": ba.account_number or "",
@@ -377,6 +503,7 @@ def get_salary_slip_with_details(name):
 
         res.update({
             "father_husband_name": emp.father_husband_name,
+            "employee_type": emp.employee_type,
             "personal_email": emp.personal_email,
             "phone_number": emp.phone,
             "date_of_joining": emp.date_of_joining,
@@ -390,7 +517,6 @@ def get_salary_slip_with_details(name):
         if emp.bank_account:
             try:
                 ba = frappe.get_doc("Bank Account", emp.bank_account)
-
                 res.update({
                     "bank_account_name": ba.bank_account_name or "",
                     "account_number": ba.account_number or "",
@@ -408,7 +534,6 @@ def get_salary_slip_with_details(name):
     start_date = getdate(doc.pay_period_start)
     end_date   = getdate(doc.pay_period_end)
 
-    # Settings
     settings          = frappe.get_single("HRMS Settings")
     calc_source       = getattr(doc, "calc_source", None) or settings.salary_calculation_source or "Attendance"
     holiday_handling  = getattr(doc, "holiday_handling", None) or settings.salary_holiday_handling or "Include in Working Days"
@@ -417,7 +542,6 @@ def get_salary_slip_with_details(name):
     present_threshold = flt(settings.salary_slip_present_threshold) or 5.0
     half_day_threshold= flt(settings.salary_slip_half_day_threshold) or 3.0
 
-    # Holidays within the pay period
     holiday_list = frappe.get_all(
         "Holiday List",
         filters={"year": start_date.year, "month_year": start_date.month},
@@ -432,7 +556,6 @@ def get_salary_slip_with_details(name):
                 if start_date <= h_date <= end_date:
                     holiday_dates.append(h_date)
 
-    # Attendance or Session data
     total_days = (end_date - start_date).days + 1
     attendance_records = []
     daily_sessions     = []
@@ -445,7 +568,7 @@ def get_salary_slip_with_details(name):
                 "attendance_date": ["between", [start_date, end_date]],
                 "docstatus": ["in", [0, 1]]
             },
-            fields=["status", "attendance_date"]
+            fields=["status", "attendance_date", "official_overtime", "unofficial_overtime", "working_hours_decimal"]
         )
     else:
         daily_sessions = frappe.get_all(
@@ -457,7 +580,6 @@ def get_salary_slip_with_details(name):
             fields=["login_date", "total_work_hours"]
         )
 
-    # Leave Applications
     leave_applications = frappe.get_all(
         "Leave Application",
         filters={
@@ -472,7 +594,6 @@ def get_salary_slip_with_details(name):
     leave_types   = frappe.get_all("Leave Type", fields=["name", "is_paid"])
     is_paid_map   = {lt.name: flt(lt.is_paid) for lt in leave_types}
 
-    # Day-by-day loop
     days_breakdown = []
     for i in range(total_days):
         single_day_date = start_date + timedelta(days=i)
@@ -483,19 +604,25 @@ def get_salary_slip_with_details(name):
             None
         )
         day_hours = 0
+        day_ot = 0.0
+        day_attendance = None
+
         if calc_source == "Daily Log":
             day_hours = sum(
                 flt(s["total_work_hours"])
                 for s in daily_sessions
                 if getdate(s["login_date"]) == single_day_date
             )
-
-        # Physical recognition
-        physical_val = 0
-        day_attendance = None
-        if calc_source == "Attendance":
+            if day_hours > 8.0:
+                day_ot = day_hours - 8.0
+        elif calc_source == "Attendance":
             day_attendance = next((a for a in attendance_records if getdate(a["attendance_date"]) == single_day_date), None)
+            if day_attendance:
+                day_hours = flt(day_attendance.get("working_hours_decimal") or 0)
+                ot_raw = day_attendance.get("official_overtime") or day_attendance.get("unofficial_overtime")
+                day_ot = parse_time_to_hours(ot_raw)
 
+        physical_val = 0
         if calc_source == "Daily Log":
             if day_hours >= present_threshold:
                 physical_val = 1.0
@@ -507,13 +634,11 @@ def get_salary_slip_with_details(name):
             elif day_attendance["status"] == "Half Day":
                 physical_val = 0.5
 
-        # Holiday recognition
         holiday_val = 0
         if is_holiday and physical_val < 1.0:
             if holiday_handling == "Include in Working Days":
                 holiday_val = 1.0 - physical_val
 
-        # Leave recognition
         leave_val    = 0
         is_paid_leave = False
         if day_leave and (physical_val + holiday_val) < 1.0:
@@ -521,7 +646,6 @@ def get_salary_slip_with_details(name):
             leave_val     = min(leave_unit, 1.0 - (physical_val + holiday_val))
             is_paid_leave = bool(is_paid_map.get(day_leave.leave_type, 1))
 
-        # Status label
         components = []
         if physical_val > 0:
             components.append(f"Work ({physical_val})")
@@ -539,12 +663,12 @@ def get_salary_slip_with_details(name):
         days_breakdown.append({
             "date":   single_day_date.strftime("%Y-%m-%d"),
             "status": day_status,
-            "hours":  round(day_hours, 2)
+            "hours":  round(day_hours, 2),
+            "ot_hours": round(day_ot, 2)
         })
 
     res["days_breakdown"] = days_breakdown
     return res
-
 
 
 # =================== SALARY SLIP GENERATION ===================
@@ -559,7 +683,6 @@ def generate_salary_slips_from_employee(year=None, month=None, employees=None, s
     year = int(year)
     month = int(month)
 
-    # Use provided dates or default to full month
     if start_date and end_date:
         start_date = getdate(start_date)
         end_date = getdate(end_date)
@@ -567,7 +690,6 @@ def generate_salary_slips_from_employee(year=None, month=None, employees=None, s
         start_date = getdate(f"{year}-{month}-01")
         end_date = getdate(f"{year}-{month}-{monthrange(year, month)[1]}")
 
-    # Convert employees input
     if isinstance(employees, str):
         employees = json.loads(employees)
 
@@ -575,16 +697,13 @@ def generate_salary_slips_from_employee(year=None, month=None, employees=None, s
         frappe.throw(_("Please provide employees list"))
 
     created_count = 0
-
     skipped_count = 0
     errors = []
 
     for emp_id in employees:
         try:
-            # Reuse preview function
             data = preview_salary_slip(emp_id, start_date, end_date)
 
-            # duplicate slips
             if frappe.db.exists("Salary Slip", {
                 "employee": emp_id,
                 "pay_period_start": start_date,
@@ -598,6 +717,7 @@ def generate_salary_slips_from_employee(year=None, month=None, employees=None, s
                 "employee": data["employee"],
                 "employee_name": data["employee_name"],
                 "father_husband_name": data.get("father_husband_name"),
+                "employee_type": data.get("employee_type"),
                 "email": data.get("email"),
                 "bank_account": data.get("account_number"),
                 "personal_email": data.get("personal_email"),
@@ -615,6 +735,10 @@ def generate_salary_slips_from_employee(year=None, month=None, employees=None, s
                 "holiday_handling": data["holiday_handling"],
                 "working_days_basis": data.get("working_days_basis"),
                 "fixed_working_days": data.get("fixed_working_days"),
+                "ot_hours": data.get("ot_hours", 0.0),
+                "ot_amount": data.get("ot_amount", 0.0),
+                "attendance_bonus": data.get("attendance_bonus", 0.0),
+                "pt_amount": data.get("pt_amount", 0.0),
                 "gross_pay": data["gross_pay"],
                 "grand_gross_pay": data["grand_gross_pay"],
                 "net_pay": data["net_pay"],
@@ -626,11 +750,9 @@ def generate_salary_slips_from_employee(year=None, month=None, employees=None, s
                 "status": "Draft"
             })
 
-            # Earnings
             for e in data.get("earnings", []):
                 slip.append("earnings", e)
 
-            # Deductions
             for d in data.get("deductions", []):
                 slip.append("deductions", d)
 
@@ -641,11 +763,11 @@ def generate_salary_slips_from_employee(year=None, month=None, employees=None, s
             errors.append(f"{emp_id}: {str(e)}")
 
     result_msg = f"Salary Slips Created: {created_count}, Skipped: {skipped_count}"
-    
     if errors:
         result_msg += "\n Errors:\n" + "\n".join(errors)
 
     return result_msg
+
 
 @frappe.whitelist()
 def submit_salary_slip(name):
