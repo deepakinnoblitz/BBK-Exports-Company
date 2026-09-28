@@ -48,7 +48,7 @@
             "fieldtype": "Select",
             "in_list_view": 1,
             "label": "Status",
-            "options": "\nPresent\nAbsent\nOn Leave\nHoliday\nHalf Day\nMissing",
+            "options": "\nPresent\nAbsent\nOn Leave\nHoliday\nHalf Day\nCompensatory Off\nMissing",
             "reqd": 1
         },
         {

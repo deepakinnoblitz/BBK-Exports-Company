@@ -21,6 +21,7 @@
   "salary_slip_absent_threshold",
   "pt_deduction_frequency",
   "pt_half_yearly_months",
+  "pt_slabs",
   "workers_ot_rate_multiplier",
   "north_indian_ot_rate",
   "workers_attendance_bonus",
@@ -38,11 +39,11 @@
   "livekit_url",
   "livekit_api_key",
   "livekit_api_secret",
-   "sidebar_tab",
-   "show_attendance_list",
-   "show_daily_log",
-   "show_attendance_report",
-   "show_daily_log_report"
+  "sidebar_tab",
+  "show_attendance_list",
+  "show_daily_log",
+  "show_attendance_report",
+  "show_daily_log_report"
  ],
  "fields": [
   {
@@ -146,6 +147,12 @@
    "options": "April, September\nMarch, September\nApril, October"
   },
   {
+   "default": "[{\"from_amount\": 0, \"to_amount\": 20000, \"tax_amount\": 0}, {\"from_amount\": 20001, \"to_amount\": 30000, \"tax_amount\": 155}, {\"from_amount\": 30001, \"to_amount\": 45000, \"tax_amount\": 375}, {\"from_amount\": 45001, \"to_amount\": 60000, \"tax_amount\": 750}, {\"from_amount\": 60001, \"to_amount\": 75000, \"tax_amount\": 1115}, {\"from_amount\": 75001, \"to_amount\": null, \"tax_amount\": 1250}]",
+   "fieldname": "pt_slabs",
+   "fieldtype": "Long Text",
+   "label": "PT Slabs Configuration"
+  },
+  {
    "default": "2",
    "fieldname": "workers_ot_rate_multiplier",
    "fieldtype": "Float",
@@ -155,7 +162,7 @@
    "default": "100",
    "fieldname": "north_indian_ot_rate",
    "fieldtype": "Currency",
-   "label": "North Indian OT Rate (₹/Hour)"
+   "label": "North Indian OT Rate (\u20b9/Hour)"
   },
   {
    "default": "1500",
