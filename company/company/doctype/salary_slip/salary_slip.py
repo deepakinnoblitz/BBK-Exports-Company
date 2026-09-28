@@ -308,17 +308,18 @@ def preview_salary_slip(employee, start_date, end_date):
             elif day_attendance["status"] == "Half Day":
                 physical_val = 0.5
                 half_day_count += 1
+            elif day_attendance["status"] == "Compensatory Off":
+                leave_val = 1.0
+                is_paid_leave = True
             
         # Determine Holiday Recognition
         holiday_val = 0
-        if is_holiday and physical_val < 1.0:
+        if is_holiday and (physical_val + leave_val) < 1.0:
             if holiday_handling == "Include in Working Days":
-                holiday_val = 1.0 - physical_val
+                holiday_val = 1.0 - (physical_val + leave_val)
 
         # Determine Leave Recognition
-        leave_val = 0
-        is_paid_leave = False
-        if day_leave and (physical_val + holiday_val) < 1.0:
+        if day_leave and (physical_val + holiday_val + leave_val) < 1.0:
             leave_unit = 0.5 if flt(day_leave.half_day) else 1.0
             if leave_unit == 0.5:
                 half_day_count += 1
@@ -333,7 +334,10 @@ def preview_salary_slip(employee, start_date, end_date):
         if physical_val > 0:
             components.append(f"Work ({physical_val})")
         if leave_val > 0:
-            components.append(f"{'Paid' if is_paid_leave else 'Unpaid'} Leave ({leave_val})")
+            if day_attendance and day_attendance.get("status") == "Compensatory Off":
+                components.append(f"Compensatory Off ({leave_val})")
+            else:
+                components.append(f"{'Paid' if is_paid_leave else 'Unpaid'} Leave ({leave_val})")
         if holiday_val > 0:
             components.append("Holiday" if holiday_val >= 1.0 else f"Holiday ({holiday_val})")
             

@@ -113,10 +113,12 @@ class Attendance(Document):
         in_time = _to_time_str(self.in_time)
         out_time = _to_time_str(self.out_time)
 
-        # No time → Absent
+        # No time → Absent (unless Holiday or Compensatory Off)
         if not in_time and not out_time:
             if self.leave_type:
                 self.status = "On Leave"
+            elif self.status in ["Holiday", "Compensatory Off"]:
+                pass
             else:
                 self.status = "Absent"
 
@@ -131,6 +133,8 @@ class Attendance(Document):
         if (in_time and not out_time) or (not in_time and out_time):
             if self.leave_type:
                 self.status = "On Leave"
+            elif self.status in ["Holiday", "Compensatory Off"]:
+                pass
             else:
                 self.status = "Missing"
             self.working_hours_display = "0:00"
