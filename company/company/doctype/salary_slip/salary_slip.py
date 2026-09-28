@@ -1,3 +1,4 @@
+import json
 import frappe
 from frappe import _
 from datetime import datetime, timedelta
@@ -110,18 +111,37 @@ def calculate_attendance_bonus(emp, absent_days, settings):
 
 def calculate_professional_tax(gross_salary, pay_period_start, settings):
     gross = flt(gross_salary)
-    if gross <= 20000.0:
-        slab_amount = 0.0
-    elif gross <= 30000.0:
-        slab_amount = 155.0
-    elif gross <= 45000.0:
-        slab_amount = 375.0
-    elif gross <= 60000.0:
-        slab_amount = 750.0
-    elif gross <= 75000.0:
-        slab_amount = 1115.0
-    else:
-        slab_amount = 1250.0
+    slab_amount = 0.0
+
+    # 1. Load dynamic slabs from settings if available
+    configured_slabs = getattr(settings, "pt_slabs", None)
+    slabs_list = []
+    if configured_slabs:
+        if isinstance(configured_slabs, str):
+            try:
+                slabs_list = json.loads(configured_slabs)
+            except Exception:
+                slabs_list = []
+        elif isinstance(configured_slabs, list):
+            slabs_list = configured_slabs
+
+    if slabs_list and isinstance(slabs_list, list):
+        for slab in slabs_list:
+            if not isinstance(slab, dict):
+                continue
+            from_amt = flt(slab.get("from_amount", 0))
+            to_amt_raw = slab.get("to_amount")
+            to_amt = flt(to_amt_raw) if to_amt_raw is not None and str(to_amt_raw).strip() != "" and str(to_amt_raw).lower() != "null" else None
+            tax_amt = flt(slab.get("tax_amount", 0))
+
+            if to_amt is not None:
+                if from_amt <= gross <= to_amt:
+                    slab_amount = tax_amt
+                    break
+            else:
+                if gross >= from_amt:
+                    slab_amount = tax_amt
+                    break
 
     frequency = getattr(settings, "pt_deduction_frequency", "Half-Yearly Deduction") or "Half-Yearly Deduction"
     if frequency == "Every Month Deduction":
