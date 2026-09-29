@@ -1170,11 +1170,42 @@ def get_hr_dashboard_data():
     except Exception:
         data["announcements"] = []
 
-    # 2. Employee Stats
+    # 2. Employee Stats & Today Attendance
     try:
-        data["total_employees"] = frappe.db.count("Employee", {"status": "Active"})
+        active_emp_count = frappe.db.count("Employee", {"status": "Active"})
+        data["total_active_employees"] = active_emp_count
+        data["total_employees"] = active_emp_count
+
+        # Today Attendance Stats for Active Employees
+        today_present = frappe.db.sql("""
+            SELECT COUNT(DISTINCT a.employee)
+            FROM `tabAttendance` a
+            INNER JOIN `tabEmployee` e ON a.employee = e.name
+            WHERE a.attendance_date = %s
+            AND a.status IN ('Present', 'Half Day')
+            AND a.docstatus != 2
+            AND e.status = 'Active'
+        """, (today,))[0][0] or 0
+
+        today_absent = frappe.db.sql("""
+            SELECT COUNT(DISTINCT a.employee)
+            FROM `tabAttendance` a
+            INNER JOIN `tabEmployee` e ON a.employee = e.name
+            WHERE a.attendance_date = %s
+            AND a.status = 'Absent'
+            AND a.docstatus != 2
+            AND e.status = 'Active'
+        """, (today,))[0][0] or 0
+
+        data["today_present"] = today_present
+        data["today_absent"] = today_absent
+        data["present_today"] = today_present
     except Exception:
+        data["total_active_employees"] = 0
         data["total_employees"] = 0
+        data["today_present"] = 0
+        data["today_absent"] = 0
+        data["present_today"] = 0
 
     # 3. Pending Leaves (Workflow based)
     try:
