@@ -280,6 +280,8 @@ def preview_salary_slip(employee, start_date, end_date):
         day_hours = 0
         day_attendance = None
         day_ot = 0.0
+        leave_val = 0.0
+        is_paid_leave = False
         
         if calc_source == "Daily Log":
             day_hours = sum(flt(s["total_work_hours"]) for s in daily_sessions if getdate(s["login_date"]) == single_day_date)
