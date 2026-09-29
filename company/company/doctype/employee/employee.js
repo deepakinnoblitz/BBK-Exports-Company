@@ -11,6 +11,7 @@ frappe.ui.form.on('Employee', {
             "date_of_joining",
             "pf_number",
             "esi_no",
+            "pan_number",
             "status",
             "user",
             "bank_account",

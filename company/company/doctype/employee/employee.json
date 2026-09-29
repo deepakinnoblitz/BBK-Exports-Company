@@ -23,6 +23,7 @@
   "marital_status",
   "qualification",
   "aadhar_number",
+  "pan_number",
   "pf_number",
   "uan_number",
   "esi_no",
@@ -324,6 +325,11 @@
    "fieldname": "aadhar_number",
    "fieldtype": "Data",
    "label": "Aadhar Number"
+  },
+  {
+   "fieldname": "pan_number",
+   "fieldtype": "Data",
+   "label": "PAN Number"
   },
   {
    "fieldname": "uan_number",
