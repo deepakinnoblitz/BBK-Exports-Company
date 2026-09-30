@@ -850,7 +850,6 @@ def populate_holidays_for_ui(month, year):
     num_days = monthrange(year, month)[1]
 
     holidays = []
-    saturday_count = 0
     working_days_count = 0
 
     for day in range(1, num_days + 1):
@@ -862,11 +861,6 @@ def populate_holidays_for_ui(month, year):
         if weekday == 6:  # Sunday
             is_holiday = True
             description = "Sunday"
-        elif weekday == 5:  # Saturday
-            saturday_count += 1
-            if saturday_count in [2,4]:
-                is_holiday = True
-                description = "2nd/4th Saturday"
 
         is_working_day = 0 if is_holiday else 1
         if is_working_day:

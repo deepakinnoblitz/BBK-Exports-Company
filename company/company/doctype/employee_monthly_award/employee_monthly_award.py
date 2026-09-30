@@ -74,7 +74,6 @@ def calculate_monthly_awards(month=None):
 		holiday_dates = [getdate(h.holiday_date) for h in holiday_doc.holidays if not h.is_working_day]
 
 	working_days = 0
-	saturday_count = 0
 	for day in range(1, num_days + 1):
 		d = getdate(f"{month.year}-{month.month:02d}-{day:02d}")
 		weekday = d.weekday()  # Monday=0, Sunday=6
@@ -82,10 +81,6 @@ def calculate_monthly_awards(month=None):
 		is_holiday = False
 		if weekday == 6: # Sunday
 			is_holiday = True
-		elif weekday == 5: # Saturday
-			saturday_count += 1
-			if saturday_count in [2, 4]:
-				is_holiday = True
 		
 		# Check if this date is in the specific holiday list
 		if d in holiday_dates:
