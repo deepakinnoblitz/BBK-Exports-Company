@@ -4051,17 +4051,12 @@ def get_month_working_days(year: int, month: int):
         holiday_dates = {getdate(h.holiday_date) for h in h_records}
 
     working_days = 0
-    saturday_count = 0
     for day in range(1, num_days + 1):
         d = getdate(f"{year}-{month:02d}-{day:02d}")
         weekday = d.weekday()  # Monday=0, Sunday=6
         is_off = False
         if weekday == 6:  # Sunday
             is_off = True
-        elif weekday == 5:  # Saturday
-            saturday_count += 1
-            if saturday_count in [2, 4]:
-                is_off = True
         if d in holiday_dates:
             is_off = True
         if not is_off:

@@ -86,14 +86,16 @@ def calculate_overtime_pay(emp, gross_salary, ot_hours, settings):
         return 0.0
     
     emp_type = (emp.get("employee_type") or "").lower()
-    designation = (emp.get("designation") or "").lower()
+
+    if "staff" in emp_type:
+        return 0.0
     
-    if "worker" in emp_type or "worker" in designation:
+    if "worker" in emp_type:
         multiplier = flt(getattr(settings, "workers_ot_rate_multiplier", 2.0)) or 2.0
         # Formula: (Gross Salary / 26 / 8) * OT Hours * multiplier
         hourly_rate = flt(gross_salary) / 26.0 / 8.0
         return round(hourly_rate * ot_h * multiplier, 2)
-    elif "north indian" in emp_type or "north indian" in designation:
+    elif "north indian" in emp_type:
         rate = flt(getattr(settings, "north_indian_ot_rate", 100.0)) or 100.0
         # Formula: rate * OT Hours
         return round(rate * ot_h, 2)
@@ -102,9 +104,8 @@ def calculate_overtime_pay(emp, gross_salary, ot_hours, settings):
 
 def calculate_attendance_bonus(emp, absent_days, settings):
     emp_type = (emp.get("employee_type") or "").lower()
-    designation = (emp.get("designation") or "").lower()
     
-    if ("worker" in emp_type or "worker" in designation) and flt(absent_days) <= 0.0:
+    if "worker" in emp_type and flt(absent_days) <= 0.0:
         return flt(getattr(settings, "workers_attendance_bonus", 1500.0)) or 1500.0
     return 0.0
 
@@ -406,8 +407,15 @@ def preview_salary_slip(employee, start_date, end_date):
         prorated_earnings.append(item)
 
     # 5.1. Overtime Pay Calculation
+    emp_type = (emp.get("employee_type") or "").lower()
+    is_staff = "staff" in emp_type
     total_ot_hours = round(total_ot_hours, 2)
-    ot_amount = calculate_overtime_pay(emp, gross_pay, total_ot_hours, settings)
+
+    if is_staff:
+        ot_amount = 0.0
+    else:
+        ot_amount = calculate_overtime_pay(emp, gross_pay, total_ot_hours, settings)
+
     if ot_amount > 0:
         prorated_earnings.append({
             "component_name": "Overtime Pay (OT)",
