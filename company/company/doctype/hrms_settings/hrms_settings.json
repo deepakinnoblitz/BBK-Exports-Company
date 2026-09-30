@@ -13,6 +13,7 @@
   "half_day_threshold",
   "salary_slip_tab",
   "salary_calculation_source",
+  "salary_leave_calculation_source",
   "salary_working_days_basis",
   "salary_fixed_working_days",
   "salary_holiday_handling",
@@ -91,6 +92,13 @@
    "fieldtype": "Select",
    "label": "Calculation Source",
    "options": "Attendance\nDaily Log"
+  },
+  {
+   "default": "Via Leave Application",
+   "fieldname": "salary_leave_calculation_source",
+   "fieldtype": "Select",
+   "label": "Leave Calculation Source",
+   "options": "Via Leave Application\nVia Direct Allocation"
   },
   {
    "default": "Actual Days in Month",

@@ -170,6 +170,7 @@ def preview_salary_slip(employee, start_date, end_date):
     # 0. Fetch Settings
     settings = frappe.get_single("HRMS Settings")
     calc_source = settings.salary_calculation_source or "Attendance"
+    leave_calc_source = getattr(settings, "salary_leave_calculation_source", None) or "Via Leave Application"
     working_days_basis = settings.salary_working_days_basis or "Actual Days in Month"
     fixed_working_days = flt(settings.salary_fixed_working_days) or 26.0
     holiday_handling = settings.salary_holiday_handling or "Include in Working Days"
@@ -245,6 +246,28 @@ def preview_salary_slip(employee, start_date, end_date):
     # Cache Leave Type "is_paid" status
     leave_types = frappe.get_all("Leave Type", fields=["name", "is_paid"])
     is_paid_map = {lt.name: flt(lt.is_paid) for lt in leave_types}
+
+    # Fetch Direct Leave Allocations if configured
+    direct_paid_remaining = 0.0
+    direct_unpaid_remaining = 0.0
+    if leave_calc_source == "Via Direct Allocation":
+        leave_allocations = frappe.get_all(
+            "Leave Allocation",
+            filters={
+                "employee": emp.name,
+                "docstatus": ["<", 2],
+                "from_date": ["<=", end_date],
+                "to_date": [">=", start_date]
+            },
+            fields=["name", "leave_type", "total_leaves_allocated", "total_leaves_taken"]
+        )
+        for alloc in leave_allocations:
+            taken = flt(alloc.get("total_leaves_taken") or 0)
+            if taken > 0:
+                if is_paid_map.get(alloc.leave_type, 1):
+                    direct_paid_remaining += taken
+                else:
+                    direct_unpaid_remaining += taken
 
     # 4. Calculate Periods
     total_days = (end_date - start_date).days + 1
@@ -330,12 +353,26 @@ def preview_salary_slip(employee, start_date, end_date):
                 holiday_val = 1.0 - (physical_val + leave_val)
 
         # Determine Leave Recognition
-        if day_leave and (physical_val + holiday_val + leave_val) < 1.0:
-            leave_unit = 0.5 if flt(day_leave.half_day) else 1.0
-            if leave_unit == 0.5:
-                half_day_count += 1
-            leave_val = min(leave_unit, 1.0 - (physical_val + holiday_val))
-            is_paid_leave = bool(is_paid_map.get(day_leave.leave_type, 1))
+        if leave_calc_source == "Via Direct Allocation":
+            if (physical_val + holiday_val + leave_val) < 1.0:
+                gap = 1.0 - (physical_val + holiday_val + leave_val)
+                if direct_paid_remaining > 0:
+                    alloc_use = min(gap, direct_paid_remaining)
+                    leave_val += alloc_use
+                    is_paid_leave = True
+                    direct_paid_remaining -= alloc_use
+                elif direct_unpaid_remaining > 0:
+                    alloc_use = min(gap, direct_unpaid_remaining)
+                    leave_val += alloc_use
+                    is_paid_leave = False
+                    direct_unpaid_remaining -= alloc_use
+        else:
+            if day_leave and (physical_val + holiday_val + leave_val) < 1.0:
+                leave_unit = 0.5 if flt(day_leave.half_day) else 1.0
+                if leave_unit == 0.5:
+                    half_day_count += 1
+                leave_val = min(leave_unit, 1.0 - (physical_val + holiday_val))
+                is_paid_leave = bool(is_paid_map.get(day_leave.leave_type, 1))
 
         # Update Counters
         physical_attendance_days += physical_val
@@ -372,6 +409,7 @@ def preview_salary_slip(employee, start_date, end_date):
         if is_paid_leave:
             present_days += leave_val
             paid_leave_days += leave_val
+            total_leave_days += leave_val
         else:
             absent_days += leave_val
             total_leave_days += leave_val
@@ -384,7 +422,7 @@ def preview_salary_slip(employee, start_date, end_date):
             absent_days += gap
 
     # 5. Calculate Earnings & Deductions
-    unpaid_leave_days = total_leave_days - paid_leave_days
+    unpaid_leave_days = max(0.0, total_leave_days - paid_leave_days)
     
     is_full_month = (start_date == m_start and end_date == m_end)
     if is_full_month:
@@ -505,6 +543,7 @@ def preview_salary_slip(employee, start_date, end_date):
         "unpaid_leave_days": unpaid_leave_days,
         "half_day_count": half_day_count,
         "calc_source": calc_source,
+        "leave_calc_source": leave_calc_source,
         "holiday_handling": holiday_handling,
         "working_days_basis": working_days_basis,
         "fixed_working_days": fixed_working_days if working_days_basis == "Fixed Number of Days" else None,
@@ -589,6 +628,7 @@ def get_salary_slip_with_details(name):
 
     settings          = frappe.get_single("HRMS Settings")
     calc_source       = getattr(doc, "calc_source", None) or settings.salary_calculation_source or "Attendance"
+    leave_calc_source = getattr(settings, "salary_leave_calculation_source", None) or "Via Leave Application"
     holiday_handling  = getattr(doc, "holiday_handling", None) or settings.salary_holiday_handling or "Include in Working Days"
     working_days_basis = getattr(doc, "working_days_basis", None) or settings.salary_working_days_basis or "Actual Days in Month"
     fixed_working_days = getattr(doc, "fixed_working_days", None) or flt(settings.salary_fixed_working_days) or 26.0
@@ -647,6 +687,27 @@ def get_salary_slip_with_details(name):
     leave_types   = frappe.get_all("Leave Type", fields=["name", "is_paid"])
     is_paid_map   = {lt.name: flt(lt.is_paid) for lt in leave_types}
 
+    direct_paid_remaining = 0.0
+    direct_unpaid_remaining = 0.0
+    if leave_calc_source == "Via Direct Allocation":
+        leave_allocations = frappe.get_all(
+            "Leave Allocation",
+            filters={
+                "employee": doc.employee,
+                "docstatus": ["<", 2],
+                "from_date": ["<=", end_date],
+                "to_date": [">=", start_date]
+            },
+            fields=["name", "leave_type", "total_leaves_allocated", "total_leaves_taken"]
+        )
+        for alloc in leave_allocations:
+            taken = flt(alloc.get("total_leaves_taken") or 0)
+            if taken > 0:
+                if is_paid_map.get(alloc.leave_type, 1):
+                    direct_paid_remaining += taken
+                else:
+                    direct_unpaid_remaining += taken
+
     days_breakdown = []
     for i in range(total_days):
         single_day_date = start_date + timedelta(days=i)
@@ -694,10 +755,24 @@ def get_salary_slip_with_details(name):
 
         leave_val    = 0
         is_paid_leave = False
-        if day_leave and (physical_val + holiday_val) < 1.0:
-            leave_unit    = 0.5 if flt(day_leave.half_day) else 1.0
-            leave_val     = min(leave_unit, 1.0 - (physical_val + holiday_val))
-            is_paid_leave = bool(is_paid_map.get(day_leave.leave_type, 1))
+        if leave_calc_source == "Via Direct Allocation":
+            gap = 1.0 - (physical_val + holiday_val)
+            if gap > 0:
+                if direct_paid_remaining > 0:
+                    alloc_use = min(gap, direct_paid_remaining)
+                    leave_val = alloc_use
+                    is_paid_leave = True
+                    direct_paid_remaining -= alloc_use
+                elif direct_unpaid_remaining > 0:
+                    alloc_use = min(gap, direct_unpaid_remaining)
+                    leave_val = alloc_use
+                    is_paid_leave = False
+                    direct_unpaid_remaining -= alloc_use
+        else:
+            if day_leave and (physical_val + holiday_val) < 1.0:
+                leave_unit    = 0.5 if flt(day_leave.half_day) else 1.0
+                leave_val     = min(leave_unit, 1.0 - (physical_val + holiday_val))
+                is_paid_leave = bool(is_paid_map.get(day_leave.leave_type, 1))
 
         components = []
         if physical_val > 0:
