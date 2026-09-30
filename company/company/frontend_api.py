@@ -4115,6 +4115,81 @@ def get_employee_month_attendance_summary(
         "is_full_month_present": is_full_month,
     }
 
+def get_bulk_month_attendance_summary(
+    month_start,
+    month_end,
+    working_days: int,
+    include_paid_leaves: bool = False,
+    half_day_weight: float = 0.5,
+    paid_leave_names: set = None,
+):
+    """
+    Optimized bulk attendance summary for all employees in a single SQL query.
+    Returns (map_of_emp_to_summary, default_summary).
+    """
+    records = frappe.db.sql("""
+        SELECT 
+            employee,
+            status,
+            leave_type,
+            COUNT(*) as count
+        FROM `tabAttendance`
+        WHERE attendance_date BETWEEN %s AND %s AND docstatus < 2
+        GROUP BY employee, status, leave_type
+    """, (month_start, month_end), as_dict=True)
+
+    emp_data = {}
+    for r in records:
+        emp = r.employee
+        if emp not in emp_data:
+            emp_data[emp] = {
+                "present_days": 0.0,
+                "half_days": 0,
+                "absent_days": 0,
+                "paid_leaves_counted": 0,
+            }
+        st = r.status
+        cnt = float(r.count)
+        if st == "Present":
+            emp_data[emp]["present_days"] += cnt
+        elif st == "Half Day":
+            emp_data[emp]["present_days"] += cnt * float(half_day_weight)
+            emp_data[emp]["half_days"] += int(cnt)
+        elif st in ["On Leave", "Leave"]:
+            if include_paid_leaves and paid_leave_names and (r.leave_type in paid_leave_names):
+                emp_data[emp]["present_days"] += cnt
+                emp_data[emp]["paid_leaves_counted"] += int(cnt)
+        elif st == "Absent":
+            emp_data[emp]["absent_days"] += int(cnt)
+
+    default_summary = {
+        "working_days": working_days,
+        "present_days": 0.0,
+        "half_days": 0,
+        "absent_days": 0,
+        "paid_leaves_counted": 0,
+        "attendance_pct": 0.0,
+        "is_full_month_present": False,
+    }
+
+    result = {}
+    for emp, d in emp_data.items():
+        present = d["present_days"]
+        pct = round((present / working_days * 100), 1) if working_days > 0 else 0.0
+        is_full = (present >= working_days) and (working_days > 0)
+        result[emp] = {
+            "working_days": working_days,
+            "present_days": present,
+            "half_days": d["half_days"],
+            "absent_days": d["absent_days"],
+            "paid_leaves_counted": d["paid_leaves_counted"],
+            "attendance_pct": pct,
+            "is_full_month_present": is_full,
+        }
+
+    return result, default_summary
+
+
 @frappe.whitelist()
 def get_leave_allocation_preview(
     year: int,
@@ -4124,7 +4199,7 @@ def get_leave_allocation_preview(
 ):
     """
     Returns a preview of leave allocations for all active employees
-    based on the Leave Type master and attendance criteria.
+    based on the Leave Type master and attendance criteria using bulk queries.
     """
     year = int(year)
     month = int(month)
@@ -4167,12 +4242,44 @@ def get_leave_allocation_preview(
             "employee_name",
             "date_of_joining",
             "skip_probation",
+            "department",
+            "designation",
+            "employee_type",
         ],
     )
 
     # Active Leave Types
     leave_types = get_active_leave_types()
 
+    # Bulk query 1: Bulk Attendance (O(1) query)
+    bulk_att_map, default_att_summary = get_bulk_month_attendance_summary(
+        att_month_start,
+        att_month_end,
+        att_working_days,
+        include_paid_leaves=False,
+        half_day_weight=0.5,
+        paid_leave_names=paid_lts
+    )
+
+    # Bulk query 2: Current month manual allocations (O(1) query)
+    current_manual_allocs = set(frappe.db.sql("""
+        SELECT CONCAT(employee, ':::', leave_type)
+        FROM `tabLeave Allocation`
+        WHERE from_date = %s AND to_date = %s AND allocation_source = 'Manual' AND status = 'Approved'
+    """, (month_start, month_end), pluck=True))
+
+    # Bulk query 3: Previous month allocations for carry forward (O(1) query)
+    prev_alloc_records = frappe.db.sql("""
+        SELECT employee, leave_type, total_leaves_allocated, total_leaves_taken
+        FROM `tabLeave Allocation`
+        WHERE from_date = %s AND to_date = %s AND status = 'Approved'
+    """, (prev_month_start, prev_month_end), as_dict=True)
+    prev_alloc_map = {
+        (r.employee, r.leave_type): r
+        for r in prev_alloc_records
+    }
+
+    current_date = getdate(today())
     preview_data = []
 
     for emp in employees:
@@ -4183,7 +4290,6 @@ def get_leave_allocation_preview(
         # ---------------------------------
         in_probation = False
         if emp.date_of_joining and not emp.skip_probation:
-            current_date = getdate(today())
             in_probation = any(
                 add_months(
                     getdate(emp.date_of_joining),
@@ -4193,16 +4299,8 @@ def get_leave_allocation_preview(
                 if lt.restrict_during_probation
             )
 
-        # Baseline attendance for this employee
-        emp_att = get_employee_month_attendance_summary(
-            emp.name,
-            att_month_start,
-            att_month_end,
-            att_working_days,
-            include_paid_leaves=False,
-            half_day_weight=0.5,
-            paid_leave_names=paid_lts
-        )
+        # Baseline attendance for this employee (O(1) in-memory lookup)
+        emp_att = bulk_att_map.get(emp.name, default_att_summary)
 
         for leave in leave_types:
             # ---------------------------------
@@ -4223,25 +4321,15 @@ def get_leave_allocation_preview(
             if leave_in_probation:
                 continue
 
-            # Already allocated via Manual?
-            exists = frappe.db.exists(
-                "Leave Allocation",
-                {
-                    "employee": emp.name,
-                    "leave_type": leave.name,
-                    "from_date": month_start,
-                    "to_date": month_end,
-                    "allocation_source": "Manual",
-                    "status": "Approved",
-                },
-            )
+            # Already allocated via Manual? (O(1) in-memory lookup)
+            exists = f"{emp.name}:::{leave.name}" in current_manual_allocs
 
             basis = leave.get("allocation_basis") or "Fixed / Unconditional"
             criteria_met = True
             criteria_reason = "Fixed / Standard Allocation"
             base_count = leave.max_leaves or 0
 
-            # Carry Forward Calculation
+            # Carry Forward Calculation (O(1) in-memory lookup)
             carry_forward_balance = 0
             if leave.carry_forward:
                 frequency = leave.reset_frequency or "Every 3 months"
@@ -4249,24 +4337,9 @@ def get_leave_allocation_preview(
                 is_reset_month = ((month - 1) % reset_interval) == 0
 
                 if not is_reset_month:
-                    prev_alloc = frappe.get_value(
-                        "Leave Allocation",
-                        {
-                            "employee": emp.name,
-                            "leave_type": leave.name,
-                            "from_date": prev_month_start,
-                            "to_date": prev_month_end,
-                            "status": "Approved",
-                        },
-                        [
-                            "total_leaves_allocated",
-                            "total_leaves_taken",
-                        ],
-                        as_dict=True,
-                    )
-
+                    prev_alloc = prev_alloc_map.get((emp.name, leave.name))
                     if prev_alloc:
-                        balance = flt(prev_alloc.total_leaves_allocated) - flt(prev_alloc.total_leaves_taken)
+                        balance = flt(prev_alloc.get("total_leaves_allocated")) - flt(prev_alloc.get("total_leaves_taken"))
                         if balance > 0:
                             carry_forward_balance = balance
 
@@ -4291,6 +4364,9 @@ def get_leave_allocation_preview(
             "employee": emp.name,
             "employee_id": emp.employee_id,
             "employee_name": emp.employee_name,
+            "department": emp.get("department") or "",
+            "designation": emp.get("designation") or "",
+            "employee_type": emp.get("employee_type") or "",
             "date_of_joining": emp.date_of_joining,
             "in_probation": in_probation,
             "working_days": emp_att["working_days"],
@@ -4303,13 +4379,15 @@ def get_leave_allocation_preview(
 
     return preview_data
 
+
 @frappe.whitelist()
 def auto_allocate_monthly_leaves(
     year: int,
     month: int,
     only_conditional: bool = False,
     attendance_month: int = None,
-    attendance_year: int = None
+    attendance_year: int = None,
+    employees: list | str = None,
 ):
     """
     Automatically allocate leaves for all active employees
@@ -4319,6 +4397,11 @@ def auto_allocate_monthly_leaves(
     year = int(year)
     month = int(month)
     only_conditional = str(only_conditional).lower() in ("1", "true", "yes")
+
+    created_count = 0
+    skipped_count = 0
+    created_details = []
+    errors = []
 
     try:
         month_start = get_first_day(datetime(year, month, 1))
@@ -4343,7 +4426,7 @@ def auto_allocate_monthly_leaves(
         paid_lts = set(frappe.get_all("Leave Type", filters={"is_paid": 1}, pluck="name"))
 
         # Active Employees
-        employees = frappe.get_all(
+        employees_list = frappe.get_all(
             "Employee",
             filters={"status": "Active"},
             fields=[
@@ -4354,6 +4437,15 @@ def auto_allocate_monthly_leaves(
                 "skip_probation",
             ],
         )
+
+        if employees:
+            if isinstance(employees, str):
+                try:
+                    employees = json.loads(employees)
+                except Exception:
+                    employees = [e.strip() for e in employees.split(",") if e.strip()]
+            target_emp_set = set(employees)
+            employees_list = [emp for emp in employees_list if emp.name in target_emp_set]
 
         # Active Leave Types
         leave_types = get_active_leave_types()
@@ -4378,21 +4470,36 @@ def auto_allocate_monthly_leaves(
             "Whole year": 12,
         }
 
-        created_count = 0
-        skipped_count = 0
-        errors = []
-        created_details = []
+        # Bulk query 1: Bulk Attendance (baseline)
+        bulk_att_map, default_att_summary = get_bulk_month_attendance_summary(
+            att_month_start,
+            att_month_end,
+            att_working_days,
+            include_paid_leaves=False,
+            half_day_weight=0.5,
+            paid_leave_names=paid_lts
+        )
 
-        for emp in employees:
-            emp_att = get_employee_month_attendance_summary(
-                emp.name,
-                att_month_start,
-                att_month_end,
-                att_working_days,
-                include_paid_leaves=False,
-                half_day_weight=0.5,
-                paid_leave_names=paid_lts
-            )
+        # Bulk query 2: Existing allocations for target source
+        existing_alloc_set = set(frappe.db.sql("""
+            SELECT CONCAT(employee, ':::', leave_type, ':::', allocation_source)
+            FROM `tabLeave Allocation`
+            WHERE from_date = %s AND to_date = %s AND status = 'Approved'
+        """, (month_start, month_end), pluck=True))
+
+        # Bulk query 3: Previous month allocations for carry forward
+        prev_alloc_records = frappe.db.sql("""
+            SELECT employee, leave_type, total_leaves_allocated, total_leaves_taken
+            FROM `tabLeave Allocation`
+            WHERE from_date = %s AND to_date = %s AND status = 'Approved'
+        """, (prev_month_start, prev_month_end), as_dict=True)
+        prev_alloc_map = {
+            (r.employee, r.leave_type): r
+            for r in prev_alloc_records
+        }
+
+        for emp in employees_list:
+            emp_att = bulk_att_map.get(emp.name, default_att_summary)
 
             for leave in leave_types:
                 # Probation check
@@ -4415,18 +4522,8 @@ def auto_allocate_monthly_leaves(
                 source = "Auto" if is_cron else "Manual"
 
                 try:
-                    # Skip if already allocated for this source
-                    if frappe.db.exists(
-                        "Leave Allocation",
-                        {
-                            "employee": emp.name,
-                            "leave_type": leave.name,
-                            "from_date": month_start,
-                            "to_date": month_end,
-                            "allocation_source": source,
-                            "status": "Approved",
-                        },
-                    ):
+                    # Skip if already allocated for this source (O(1) in-memory lookup)
+                    if f"{emp.name}:::{leave.name}:::{source}" in existing_alloc_set:
                         skipped_count += 1
                         continue
 
@@ -4473,7 +4570,7 @@ def auto_allocate_monthly_leaves(
                         criteria_met = True
                         earned_count = base_leave_count
 
-                    # Carry Forward Calculation
+                    # Carry Forward Calculation (O(1) in-memory lookup)
                     carry_forward_balance = 0
                     if leave.carry_forward:
                         frequency = leave.reset_frequency or "Every 3 months"
@@ -4481,23 +4578,9 @@ def auto_allocate_monthly_leaves(
                         is_reset_month = ((month - 1) % reset_interval) == 0
 
                         if not is_reset_month:
-                            prev_alloc = frappe.get_value(
-                                "Leave Allocation",
-                                {
-                                    "employee": emp.name,
-                                    "leave_type": leave.name,
-                                    "from_date": prev_month_start,
-                                    "to_date": prev_month_end,
-                                    "status": "Approved",
-                                },
-                                [
-                                    "total_leaves_allocated",
-                                    "total_leaves_taken",
-                                ],
-                                as_dict=True,
-                            )
+                            prev_alloc = prev_alloc_map.get((emp.name, leave.name))
                             if prev_alloc:
-                                balance = flt(prev_alloc.total_leaves_allocated) - flt(prev_alloc.total_leaves_taken)
+                                balance = flt(prev_alloc.get("total_leaves_allocated")) - flt(prev_alloc.get("total_leaves_taken"))
                                 if balance > 0:
                                     carry_forward_balance = balance
 
@@ -4528,6 +4611,7 @@ def auto_allocate_monthly_leaves(
                         }
                     )
                     allocation.insert(ignore_permissions=True, ignore_mandatory=True)
+                    existing_alloc_set.add(f"{emp.name}:::{leave.name}:::{source}")
                     created_count += 1
                     created_details.append(
                         {
