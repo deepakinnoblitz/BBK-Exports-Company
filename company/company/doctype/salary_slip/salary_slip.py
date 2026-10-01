@@ -110,9 +110,9 @@ def calculate_attendance_bonus(emp, absent_days, settings):
     return 0.0
 
 
-def calculate_professional_tax(gross_salary, pay_period_start, settings):
+def calculate_professional_tax(gross_salary, pay_period_start, settings, employee=None, emp_doc=None, current_slip_name=None):
+    pay_period_start = getdate(pay_period_start)
     gross = flt(gross_salary)
-    slab_amount = 0.0
 
     # 1. Load dynamic slabs from settings if available
     configured_slabs = getattr(settings, "pt_slabs", None)
@@ -126,36 +126,104 @@ def calculate_professional_tax(gross_salary, pay_period_start, settings):
         elif isinstance(configured_slabs, list):
             slabs_list = configured_slabs
 
-    if slabs_list and isinstance(slabs_list, list):
-        for slab in slabs_list:
-            if not isinstance(slab, dict):
-                continue
-            from_amt = flt(slab.get("from_amount", 0))
-            to_amt_raw = slab.get("to_amount")
-            to_amt = flt(to_amt_raw) if to_amt_raw is not None and str(to_amt_raw).strip() != "" and str(to_amt_raw).lower() != "null" else None
-            tax_amt = flt(slab.get("tax_amount", 0))
+    def get_slab_tax(eval_gross):
+        slab_amount = 0.0
+        if slabs_list and isinstance(slabs_list, list):
+            for slab in slabs_list:
+                if not isinstance(slab, dict):
+                    continue
+                from_amt = flt(slab.get("from_amount", 0))
+                to_amt_raw = slab.get("to_amount")
+                to_amt = flt(to_amt_raw) if to_amt_raw is not None and str(to_amt_raw).strip() != "" and str(to_amt_raw).lower() != "null" else None
+                tax_amt = flt(slab.get("tax_amount", 0))
 
-            if to_amt is not None:
-                if from_amt <= gross <= to_amt:
-                    slab_amount = tax_amt
-                    break
-            else:
-                if gross >= from_amt:
-                    slab_amount = tax_amt
-                    break
+                if to_amt is not None:
+                    if from_amt <= eval_gross <= to_amt:
+                        slab_amount = tax_amt
+                        break
+                else:
+                    if eval_gross >= from_amt:
+                        slab_amount = tax_amt
+                        break
+        return slab_amount
 
     frequency = getattr(settings, "pt_deduction_frequency", "Half-Yearly Deduction") or "Half-Yearly Deduction"
     if frequency == "Every Month Deduction":
-        return slab_amount
-    
-    # Half-Yearly Deduction
+        return get_slab_tax(gross)
+
+    # 2. Half-Yearly Deduction
     cycle_months_str = getattr(settings, "pt_half_yearly_months", "April, September") or "April, September"
     month_name = formatdate(pay_period_start, "MMMM")
-    cycle_months = [m.strip().lower() for m in cycle_months_str.split(",")]
-    
-    if month_name.lower() in cycle_months:
-        return slab_amount
-    return 0.0
+    cycle_months = [m.strip().lower() for m in cycle_months_str.replace("&", ",").split(",") if m.strip()]
+
+    if month_name.lower() not in cycle_months:
+        return 0.0
+
+    # Determine 6-Month Cycle Date Range
+    cur_year = pay_period_start.year
+    cur_month = pay_period_start.month
+
+    if cur_month in [4, 5, 6, 7, 8, 9]:
+        cycle_start = getdate(f"{cur_year}-04-01")
+        cycle_end = getdate(f"{cur_year}-09-30")
+    elif cur_month in [10, 11, 12]:
+        cycle_start = getdate(f"{cur_year}-10-01")
+        cycle_end = getdate(f"{cur_year + 1}-03-31")
+    else:  # [1, 2, 3]
+        cycle_start = getdate(f"{cur_year - 1}-10-01")
+        cycle_end = getdate(f"{cur_year}-03-31")
+
+    # Fetch prior salary slips in this cycle for this employee
+    past_gross = 0.0
+    past_pt = 0.0
+    past_months_count = 0
+
+    if employee:
+        past_slips = frappe.get_all(
+            "Salary Slip",
+            filters={
+                "employee": employee,
+                "docstatus": ["<", 2],
+                "pay_period_start": [">=", cycle_start],
+                "pay_period_end": ["<=", cycle_end],
+            },
+            fields=["name", "gross_pay", "pt_amount", "pay_period_start"]
+        )
+
+        for ps in past_slips:
+            if current_slip_name and ps.name == current_slip_name:
+                continue
+            if getdate(ps.pay_period_start) == pay_period_start:
+                continue
+            past_gross += flt(ps.gross_pay)
+            past_pt += flt(ps.pt_amount)
+            past_months_count += 1
+
+    # Determine active months in cycle based on Date of Joining
+    doj = None
+    if emp_doc:
+        doj = getdate(emp_doc.get("date_of_joining")) if emp_doc.get("date_of_joining") else None
+    elif employee:
+        doj_raw = frappe.db.get_value("Employee", employee, "date_of_joining")
+        doj = getdate(doj_raw) if doj_raw else None
+
+    total_cycle_months = 6
+    if doj and doj > cycle_start:
+        m_diff = (pay_period_start.year - doj.year) * 12 + (pay_period_start.month - doj.month) + 1
+        total_cycle_months = max(1, min(6, m_diff))
+
+    # Project any missing past months in this cycle using current gross
+    missing_past_months = max(0, total_cycle_months - 1 - past_months_count)
+    projected_missing_gross = gross * missing_past_months
+
+    cumulative_gross = past_gross + gross + projected_missing_gross
+
+    # Calculate PT slab for cumulative half-yearly gross
+    slab_tax = get_slab_tax(cumulative_gross)
+
+    # Net PT payable in this cycle month
+    final_pt = max(0.0, slab_tax - past_pt)
+    return final_pt
 
 
 @frappe.whitelist()
@@ -473,7 +541,7 @@ def preview_salary_slip(employee, start_date, end_date):
         })
 
     # 5.3. Deductions & Professional Tax
-    pt_amount = calculate_professional_tax(gross_pay, start_date, settings)
+    pt_amount = calculate_professional_tax(gross_pay, start_date, settings, employee=emp.name, emp_doc=emp)
 
     prorated_deductions = []
     for d in emp.deductions:
