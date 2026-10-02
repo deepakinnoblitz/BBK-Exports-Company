@@ -494,22 +494,27 @@ def preview_salary_slip(employee, start_date, end_date):
     
     is_full_month = (start_date == m_start and end_date == m_end)
     if is_full_month:
-        period_factor = 1.0
+        payable_days = max(0.0, month_working_days - absent_days) if month_working_days else 0.0
+        period_factor = (payable_days / month_working_days) if month_working_days else 1.0
     else:
-        period_factor = min(1.0, total_days / month_working_days) if month_working_days else 1.0
+        payable_days = max(0.0, present_days)
+        period_factor = (payable_days / month_working_days) if month_working_days else 1.0
 
     gross_pay = flt(emp.total_earnings)
     base_deductions = flt(emp.total_deductions)
     
-    # Calculate individual components based on period factor
+    # Calculate individual components based on period factor (prorated for payable/present days)
     prorated_earnings = []
+    base_gross_total = 0.0
     for e in emp.earnings:
         c_name = e.component_name or e.salary_component or ""
         # Skip legacy auto-calculated dynamic components from employee structure
         if c_name in ["Overtime Pay (OT)", "Overtime Allowance", "Attendance Bonus"]:
             continue
         item = e.as_dict()
-        item["amount"] = flt(e.amount) * period_factor
+        item["standard_amount"] = flt(e.amount)
+        item["amount"] = round(flt(e.amount) * period_factor, 2)
+        base_gross_total += flt(e.amount)
         prorated_earnings.append(item)
 
     # 5.1. Overtime Pay Calculation
@@ -527,6 +532,7 @@ def preview_salary_slip(employee, start_date, end_date):
             "component_name": "Overtime Pay (OT)",
             "salary_component": "Overtime Pay (OT)",
             "type": "Earning",
+            "standard_amount": 0.0,
             "amount": ot_amount
         })
 
@@ -537,6 +543,7 @@ def preview_salary_slip(employee, start_date, end_date):
             "component_name": "Attendance Bonus",
             "salary_component": "Attendance Bonus",
             "type": "Earning",
+            "standard_amount": 0.0,
             "amount": attendance_bonus
         })
 
@@ -544,14 +551,17 @@ def preview_salary_slip(employee, start_date, end_date):
     pt_amount = calculate_professional_tax(gross_pay, start_date, settings, employee=emp.name, emp_doc=emp)
 
     prorated_deductions = []
+    base_deductions_total = 0.0
     for d in emp.deductions:
         c_name = d.component_name or d.salary_component or ""
         item = d.as_dict()
+        item["standard_amount"] = flt(d.amount)
+        base_deductions_total += flt(d.amount)
         if c_name in ["Prof.Tax", "Professional Tax", "PT"]:
             # Override PT amount according to slab and cycle
             item["amount"] = pt_amount
         else:
-            item["amount"] = flt(d.amount) * period_factor
+            item["amount"] = flt(d.amount)
         prorated_deductions.append(item)
 
     # If Prof.Tax wasn't in employee structure but pt_amount > 0, add it
@@ -561,15 +571,16 @@ def preview_salary_slip(employee, start_date, end_date):
             "component_name": "Prof.Tax",
             "salary_component": "Prof.Tax",
             "type": "Deduction",
+            "standard_amount": 0.0,
             "amount": pt_amount
         })
 
-    # LOP is applied for any absent/unpaid days within the period
-    lop_amount = gross_pay * (absent_days / month_working_days) if month_working_days else 0
+    # LOP amount for informational and display breakdown purposes
+    lop_amount = round(gross_pay * (absent_days / month_working_days), 2) if month_working_days else 0.0
     
-    grand_gross_pay = sum(flt(e["amount"]) for e in prorated_earnings)
-    total_deductions = sum(flt(d["amount"]) for d in prorated_deductions) + lop_amount
-    grand_net_pay = grand_gross_pay - total_deductions
+    grand_gross_pay = round(sum(flt(e["amount"]) for e in prorated_earnings), 2)
+    total_deductions = round(sum(flt(d["amount"]) for d in prorated_deductions), 2)
+    grand_net_pay = round(grand_gross_pay - total_deductions, 2)
 
     res = {
         "employee": emp.name,
@@ -587,7 +598,9 @@ def preview_salary_slip(employee, start_date, end_date):
         "pay_period_end": end_date,
         "no_of_leave": total_leave_days,
         "no_of_paid_leave": paid_leave_days,
-        "base_gross_pay": gross_pay,
+        "base_gross_pay": base_gross_total or gross_pay,
+        "base_total_deduction": base_deductions_total or base_deductions,
+        "base_net_pay": (base_gross_total or gross_pay) - (base_deductions_total or base_deductions),
         "gross_pay": grand_gross_pay,
         "grand_gross_pay": grand_gross_pay,
         "net_pay": grand_net_pay,
@@ -684,11 +697,43 @@ def get_salary_slip_with_details(name):
                     "Salary Slip - Invalid Bank Account"
                 )
 
-    base_gross_pay = sum(
+    emp_earnings_map = {}
+    emp_deductions_map = {}
+    base_gross_total = 0.0
+    base_deductions_total = 0.0
+
+    if doc.employee:
+        try:
+            emp = frappe.get_doc("Employee", doc.employee)
+            emp_earnings_map = { (e.component_name or e.salary_component or ""): flt(e.amount) for e in emp.earnings }
+            emp_deductions_map = { (d.component_name or d.salary_component or ""): flt(d.amount) for d in emp.deductions }
+            base_gross_total = flt(emp.total_earnings)
+            base_deductions_total = flt(emp.total_deductions)
+        except Exception:
+            pass
+
+    enriched_earnings = []
+    for e in doc.earnings:
+        item = e.as_dict()
+        c_name = e.component_name or e.salary_component or ""
+        item["standard_amount"] = emp_earnings_map.get(c_name, 0.0)
+        enriched_earnings.append(item)
+    res["earnings"] = enriched_earnings
+
+    enriched_deductions = []
+    for d in doc.deductions:
+        item = d.as_dict()
+        c_name = d.component_name or d.salary_component or ""
+        item["standard_amount"] = emp_deductions_map.get(c_name, 0.0)
+        enriched_deductions.append(item)
+    res["deductions"] = enriched_deductions
+
+    res["base_gross_pay"] = base_gross_total or sum(
         flt(e.amount) for e in doc.earnings
         if (e.component_name or e.salary_component or "") not in ["Overtime Pay (OT)", "Overtime Allowance", "Attendance Bonus"]
     )
-    res["base_gross_pay"] = base_gross_pay
+    res["base_total_deduction"] = base_deductions_total
+    res["base_net_pay"] = res["base_gross_pay"] - res["base_total_deduction"]
 
     # ── Days Breakdown (mirrors preview_salary_slip) ──────────────────────────
     start_date = getdate(doc.pay_period_start)

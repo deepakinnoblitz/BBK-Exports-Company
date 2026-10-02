@@ -9,6 +9,8 @@
   "component_name",
   "type",
   "percentage",
+  "percentage_basis",
+  "selected_components",
   "static_amount",
   "is_default"
  ],
@@ -32,6 +34,18 @@
    "fieldtype": "Float",
    "label": "Percentage",
    "precision": "2"
+  },
+  {
+   "default": "Full (Total Gross / CTC)",
+   "fieldname": "percentage_basis",
+   "fieldtype": "Select",
+   "label": "Percentage Basis",
+   "options": "Full (Total Gross / CTC)\nSelected Component(s)"
+  },
+  {
+   "fieldname": "selected_components",
+   "fieldtype": "Small Text",
+   "label": "Selected Components"
   },
   {
    "default": "0",
