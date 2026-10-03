@@ -316,8 +316,8 @@ def preview_salary_slip(employee, start_date, end_date):
     is_paid_map = {lt.name: flt(lt.is_paid) for lt in leave_types}
 
     # Fetch Direct Leave Allocations if configured
-    direct_paid_remaining = 0.0
-    direct_unpaid_remaining = 0.0
+    direct_paid_allocated = 0.0
+    direct_unpaid_allocated = 0.0
     if leave_calc_source == "Via Direct Allocation":
         leave_allocations = frappe.get_all(
             "Leave Allocation",
@@ -333,9 +333,9 @@ def preview_salary_slip(employee, start_date, end_date):
             taken = flt(alloc.get("total_leaves_taken") or 0)
             if taken > 0:
                 if is_paid_map.get(alloc.leave_type, 1):
-                    direct_paid_remaining += taken
+                    direct_paid_allocated += taken
                 else:
-                    direct_unpaid_remaining += taken
+                    direct_unpaid_allocated += taken
 
     # 4. Calculate Periods
     total_days = (end_date - start_date).days + 1
@@ -363,9 +363,10 @@ def preview_salary_slip(employee, start_date, end_date):
             month_working_days -= len(month_holiday_dates)
 
     present_days = 0
-    absent_days = 0
+    total_absent_days = 0
     paid_leave_days = 0
     total_leave_days = 0
+    unpaid_leave_days = 0
     half_day_count = 0
     physical_attendance_days = 0
     total_ot_hours = 0.0
@@ -421,20 +422,7 @@ def preview_salary_slip(employee, start_date, end_date):
                 holiday_val = 1.0 - (physical_val + leave_val)
 
         # Determine Leave Recognition
-        if leave_calc_source == "Via Direct Allocation":
-            if (physical_val + holiday_val + leave_val) < 1.0:
-                gap = 1.0 - (physical_val + holiday_val + leave_val)
-                if direct_paid_remaining > 0:
-                    alloc_use = min(gap, direct_paid_remaining)
-                    leave_val += alloc_use
-                    is_paid_leave = True
-                    direct_paid_remaining -= alloc_use
-                elif direct_unpaid_remaining > 0:
-                    alloc_use = min(gap, direct_unpaid_remaining)
-                    leave_val += alloc_use
-                    is_paid_leave = False
-                    direct_unpaid_remaining -= alloc_use
-        else:
+        if leave_calc_source != "Via Direct Allocation":
             if day_leave and (physical_val + holiday_val + leave_val) < 1.0:
                 leave_unit = 0.5 if flt(day_leave.half_day) else 1.0
                 if leave_unit == 0.5:
@@ -459,7 +447,13 @@ def preview_salary_slip(employee, start_date, end_date):
             
         absent_val = round(max(0.0, 1.0 - (physical_val + leave_val + holiday_val)), 2)
         if absent_val > 0:
-            components.append(f"Absent ({absent_val})" if absent_val < 1.0 else "Absent")
+            if leave_calc_source != "Via Direct Allocation":
+                components.append(f"Unpaid Leave ({absent_val})" if absent_val < 1.0 else "Unpaid Leave")
+                unpaid_leave_days += absent_val
+                total_leave_days += absent_val
+            else:
+                components.append(f"Absent ({absent_val})" if absent_val < 1.0 else "Absent")
+            total_absent_days += absent_val
             
         day_status = " + ".join(components) if components else "Absent"
         
@@ -478,23 +472,25 @@ def preview_salary_slip(employee, start_date, end_date):
             present_days += leave_val
             paid_leave_days += leave_val
             total_leave_days += leave_val
-        else:
-            absent_days += leave_val
+        elif leave_val > 0:
+            unpaid_leave_days += leave_val
             total_leave_days += leave_val
             
         present_days += holiday_val
 
-        day_total = physical_val + leave_val + holiday_val
-        if day_total < 1.0:
-            gap = 1.0 - day_total
-            absent_days += gap
-
     # 5. Calculate Earnings & Deductions
-    unpaid_leave_days = max(0.0, total_leave_days - paid_leave_days)
+    if leave_calc_source == "Via Direct Allocation":
+        paid_leave_days = min(total_absent_days, direct_paid_allocated)
+        total_leave_days = paid_leave_days + direct_unpaid_allocated
+        unpaid_leave_days = direct_unpaid_allocated
+        present_days += paid_leave_days
+        lop_days = max(0.0, total_absent_days - paid_leave_days)
+    else:
+        lop_days = unpaid_leave_days
     
     is_full_month = (start_date == m_start and end_date == m_end)
     if is_full_month:
-        payable_days = max(0.0, month_working_days - absent_days) if month_working_days else 0.0
+        payable_days = max(0.0, month_working_days - lop_days) if month_working_days else 0.0
         period_factor = (payable_days / month_working_days) if month_working_days else 1.0
     else:
         payable_days = max(0.0, present_days)
@@ -537,7 +533,7 @@ def preview_salary_slip(employee, start_date, end_date):
         })
 
     # 5.2. Workers Attendance Bonus Calculation
-    attendance_bonus = calculate_attendance_bonus(emp, absent_days, settings)
+    attendance_bonus = calculate_attendance_bonus(emp, lop_days, settings)
     if attendance_bonus > 0:
         prorated_earnings.append({
             "component_name": "Attendance Bonus",
@@ -576,7 +572,7 @@ def preview_salary_slip(employee, start_date, end_date):
         })
 
     # LOP amount for informational and display breakdown purposes
-    lop_amount = round(gross_pay * (absent_days / month_working_days), 2) if month_working_days else 0.0
+    lop_amount = round(gross_pay * (lop_days / month_working_days), 2) if month_working_days else 0.0
     
     grand_gross_pay = round(sum(flt(e["amount"]) for e in prorated_earnings), 2)
     total_deductions = round(sum(flt(d["amount"]) for d in prorated_deductions), 2)
@@ -596,7 +592,7 @@ def preview_salary_slip(employee, start_date, end_date):
         "personal_email": emp.personal_email,
         "pay_period_start": start_date,
         "pay_period_end": end_date,
-        "no_of_leave": total_leave_days,
+        "no_of_leave": unpaid_leave_days,
         "no_of_paid_leave": paid_leave_days,
         "base_gross_pay": base_gross_total or gross_pay,
         "base_total_deduction": base_deductions_total or base_deductions,
@@ -608,7 +604,8 @@ def preview_salary_slip(employee, start_date, end_date):
         "total_deduction": total_deductions,
         "total_working_days": month_working_days,
         "lop": lop_amount,
-        "lop_days": absent_days,
+        "lop_days": lop_days,
+        "absent_days": total_absent_days,
         "ot_hours": round(total_ot_hours, 2),
         "ot_amount": ot_amount,
         "attendance_bonus": attendance_bonus,
@@ -822,6 +819,7 @@ def get_salary_slip_with_details(name):
                     direct_unpaid_remaining += taken
 
     days_breakdown = []
+    total_absent_days = 0.0
     for i in range(total_days):
         single_day_date = start_date + timedelta(days=i)
 
@@ -868,20 +866,7 @@ def get_salary_slip_with_details(name):
 
         leave_val    = 0
         is_paid_leave = False
-        if leave_calc_source == "Via Direct Allocation":
-            gap = 1.0 - (physical_val + holiday_val)
-            if gap > 0:
-                if direct_paid_remaining > 0:
-                    alloc_use = min(gap, direct_paid_remaining)
-                    leave_val = alloc_use
-                    is_paid_leave = True
-                    direct_paid_remaining -= alloc_use
-                elif direct_unpaid_remaining > 0:
-                    alloc_use = min(gap, direct_unpaid_remaining)
-                    leave_val = alloc_use
-                    is_paid_leave = False
-                    direct_unpaid_remaining -= alloc_use
-        else:
+        if leave_calc_source != "Via Direct Allocation":
             if day_leave and (physical_val + holiday_val) < 1.0:
                 leave_unit    = 0.5 if flt(day_leave.half_day) else 1.0
                 leave_val     = min(leave_unit, 1.0 - (physical_val + holiday_val))
@@ -897,7 +882,11 @@ def get_salary_slip_with_details(name):
             
         absent_val = round(max(0.0, 1.0 - (physical_val + leave_val + holiday_val)), 2)
         if absent_val > 0:
-            components.append(f"Absent ({absent_val})" if absent_val < 1.0 else "Absent")
+            if leave_calc_source != "Via Direct Allocation":
+                components.append(f"Unpaid Leave ({absent_val})" if absent_val < 1.0 else "Unpaid Leave")
+            else:
+                components.append(f"Absent ({absent_val})" if absent_val < 1.0 else "Absent")
+            total_absent_days += absent_val
             
         day_status = " + ".join(components) if components else "Absent"
 
@@ -909,6 +898,8 @@ def get_salary_slip_with_details(name):
         })
 
     res["days_breakdown"] = days_breakdown
+    res["leave_calc_source"] = leave_calc_source
+    res["absent_days"] = total_absent_days
     return res
 
 
