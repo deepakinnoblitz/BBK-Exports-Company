@@ -1133,6 +1133,45 @@ def submit_salary_slip(name):
 
 
 @frappe.whitelist()
+def cancel_salary_slip(name):
+    doc = frappe.get_doc("Salary Slip", name)
+    if doc.docstatus != 1:
+        frappe.throw(_("Only submitted salary slips can be cancelled. Current status of {0} is {1}").format(name, doc.docstatus))
+    doc.cancel()
+    return doc.as_dict()
+
+
+@frappe.whitelist()
+def save_salary_slip(doc):
+    if isinstance(doc, str):
+        import json
+        doc = json.loads(doc)
+    doc_name = doc.get("name")
+    if doc_name and frappe.db.exists("Salary Slip", doc_name):
+        current_docstatus = frappe.db.get_value("Salary Slip", doc_name, "docstatus")
+        if current_docstatus == 2:
+            frappe.db.set_value("Salary Slip", doc_name, "docstatus", 0)
+            frappe.db.commit()
+            doc["docstatus"] = 0
+
+    salary_slip_doc = frappe.get_doc(doc)
+    if salary_slip_doc.docstatus == 2:
+        salary_slip_doc.docstatus = 0
+    salary_slip_doc.flags.ignore_validate_update_after_submit = True
+    salary_slip_doc.save()
+    return salary_slip_doc.as_dict()
+
+
+@frappe.whitelist()
+def delete_salary_slip(name):
+    doc = frappe.get_doc("Salary Slip", name)
+    if doc.docstatus == 1:
+        frappe.throw(_("Cannot delete a submitted salary slip. Please cancel it first."))
+    frappe.delete_doc("Salary Slip", name, force=1)
+    return {"status": "success", "name": name}
+
+
+@frappe.whitelist()
 def export_bob_neft_file(start_date=None, end_date=None, salary_slips=None):
     """
     Generate Bank of Baroda (ECS-BOB) NEFT disbursement data matching Excel template format.
