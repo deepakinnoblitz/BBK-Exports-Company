@@ -26,6 +26,14 @@
   "workers_ot_rate_multiplier",
   "north_indian_ot_rate",
   "workers_attendance_bonus",
+  "employer_pf_rate",
+  "pf_admin_rate",
+  "edli_rate",
+  "employer_esi_rate",
+  "enable_bonus_provision",
+  "bonus_provision_rate",
+  "enable_el_provision",
+  "el_provision_days_per_year",
   "notification_tab",
   "leave_notification",
   "wfh_notification",
@@ -177,6 +185,56 @@
    "fieldname": "workers_attendance_bonus",
    "fieldtype": "Currency",
    "label": "Workers Attendance Bonus (Full Present)"
+  },
+  {
+   "default": "12",
+   "fieldname": "employer_pf_rate",
+   "fieldtype": "Float",
+   "label": "Employer PF Contribution Rate (%)"
+  },
+  {
+   "default": "0.5",
+   "fieldname": "pf_admin_rate",
+   "fieldtype": "Float",
+   "label": "PF Admin Charges Rate (%)"
+  },
+  {
+   "default": "0.5",
+   "fieldname": "edli_rate",
+   "fieldtype": "Float",
+   "label": "EDLI Charges Rate (%)"
+  },
+  {
+   "default": "3.25",
+   "fieldname": "employer_esi_rate",
+   "fieldtype": "Float",
+   "label": "Employer ESI Contribution Rate (%)"
+  },
+  {
+   "default": "1",
+   "fieldname": "enable_bonus_provision",
+   "fieldtype": "Check",
+   "label": "Enable Bonus Provision"
+  },
+  {
+   "default": "8.33",
+   "depends_on": "eval:doc.enable_bonus_provision == 1",
+   "fieldname": "bonus_provision_rate",
+   "fieldtype": "Float",
+   "label": "Bonus Provision Rate (%)"
+  },
+  {
+   "default": "1",
+   "fieldname": "enable_el_provision",
+   "fieldtype": "Check",
+   "label": "Enable Earned Leave (EL) Provision"
+  },
+  {
+   "default": "15.6",
+   "depends_on": "eval:doc.enable_el_provision == 1",
+   "fieldname": "el_provision_days_per_year",
+   "fieldtype": "Float",
+   "label": "EL Provision Days / Year"
   },
   {
    "fieldname": "notification_tab",

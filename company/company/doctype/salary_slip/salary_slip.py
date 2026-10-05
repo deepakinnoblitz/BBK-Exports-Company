@@ -2,7 +2,7 @@ import json
 import frappe
 from frappe import _
 from datetime import datetime, timedelta
-from frappe.utils import flt, get_first_day, get_last_day, getdate, formatdate
+from frappe.utils import cint, flt, get_first_day, get_last_day, getdate, formatdate
 from frappe.model.document import Document
 from calendar import monthrange
 
@@ -22,7 +22,14 @@ class SalarySlip(Document):
 
             if recipients:
                 month_year = formatdate(self.pay_period_start, "MMMM YYYY")
-                print_format = frappe.get_meta("Salary Slip").default_print_format or "Standard"
+                emp_type = (self.employee_type or "").lower()
+                if "north indian" in emp_type:
+                    print_format = "North Indian Form 25B Pay Slip"
+                elif "worker" in emp_type:
+                    print_format = "Worker Form 25B Pay Slip"
+                else:
+                    print_format = frappe.get_meta("Salary Slip").default_print_format or "Standard"
+
                 pdf_content = frappe.get_print(
                     "Salary Slip",
                     self.name,
@@ -543,7 +550,21 @@ def preview_salary_slip(employee, start_date, end_date):
             "amount": attendance_bonus
         })
 
-    # 5.3. Deductions & Professional Tax
+    # 5.3. Workers Tea Allowance Calculation (Days Worked x Rs. 5)
+    tea_allowance = 0.0
+    if "worker" in emp_type:
+        tea_allowance = round(flt(present_days) * 5.0, 2)
+        has_tea = any("tea" in (e.get("component_name") or e.get("salary_component") or "").lower() for e in prorated_earnings)
+        if not has_tea and tea_allowance > 0:
+            prorated_earnings.append({
+                "component_name": "Tea Allowance",
+                "salary_component": "Tea Allowance",
+                "type": "Earning",
+                "standard_amount": 0.0,
+                "amount": tea_allowance
+            })
+
+    # 5.4. Deductions & Professional Tax
     pt_amount = calculate_professional_tax(gross_pay, start_date, settings, employee=emp.name, emp_doc=emp)
 
     prorated_deductions = []
@@ -578,6 +599,34 @@ def preview_salary_slip(employee, start_date, end_date):
     total_deductions = round(sum(flt(d["amount"]) for d in prorated_deductions), 2)
     grand_net_pay = round(grand_gross_pay - total_deductions, 2)
 
+    # 5.5. Employer Statutory Contributions & Total Monthly Cost to Company (CTC)
+    earned_basic_da = sum(
+        flt(e.get("amount", 0)) for e in prorated_earnings 
+        if any(k in (e.get("component_name") or e.get("salary_component") or "").lower() for k in ["basic", "da", "dearness"])
+    )
+    if earned_basic_da <= 0:
+        earned_basic_da = max(0.0, grand_gross_pay - ot_amount - attendance_bonus - tea_allowance)
+
+    pf_rate = flt(getattr(settings, "employer_pf_rate", None) if getattr(settings, "employer_pf_rate", None) is not None else 12.0) / 100.0
+    pf_admin_rate = flt(getattr(settings, "pf_admin_rate", None) if getattr(settings, "pf_admin_rate", None) is not None else 0.5) / 100.0
+    edli_rate = flt(getattr(settings, "edli_rate", None) if getattr(settings, "edli_rate", None) is not None else 0.5) / 100.0
+    esi_rate = flt(getattr(settings, "employer_esi_rate", None) if getattr(settings, "employer_esi_rate", None) is not None else 3.25) / 100.0
+    enable_bonus = cint(getattr(settings, "enable_bonus_provision", 1) if getattr(settings, "enable_bonus_provision", None) is not None else 1)
+    bonus_rate = (flt(getattr(settings, "bonus_provision_rate", 8.33) if getattr(settings, "bonus_provision_rate", None) is not None else 8.33) / 100.0) if enable_bonus else 0.0
+    enable_el = cint(getattr(settings, "enable_el_provision", 1) if getattr(settings, "enable_el_provision", None) is not None else 1)
+    el_days = flt(getattr(settings, "el_provision_days_per_year", 15.6) if getattr(settings, "el_provision_days_per_year", None) is not None else 15.6) if enable_el else 0.0
+
+    employer_pf = round(min(earned_basic_da, 15000.0) * pf_rate, 2)
+    pf_admin_charges = round(earned_basic_da * pf_admin_rate, 2)
+    edli_charges = round(earned_basic_da * edli_rate, 2)
+    employer_esi = round(grand_gross_pay * esi_rate, 2) if grand_gross_pay <= 21000.0 else 0.0
+    tea_expenses = round(flt(present_days) * 5.0, 2) if "worker" in emp_type else 0.0
+    total_employer_contrib = round(employer_pf + pf_admin_charges + edli_charges + employer_esi + tea_expenses, 2)
+
+    bonus_provision = round(earned_basic_da * bonus_rate, 2) if enable_bonus else 0.0
+    el_provision = round((earned_basic_da / 26.0) * (el_days / 12.0), 2) if (enable_el and month_working_days) else 0.0
+    total_monthly_ctc = round(grand_gross_pay + total_employer_contrib + bonus_provision + el_provision, 2)
+
     res = {
         "employee": emp.name,
         "employee_id": emp.employee_id,
@@ -609,9 +658,28 @@ def preview_salary_slip(employee, start_date, end_date):
         "ot_hours": round(total_ot_hours, 2),
         "ot_amount": ot_amount,
         "attendance_bonus": attendance_bonus,
+        "tea_allowance": tea_allowance,
         "pt_amount": pt_amount,
         "earnings": prorated_earnings,
         "deductions": prorated_deductions,
+        # Employer Contributions & CTC
+        "employer_pf": employer_pf,
+        "pf_admin_charges": pf_admin_charges,
+        "edli_charges": edli_charges,
+        "employer_esi": employer_esi,
+        "tea_expenses": tea_expenses,
+        "total_employer_contribution": total_employer_contrib,
+        "bonus_provision": bonus_provision,
+        "el_provision": el_provision,
+        "total_monthly_ctc": total_monthly_ctc,
+        "employer_pf_rate": round(pf_rate * 100.0, 2),
+        "pf_admin_rate": round(pf_admin_rate * 100.0, 2),
+        "edli_rate": round(edli_rate * 100.0, 2),
+        "employer_esi_rate": round(esi_rate * 100.0, 2),
+        "enable_bonus_provision": enable_bonus,
+        "bonus_provision_rate": round(bonus_rate * 100.0, 2) if enable_bonus else 0.0,
+        "enable_el_provision": enable_el,
+        "el_provision_days_per_year": el_days if enable_el else 0.0,
         # Detailed Breakdown Fields
         "total_days_in_period": total_days,
         "holiday_count": len(holiday_dates),
@@ -731,6 +799,60 @@ def get_salary_slip_with_details(name):
     )
     res["base_total_deduction"] = base_deductions_total
     res["base_net_pay"] = res["base_gross_pay"] - res["base_total_deduction"]
+
+    # ── Employer Contributions & CTC ──────────────────────────────────────────
+    emp_type = (res.get("employee_type") or "").lower()
+    gross_val = flt(doc.grand_gross_pay or doc.gross_pay or 0.0)
+    earned_basic_da = sum(
+        flt(e.amount or 0) for e in doc.earnings
+        if any(k in (e.component_name or e.salary_component or "").lower() for k in ["basic", "da", "dearness"])
+    )
+    if earned_basic_da <= 0:
+        ot_amt = flt(getattr(doc, "ot_amount", 0.0))
+        att_b = flt(getattr(doc, "attendance_bonus", 0.0))
+        earned_basic_da = max(0.0, gross_val - ot_amt - att_b)
+
+    present_days_val = flt(getattr(doc, "actual_present_days", None) or getattr(doc, "total_working_days", 0.0))
+    settings = frappe.get_single("HRMS Settings")
+    pf_rate = flt(getattr(settings, "employer_pf_rate", None) if getattr(settings, "employer_pf_rate", None) is not None else 12.0) / 100.0
+    pf_admin_rate = flt(getattr(settings, "pf_admin_rate", None) if getattr(settings, "pf_admin_rate", None) is not None else 0.5) / 100.0
+    edli_rate = flt(getattr(settings, "edli_rate", None) if getattr(settings, "edli_rate", None) is not None else 0.5) / 100.0
+    esi_rate = flt(getattr(settings, "employer_esi_rate", None) if getattr(settings, "employer_esi_rate", None) is not None else 3.25) / 100.0
+    enable_bonus = cint(getattr(settings, "enable_bonus_provision", 1) if getattr(settings, "enable_bonus_provision", None) is not None else 1)
+    bonus_rate = (flt(getattr(settings, "bonus_provision_rate", 8.33) if getattr(settings, "bonus_provision_rate", None) is not None else 8.33) / 100.0) if enable_bonus else 0.0
+    enable_el = cint(getattr(settings, "enable_el_provision", 1) if getattr(settings, "enable_el_provision", None) is not None else 1)
+    el_days = flt(getattr(settings, "el_provision_days_per_year", 15.6) if getattr(settings, "el_provision_days_per_year", None) is not None else 15.6) if enable_el else 0.0
+
+    employer_pf = round(min(earned_basic_da, 15000.0) * pf_rate, 2)
+    pf_admin_charges = round(earned_basic_da * pf_admin_rate, 2)
+    edli_charges = round(earned_basic_da * edli_rate, 2)
+    employer_esi = round(gross_val * esi_rate, 2) if gross_val <= 21000.0 else 0.0
+    tea_expenses = round(present_days_val * 5.0, 2) if "worker" in emp_type else 0.0
+    total_employer_contrib = round(employer_pf + pf_admin_charges + edli_charges + employer_esi + tea_expenses, 2)
+
+    bonus_provision = round(earned_basic_da * bonus_rate, 2) if enable_bonus else 0.0
+    el_provision = round((earned_basic_da / 26.0) * (el_days / 12.0), 2) if enable_el else 0.0
+    total_monthly_ctc = round(gross_val + total_employer_contrib + bonus_provision + el_provision, 2)
+
+    res.update({
+        "employer_pf": employer_pf,
+        "pf_admin_charges": pf_admin_charges,
+        "edli_charges": edli_charges,
+        "employer_esi": employer_esi,
+        "tea_expenses": tea_expenses,
+        "total_employer_contribution": total_employer_contrib,
+        "bonus_provision": bonus_provision,
+        "el_provision": el_provision,
+        "total_monthly_ctc": total_monthly_ctc,
+        "employer_pf_rate": round(pf_rate * 100.0, 2),
+        "pf_admin_rate": round(pf_admin_rate * 100.0, 2),
+        "edli_rate": round(edli_rate * 100.0, 2),
+        "employer_esi_rate": round(esi_rate * 100.0, 2),
+        "enable_bonus_provision": enable_bonus,
+        "bonus_provision_rate": round(bonus_rate * 100.0, 2) if enable_bonus else 0.0,
+        "enable_el_provision": enable_el,
+        "el_provision_days_per_year": el_days if enable_el else 0.0,
+    })
 
     # ── Days Breakdown (mirrors preview_salary_slip) ──────────────────────────
     start_date = getdate(doc.pay_period_start)
@@ -1008,3 +1130,188 @@ def submit_salary_slip(name):
         frappe.throw(_("Draft salary slip not found with ID: {0}").format(name))
     doc.submit()
     return doc.as_dict()
+
+
+@frappe.whitelist()
+def export_bob_neft_file(start_date=None, end_date=None, salary_slips=None):
+    """
+    Generate Bank of Baroda (ECS-BOB) NEFT disbursement data matching Excel template format.
+    """
+    import json
+    filters = {}
+    if salary_slips:
+        if isinstance(salary_slips, str):
+            salary_slips = json.loads(salary_slips)
+        filters["name"] = ["in", salary_slips]
+    else:
+        if start_date:
+            filters["pay_period_start"] = [">=", getdate(start_date)]
+        if end_date:
+            filters["pay_period_end"] = ["<=", getdate(end_date)]
+
+    slips = frappe.get_all(
+        "Salary Slip",
+        filters=filters,
+        fields=["name", "employee", "employee_name", "net_pay", "grand_net_pay", "pay_period_start", "pay_period_end", "docstatus"],
+        order_by="employee asc"
+    )
+
+    p_start = getdate(start_date) if start_date else (getdate(slips[0].pay_period_start) if slips else getdate())
+    narration_prefix = f"WAG{p_start.strftime('%b').upper()}{p_start.strftime('%y')}"
+
+    records = []
+    total_amount = 0.0
+
+    for idx, s in enumerate(slips, start=1):
+        emp_id = s.employee
+        emp = frappe.get_doc("Employee", emp_id) if emp_id else None
+        
+        acc_no = ""
+        ifsc = "BARB0KANCHE"
+        bank_name = "Bank of Baroda"
+        branch = "Kancheepuram"
+
+        if emp and emp.bank_account:
+            try:
+                ba = frappe.get_doc("Bank Account", emp.bank_account)
+                acc_no = ba.account_number or ""
+                ifsc = ba.ifsc_code or ifsc
+                bank_name = ba.bank_name or bank_name
+                branch = ba.branch or branch
+            except Exception:
+                pass
+
+        amt = flt(s.grand_net_pay or s.net_pay or 0.0)
+        total_amount += amt
+        narration = f"{narration_prefix}{idx:04d}"
+
+        records.append({
+            "s_no": idx,
+            "employee": emp.employee_id if (emp and emp.employee_id) else s.employee,
+            "employee_name": s.employee_name,
+            "account_no": acc_no,
+            "ifsc_code": ifsc,
+            "bank_name": bank_name,
+            "branch": branch,
+            "amount": amt,
+            "narration": narration
+        })
+
+    return {
+        "period": f"{p_start.strftime('%B %Y')}",
+        "total_employees": len(records),
+        "total_amount": round(total_amount, 2),
+        "records": records
+    }
+
+
+@frappe.whitelist()
+def export_cheque_register(start_date=None, end_date=None, salary_slips=None):
+    """
+    Generate Cheque Disbursement Register for employees without valid bank accounts.
+    """
+    import json
+    filters = {}
+    if salary_slips:
+        if isinstance(salary_slips, str):
+            salary_slips = json.loads(salary_slips)
+        filters["name"] = ["in", salary_slips]
+    else:
+        if start_date:
+            filters["pay_period_start"] = [">=", getdate(start_date)]
+        if end_date:
+            filters["pay_period_end"] = ["<=", getdate(end_date)]
+
+    slips = frappe.get_all(
+        "Salary Slip",
+        filters=filters,
+        fields=["name", "employee", "employee_name", "net_pay", "grand_net_pay", "pay_period_start"],
+        order_by="employee asc"
+    )
+
+    cheque_records = []
+    total_amount = 0.0
+    idx = 1
+
+    for s in slips:
+        emp = frappe.get_doc("Employee", s.employee) if s.employee else None
+        has_bank = bool(emp and emp.bank_account)
+        if not has_bank:
+            amt = flt(s.grand_net_pay or s.net_pay or 0.0)
+            total_amount += amt
+            cheque_records.append({
+                "s_no": idx,
+                "employee": emp.employee_id if (emp and emp.employee_id) else s.employee,
+                "employee_name": s.employee_name,
+                "reason": "Bank Account Not Provided / Cheque Payment",
+                "amount": amt
+            })
+            idx += 1
+
+    return {
+        "total_count": len(cheque_records),
+        "total_amount": round(total_amount, 2),
+        "records": cheque_records
+    }
+
+
+@frappe.whitelist()
+def get_wages_reconciliation_statement(current_start_date, current_end_date, prev_start_date=None, prev_end_date=None):
+    """
+    Month-on-Month Payroll Reconciliation Statement comparing Current Period against Previous Period.
+    """
+    c_start = getdate(current_start_date)
+    c_end = getdate(current_end_date)
+
+    if not prev_start_date or not prev_end_date:
+        p_end = c_start - timedelta(days=1)
+        p_start = getdate(f"{p_end.year}-{p_end.month}-01")
+    else:
+        p_start = getdate(prev_start_date)
+        p_end = getdate(prev_end_date)
+
+    curr_slips = frappe.get_all(
+        "Salary Slip",
+        filters={"pay_period_start": [">=", c_start], "pay_period_end": ["<=", c_end]},
+        fields=["name", "employee", "employee_name", "gross_pay", "grand_gross_pay", "net_pay", "grand_net_pay", "total_deduction", "ot_amount", "lop_days"]
+    )
+
+    prev_slips = frappe.get_all(
+        "Salary Slip",
+        filters={"pay_period_start": [">=", p_start], "pay_period_end": ["<=", p_end]},
+        fields=["name", "employee", "employee_name", "gross_pay", "grand_gross_pay", "net_pay", "grand_net_pay", "total_deduction", "ot_amount", "lop_days"]
+    )
+
+    curr_emp_map = { s.employee: s for s in curr_slips }
+    prev_emp_map = { s.employee: s for s in prev_slips }
+
+    new_additions = [curr_emp_map[e] for e in curr_emp_map if e not in prev_emp_map]
+    exits = [prev_emp_map[e] for e in prev_emp_map if e not in curr_emp_map]
+
+    prev_gross = sum(flt(s.grand_gross_pay or s.gross_pay or 0) for s in prev_slips)
+    curr_gross = sum(flt(s.grand_gross_pay or s.gross_pay or 0) for s in curr_slips)
+
+    prev_net = sum(flt(s.grand_net_pay or s.net_pay or 0) for s in prev_slips)
+    curr_net = sum(flt(s.grand_net_pay or s.net_pay or 0) for s in curr_slips)
+
+    prev_ot = sum(flt(s.ot_amount or 0) for s in prev_slips)
+    curr_ot = sum(flt(s.ot_amount or 0) for s in curr_slips)
+
+    return {
+        "previous_period": f"{p_start.strftime('%B %Y')}",
+        "current_period": f"{c_start.strftime('%B %Y')}",
+        "previous_headcount": len(prev_slips),
+        "current_headcount": len(curr_slips),
+        "headcount_delta": len(curr_slips) - len(prev_slips),
+        "additions_count": len(new_additions),
+        "exits_count": len(exits),
+        "new_additions": new_additions,
+        "exits": exits,
+        "previous_total_gross": round(prev_gross, 2),
+        "current_total_gross": round(curr_gross, 2),
+        "gross_delta": round(curr_gross - prev_gross, 2),
+        "previous_total_net": round(prev_net, 2),
+        "current_total_net": round(curr_net, 2),
+        "net_delta": round(curr_net - prev_net, 2),
+        "ot_variance": round(curr_ot - prev_ot, 2)
+    }
