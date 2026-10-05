@@ -14,6 +14,10 @@ class SalarySlip(Document):
     def send_email_notification(self):
         """Send salary slip PDF via email to the employee."""
         try:
+            from company.company.api import is_hrms_notification_enabled
+            if not is_hrms_notification_enabled("salary_slip_notification"):
+                return
+
             recipients = []
             if self.email:
                 recipients.append(self.email)
