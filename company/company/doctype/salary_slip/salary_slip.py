@@ -166,71 +166,7 @@ def calculate_professional_tax(gross_salary, pay_period_start, settings, employe
     if month_name.lower() not in cycle_months:
         return 0.0
 
-    # Determine 6-Month Cycle Date Range
-    cur_year = pay_period_start.year
-    cur_month = pay_period_start.month
-
-    if cur_month in [4, 5, 6, 7, 8, 9]:
-        cycle_start = getdate(f"{cur_year}-04-01")
-        cycle_end = getdate(f"{cur_year}-09-30")
-    elif cur_month in [10, 11, 12]:
-        cycle_start = getdate(f"{cur_year}-10-01")
-        cycle_end = getdate(f"{cur_year + 1}-03-31")
-    else:  # [1, 2, 3]
-        cycle_start = getdate(f"{cur_year - 1}-10-01")
-        cycle_end = getdate(f"{cur_year}-03-31")
-
-    # Fetch prior salary slips in this cycle for this employee
-    past_gross = 0.0
-    past_pt = 0.0
-    past_months_count = 0
-
-    if employee:
-        past_slips = frappe.get_all(
-            "Salary Slip",
-            filters={
-                "employee": employee,
-                "docstatus": ["<", 2],
-                "pay_period_start": [">=", cycle_start],
-                "pay_period_end": ["<=", cycle_end],
-            },
-            fields=["name", "gross_pay", "pt_amount", "pay_period_start"]
-        )
-
-        for ps in past_slips:
-            if current_slip_name and ps.name == current_slip_name:
-                continue
-            if getdate(ps.pay_period_start) == pay_period_start:
-                continue
-            past_gross += flt(ps.gross_pay)
-            past_pt += flt(ps.pt_amount)
-            past_months_count += 1
-
-    # Determine active months in cycle based on Date of Joining
-    doj = None
-    if emp_doc:
-        doj = getdate(emp_doc.get("date_of_joining")) if emp_doc.get("date_of_joining") else None
-    elif employee:
-        doj_raw = frappe.db.get_value("Employee", employee, "date_of_joining")
-        doj = getdate(doj_raw) if doj_raw else None
-
-    total_cycle_months = 6
-    if doj and doj > cycle_start:
-        m_diff = (pay_period_start.year - doj.year) * 12 + (pay_period_start.month - doj.month) + 1
-        total_cycle_months = max(1, min(6, m_diff))
-
-    # Project any missing past months in this cycle using current gross
-    missing_past_months = max(0, total_cycle_months - 1 - past_months_count)
-    projected_missing_gross = gross * missing_past_months
-
-    cumulative_gross = past_gross + gross + projected_missing_gross
-
-    # Calculate PT slab for cumulative half-yearly gross
-    slab_tax = get_slab_tax(cumulative_gross)
-
-    # Net PT payable in this cycle month
-    final_pt = max(0.0, slab_tax - past_pt)
-    return final_pt
+    return get_slab_tax(gross)
 
 
 @frappe.whitelist()
@@ -565,8 +501,11 @@ def preview_salary_slip(employee, start_date, end_date):
                 "amount": tea_allowance
             })
 
-    # 5.4. Deductions & Professional Tax
-    pt_amount = calculate_professional_tax(gross_pay, start_date, settings, employee=emp.name, emp_doc=emp)
+    # 5.4. Calculate Earned Gross Pay
+    grand_gross_pay = round(sum(flt(e["amount"]) for e in prorated_earnings), 2)
+
+    # 5.5. Deductions & Professional Tax
+    pt_amount = calculate_professional_tax(grand_gross_pay, start_date, settings, employee=emp.name, emp_doc=emp)
 
     prorated_deductions = []
     base_deductions_total = 0.0
@@ -596,7 +535,6 @@ def preview_salary_slip(employee, start_date, end_date):
     # LOP amount for informational and display breakdown purposes
     lop_amount = round(gross_pay * (lop_days / month_working_days), 2) if month_working_days else 0.0
     
-    grand_gross_pay = round(sum(flt(e["amount"]) for e in prorated_earnings), 2)
     total_deductions = round(sum(flt(d["amount"]) for d in prorated_deductions), 2)
     grand_net_pay = round(grand_gross_pay - total_deductions, 2)
 
