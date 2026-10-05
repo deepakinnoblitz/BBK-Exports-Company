@@ -26,6 +26,7 @@
   "workers_ot_rate_multiplier",
   "north_indian_ot_rate",
   "workers_attendance_bonus",
+  "workers_tea_allowance_per_day",
   "employer_pf_rate",
   "pf_admin_rate",
   "edli_rate",
@@ -185,6 +186,12 @@
    "fieldname": "workers_attendance_bonus",
    "fieldtype": "Currency",
    "label": "Workers Attendance Bonus (Full Present)"
+  },
+  {
+   "default": "5",
+   "fieldname": "workers_tea_allowance_per_day",
+   "fieldtype": "Currency",
+   "label": "Workers Tea Allowance (\u20b9/Day Worked)"
   },
   {
    "default": "12",

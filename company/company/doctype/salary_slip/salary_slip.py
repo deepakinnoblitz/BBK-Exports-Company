@@ -550,10 +550,11 @@ def preview_salary_slip(employee, start_date, end_date):
             "amount": attendance_bonus
         })
 
-    # 5.3. Workers Tea Allowance Calculation (Days Worked x Rs. 5)
+    # 5.3. Workers Tea Allowance Calculation (Days Worked x Rate/Day)
     tea_allowance = 0.0
+    tea_rate = flt(getattr(settings, "workers_tea_allowance_per_day", 5.0) if getattr(settings, "workers_tea_allowance_per_day", None) is not None else 5.0)
     if "worker" in emp_type:
-        tea_allowance = round(flt(present_days) * 5.0, 2)
+        tea_allowance = round(flt(present_days) * tea_rate, 2)
         has_tea = any("tea" in (e.get("component_name") or e.get("salary_component") or "").lower() for e in prorated_earnings)
         if not has_tea and tea_allowance > 0:
             prorated_earnings.append({
@@ -620,7 +621,7 @@ def preview_salary_slip(employee, start_date, end_date):
     pf_admin_charges = round(earned_basic_da * pf_admin_rate, 2)
     edli_charges = round(earned_basic_da * edli_rate, 2)
     employer_esi = round(grand_gross_pay * esi_rate, 2) if grand_gross_pay <= 21000.0 else 0.0
-    tea_expenses = round(flt(present_days) * 5.0, 2) if "worker" in emp_type else 0.0
+    tea_expenses = round(flt(present_days) * tea_rate, 2) if "worker" in emp_type else 0.0
     total_employer_contrib = round(employer_pf + pf_admin_charges + edli_charges + employer_esi + tea_expenses, 2)
 
     bonus_provision = round(earned_basic_da * bonus_rate, 2) if enable_bonus else 0.0
@@ -823,11 +824,12 @@ def get_salary_slip_with_details(name):
     enable_el = cint(getattr(settings, "enable_el_provision", 1) if getattr(settings, "enable_el_provision", None) is not None else 1)
     el_days = flt(getattr(settings, "el_provision_days_per_year", 15.6) if getattr(settings, "el_provision_days_per_year", None) is not None else 15.6) if enable_el else 0.0
 
+    tea_rate = flt(getattr(settings, "workers_tea_allowance_per_day", 5.0) if getattr(settings, "workers_tea_allowance_per_day", None) is not None else 5.0)
     employer_pf = round(min(earned_basic_da, 15000.0) * pf_rate, 2)
     pf_admin_charges = round(earned_basic_da * pf_admin_rate, 2)
     edli_charges = round(earned_basic_da * edli_rate, 2)
     employer_esi = round(gross_val * esi_rate, 2) if gross_val <= 21000.0 else 0.0
-    tea_expenses = round(present_days_val * 5.0, 2) if "worker" in emp_type else 0.0
+    tea_expenses = round(present_days_val * tea_rate, 2) if "worker" in emp_type else 0.0
     total_employer_contrib = round(employer_pf + pf_admin_charges + edli_charges + employer_esi + tea_expenses, 2)
 
     bonus_provision = round(earned_basic_da * bonus_rate, 2) if enable_bonus else 0.0
