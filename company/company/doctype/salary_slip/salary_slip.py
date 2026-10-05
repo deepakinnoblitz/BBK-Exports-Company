@@ -158,15 +158,98 @@ def calculate_professional_tax(gross_salary, pay_period_start, settings, employe
     if frequency == "Every Month Deduction":
         return get_slab_tax(gross)
 
-    # 2. Half-Yearly Deduction
-    cycle_months_str = getattr(settings, "pt_half_yearly_months", "April, September") or "April, September"
-    month_name = formatdate(pay_period_start, "MMMM")
-    cycle_months = [m.strip().lower() for m in cycle_months_str.replace("&", ",").split(",") if m.strip()]
+    # 2. Cumulative Progressive Half-Yearly Deduction
+    # Determine 6-Month Cycle Date Range
+    cur_year = pay_period_start.year
+    cur_month = pay_period_start.month
 
-    if month_name.lower() not in cycle_months:
+    if cur_month in [4, 5, 6, 7, 8, 9]:
+        cycle_start = getdate(f"{cur_year}-04-01")
+        cycle_end = getdate(f"{cur_year}-09-30")
+    elif cur_month in [10, 11, 12]:
+        cycle_start = getdate(f"{cur_year}-10-01")
+        cycle_end = getdate(f"{cur_year + 1}-03-31")
+    else:  # [1, 2, 3]
+        cycle_start = getdate(f"{cur_year - 1}-10-01")
+        cycle_end = getdate(f"{cur_year}-03-31")
+
+    # Check Employee Date of Joining (DOJ) & Date of Leaving (DOL)
+    doj = None
+    dol = None
+    std_monthly_earnings = 0.0
+
+    emp_id = employee or (emp_doc.get("name") if hasattr(emp_doc, "get") else getattr(emp_doc, "name", None))
+
+    if emp_doc:
+        doj = getdate(emp_doc.get("date_of_joining")) if emp_doc.get("date_of_joining") else None
+        dol = getdate(emp_doc.get("relieving_date") or emp_doc.get("date_of_leaving")) if (emp_doc.get("relieving_date") or emp_doc.get("date_of_leaving")) else None
+        std_monthly_earnings = flt(emp_doc.get("total_earnings") or 0.0)
+    elif emp_id:
+        emp_data = frappe.db.get_value("Employee", emp_id, ["date_of_joining", "relieving_date", "date_of_leaving", "total_earnings"], as_dict=True)
+        if emp_data:
+            doj = getdate(emp_data.get("date_of_joining")) if emp_data.get("date_of_joining") else None
+            dol = getdate(emp_data.get("relieving_date") or emp_data.get("date_of_leaving")) if (emp_data.get("relieving_date") or emp_data.get("date_of_leaving")) else None
+            std_monthly_earnings = flt(emp_data.get("total_earnings") or 0.0)
+
+    # If employee has not joined yet or already left prior to this pay period
+    if doj and doj > get_last_day(pay_period_start):
+        return 0.0
+    if dol and dol < pay_period_start:
         return 0.0
 
-    return get_slab_tax(gross)
+    effective_cycle_start = cycle_start
+    if doj and doj > cycle_start:
+        effective_cycle_start = getdate(f"{doj.year}-{doj.month:02d}-01")
+
+    # Fetch prior salary slips in this cycle for this employee strictly before this pay period
+    past_gross = 0.0
+    past_pt = 0.0
+    recorded_past_months = set()
+
+    if emp_id:
+        past_slips = frappe.get_all(
+            "Salary Slip",
+            filters={
+                "employee": emp_id,
+                "docstatus": ["<", 2],
+                "pay_period_start": [">=", effective_cycle_start],
+                "pay_period_end": ["<", pay_period_start],
+            },
+            fields=["name", "gross_pay", "grand_gross_pay", "pt_amount", "pay_period_start"]
+        )
+
+        for ps in past_slips:
+            if current_slip_name and ps.name == current_slip_name:
+                continue
+            ps_start = getdate(ps.pay_period_start)
+            if ps_start >= pay_period_start:
+                continue
+            past_gross += flt(ps.grand_gross_pay or ps.gross_pay)
+            past_pt += flt(ps.pt_amount)
+            recorded_past_months.add((ps_start.year, ps_start.month))
+
+        # Check for un-generated past active months within this cycle
+        iter_dt = effective_cycle_start
+        while (iter_dt.year, iter_dt.month) < (pay_period_start.year, pay_period_start.month):
+            m_key = (iter_dt.year, iter_dt.month)
+            if m_key not in recorded_past_months:
+                # Use standard monthly earnings as estimate for missing past month
+                past_gross += std_monthly_earnings
+            # Advance to next month
+            if iter_dt.month == 12:
+                iter_dt = iter_dt.replace(year=iter_dt.year + 1, month=1, day=1)
+            else:
+                iter_dt = iter_dt.replace(month=iter_dt.month + 1, day=1)
+
+    # Cumulative gross in this cycle including current month
+    cumulative_gross = round(past_gross + gross, 2)
+
+    # Target cumulative PT up to this month according to slab tiers
+    target_cumulative_pt = get_slab_tax(cumulative_gross)
+
+    # Net PT payable in this month after subtracting past PT already deducted
+    current_month_pt = max(0.0, round(target_cumulative_pt - past_pt, 2))
+    return current_month_pt
 
 
 @frappe.whitelist()
@@ -582,9 +665,9 @@ def preview_salary_slip(employee, start_date, end_date):
         "pay_period_end": end_date,
         "no_of_leave": unpaid_leave_days,
         "no_of_paid_leave": paid_leave_days,
-        "base_gross_pay": base_gross_total or gross_pay,
-        "base_total_deduction": base_deductions_total or base_deductions,
-        "base_net_pay": (base_gross_total or gross_pay) - (base_deductions_total or base_deductions),
+        "base_gross_pay": base_gross_total if base_gross_total > 0 else gross_pay,
+        "base_total_deduction": base_deductions_total,
+        "base_net_pay": (base_gross_total if base_gross_total > 0 else gross_pay) - base_deductions_total,
         "gross_pay": grand_gross_pay,
         "grand_gross_pay": grand_gross_pay,
         "net_pay": grand_net_pay,
@@ -711,8 +794,8 @@ def get_salary_slip_with_details(name):
             emp = frappe.get_doc("Employee", doc.employee)
             emp_earnings_map = { (e.component_name or e.salary_component or ""): flt(e.amount) for e in emp.earnings }
             emp_deductions_map = { (d.component_name or d.salary_component or ""): flt(d.amount) for d in emp.deductions }
-            base_gross_total = flt(emp.total_earnings)
-            base_deductions_total = flt(emp.total_deductions)
+            base_gross_total = round(sum(flt(e.amount) for e in emp.earnings), 2)
+            base_deductions_total = round(sum(flt(d.amount) for d in emp.deductions), 2)
         except Exception:
             pass
 
