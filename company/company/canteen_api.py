@@ -13,7 +13,7 @@ from frappe.utils import getdate, now_datetime, cint, flt
 # ----------------------------------------------------------------------
 
 @frappe.whitelist()
-def get_monthly_canteen(month=None, year=None, department=None, employee=None, meal_type="Lunch", start=0, limit=50):
+def get_monthly_canteen(month=None, year=None, department=None, employee=None, meal_type=None, start=0, limit=50, order_by=None):
 	"""
 	Returns the monthly canteen roster matrix, including holidays from existing Holiday List.
 	"""
@@ -63,37 +63,92 @@ def get_monthly_canteen(month=None, year=None, department=None, employee=None, m
 			"holiday_name": h_name
 		})
 
-	# 3. Build Employee Filters
+	# 3. Build Employee Filters & SQL
 	emp_filters = {"status": "Active"}
+	where_clauses = ["e.status = 'Active'"]
+	values = {}
+
 	if department and department != "all":
 		emp_filters["department"] = department
+		where_clauses.append("e.department = %(department)s")
+		values["department"] = department
+
 	if employee and employee != "all":
 		if isinstance(employee, list):
 			emp_filters["name"] = ["in", employee]
+			where_clauses.append("e.name IN %(emp_list)s")
+			values["emp_list"] = tuple(employee)
 		elif isinstance(employee, str) and (employee.startswith("[") or "," in employee):
 			try:
 				parsed = json.loads(employee)
 				if isinstance(parsed, list):
 					emp_filters["name"] = ["in", parsed]
+					where_clauses.append("e.name IN %(emp_list)s")
+					values["emp_list"] = tuple(parsed)
 				else:
 					emp_filters["name"] = employee
+					where_clauses.append("e.name = %(employee)s")
+					values["employee"] = employee
 			except Exception:
-				emp_filters["name"] = ["in", [x.strip() for x in employee.split(",") if x.strip()]]
+				parsed = [x.strip() for x in employee.split(",") if x.strip()]
+				if parsed:
+					emp_filters["name"] = ["in", parsed]
+					where_clauses.append("e.name IN %(emp_list)s")
+					values["emp_list"] = tuple(parsed)
 		else:
 			emp_filters["name"] = employee
+			where_clauses.append("e.name = %(employee)s")
+			values["employee"] = employee
 
 	# Calculate Total Count for pagination
 	total_count = frappe.db.count("Employee", filters=emp_filters)
 
+	where_str = " AND ".join(where_clauses)
+	values["limit"] = limit
+	values["start"] = start
+
+	# Determine Employee Order By
+	# For Newest First (modified_desc) and Oldest First (modified_asc),
+	# sort by the latest Canteen Entry modified date so employees with newly created entries appear at the top!
+	join_ce = False
+	if not order_by or order_by in ["modified_desc", "modified desc"]:
+		join_ce = True
+		sql_order = "CASE WHEN MAX(ce.modified) IS NOT NULL THEN 0 ELSE 1 END, MAX(ce.modified) DESC, e.employee_name ASC"
+	elif order_by in ["modified_asc", "modified asc"]:
+		join_ce = True
+		sql_order = "CASE WHEN MIN(ce.modified) IS NOT NULL THEN 0 ELSE 1 END, MIN(ce.modified) ASC, e.employee_name ASC"
+	elif order_by in ["employee_name_asc", "name_asc", "employee_name asc"]:
+		sql_order = "e.employee_name ASC"
+	elif order_by in ["employee_name_desc", "name_desc", "employee_name desc"]:
+		sql_order = "e.employee_name DESC"
+	elif order_by in ["department_asc", "department asc"]:
+		sql_order = "e.department ASC, e.employee_name ASC"
+	elif order_by in ["department_desc", "department desc"]:
+		sql_order = "e.department DESC, e.employee_name ASC"
+	else:
+		sql_order = f"e.{order_by}"
+
 	# Fetch Page of Employees
-	employees_data = frappe.db.get_all(
-		"Employee",
-		filters=emp_filters,
-		fields=["name", "employee_name", "department", "designation"],
-		order_by="employee_name asc",
-		start=start,
-		page_length=limit
-	)
+	if join_ce:
+		employees_data = frappe.db.sql(f"""
+			SELECT 
+				e.name, e.employee_name, e.department, e.designation
+			FROM `tabEmployee` e
+			LEFT JOIN `tabCanteen Entry` ce ON ce.employee = e.name
+			WHERE {where_str}
+			GROUP BY e.name, e.employee_name, e.department, e.designation
+			ORDER BY {sql_order}
+			LIMIT %(limit)s OFFSET %(start)s
+		""", values, as_dict=True)
+	else:
+		employees_data = frappe.db.sql(f"""
+			SELECT 
+				e.name, e.employee_name, e.department, e.designation
+			FROM `tabEmployee` e
+			WHERE {where_str}
+			ORDER BY {sql_order}
+			LIMIT %(limit)s OFFSET %(start)s
+		""", values, as_dict=True)
 
 	emp_ids = [e.name for e in employees_data]
 	emp_entries = {}
@@ -102,30 +157,51 @@ def get_monthly_canteen(month=None, year=None, department=None, employee=None, m
 
 	# 4. Fetch Canteen Entries for these employees
 	if emp_ids:
+		entry_conditions = [
+			"employee IN %(emp_ids)s",
+			"canteen_date BETWEEN %(start_str)s AND %(end_str)s",
+			"status = 'Availed'"
+		]
+		entry_values = {
+			"emp_ids": tuple(emp_ids),
+			"start_str": start_str,
+			"end_str": end_str
+		}
+		if meal_type and meal_type != "all":
+			entry_conditions.append("meal_type = %(meal_type)s")
+			entry_values["meal_type"] = meal_type
+
 		entries = frappe.db.sql(
-			"""
+			f"""
 			SELECT 
 				name, employee, employee_name, canteen_date, meal_type, meal_count, status, source, remarks
 			FROM `tabCanteen Entry`
-			WHERE employee IN %(emp_ids)s
-			  AND canteen_date BETWEEN %(start_str)s AND %(end_str)s
-			  AND status = 'Availed'
+			WHERE {" AND ".join(entry_conditions)}
 			""",
-			{"emp_ids": tuple(emp_ids), "start_str": start_str, "end_str": end_str},
+			entry_values,
 			as_dict=True
 		)
 		for entry in entries:
 			d_str = str(entry.canteen_date)
-			emp_entries.setdefault(entry.employee, {})[d_str] = {
-				"name": entry.name,
-				"meal_count": entry.meal_count or 1,
-				"meal_type": entry.meal_type or "Lunch",
-				"status": entry.status,
-				"source": entry.source,
-				"remarks": entry.remarks
-			}
+			existing_rec = emp_entries.setdefault(entry.employee, {}).get(d_str)
+			count = entry.meal_count or 1
+			if existing_rec:
+				existing_rec["meal_count"] += count
+				current_types = existing_rec.get("meal_types", [existing_rec.get("meal_type")])
+				current_types.append(entry.meal_type or "Lunch")
+				existing_rec["meal_types"] = current_types
+				existing_rec["meal_type"] = ", ".join(list(dict.fromkeys(current_types)))
+			else:
+				emp_entries.setdefault(entry.employee, {})[d_str] = {
+					"name": entry.name,
+					"meal_count": count,
+					"meal_type": entry.meal_type or "Lunch",
+					"meal_types": [entry.meal_type or "Lunch"],
+					"status": entry.status,
+					"source": entry.source,
+					"remarks": entry.remarks
+				}
 			if d_str in daily_totals:
-				count = entry.meal_count or 1
 				daily_totals[d_str] += count
 				grand_total += count
 
@@ -203,7 +279,26 @@ def get_calendar_canteen(start_date, end_date, employee=None, department=None, m
 	]
 	if employee and employee != "all":
 		if isinstance(employee, list):
-			filters.append(["employee", "in", employee])
+			if len(employee) == 1:
+				filters.append(["employee", "=", employee[0]])
+			else:
+				filters.append(["employee", "in", employee])
+		elif isinstance(employee, str) and (employee.startswith("[") or "," in employee):
+			try:
+				parsed = json.loads(employee)
+				if isinstance(parsed, list):
+					if len(parsed) == 1:
+						filters.append(["employee", "=", parsed[0]])
+					else:
+						filters.append(["employee", "in", parsed])
+				else:
+					filters.append(["employee", "=", str(parsed)])
+			except Exception:
+				parsed = [x.strip() for x in employee.split(",") if x.strip()]
+				if len(parsed) == 1:
+					filters.append(["employee", "=", parsed[0]])
+				elif len(parsed) > 1:
+					filters.append(["employee", "in", parsed])
 		else:
 			filters.append(["employee", "=", employee])
 
