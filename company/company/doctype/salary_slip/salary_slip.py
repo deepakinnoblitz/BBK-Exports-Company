@@ -144,6 +144,7 @@ def calculate_employee_pf(emp, earned_gross_salary, earned_basic_da, settings, p
 
     pf_rate = flt(getattr(settings, "employee_pf_rate", 12.0) if getattr(settings, "employee_pf_rate", None) is not None else 12.0) / 100.0
     pf_ceiling = flt(getattr(settings, "pf_wage_ceiling", 15000.0) if getattr(settings, "pf_wage_ceiling", None) is not None else 15000.0)
+    max_pf_amount = flt(getattr(settings, "employee_pf_max_amount", None) if getattr(settings, "employee_pf_max_amount", None) is not None else (pf_ceiling * pf_rate if pf_ceiling > 0 else 1800.0))
     pf_basis_raw = getattr(settings, "pf_wage_basis", None)
 
     # Dynamic selected components parsing
@@ -184,8 +185,10 @@ def calculate_employee_pf(emp, earned_gross_salary, earned_basic_da, settings, p
     else:
         base_wage = flt(earned_gross_salary)
 
-    eligible_wage = min(base_wage, pf_ceiling) if pf_ceiling > 0 else base_wage
-    return round(eligible_wage * pf_rate)
+    if pf_ceiling > 0 and base_wage >= pf_ceiling:
+        return float(round(max_pf_amount))
+    else:
+        return float(round(base_wage * pf_rate))
 
 
 def calculate_employee_esi(emp, grand_gross_pay, earned_gross_salary, settings):
@@ -784,7 +787,8 @@ def preview_salary_slip(employee, start_date, end_date):
     pf_admin_rate = flt(getattr(settings, "pf_admin_rate", None) if getattr(settings, "pf_admin_rate", None) is not None else 0.5) / 100.0
     edli_rate = flt(getattr(settings, "edli_rate", None) if getattr(settings, "edli_rate", None) is not None else 0.5) / 100.0
     esi_rate = flt(getattr(settings, "employer_esi_rate", None) if getattr(settings, "employer_esi_rate", None) is not None else 3.25) / 100.0
-    pf_ceiling = flt(getattr(settings, "pf_wage_ceiling", 15000.0) if getattr(settings, "pf_wage_ceiling", None) is not None else 15000.0)
+    employer_pf_ceiling = flt(getattr(settings, "employer_pf_wage_ceiling", None) if getattr(settings, "employer_pf_wage_ceiling", None) is not None else (getattr(settings, "pf_wage_ceiling", 15000.0) if getattr(settings, "pf_wage_ceiling", None) is not None else 15000.0))
+    employer_max_pf = flt(getattr(settings, "employer_pf_max_amount", None) if getattr(settings, "employer_pf_max_amount", None) is not None else (employer_pf_ceiling * pf_rate if employer_pf_ceiling > 0 else 1800.0))
     esi_ceiling = flt(getattr(settings, "esi_wage_ceiling", 21000.0) if getattr(settings, "esi_wage_ceiling", None) is not None else 21000.0)
     
     # Dynamic PF base for Employer
@@ -826,15 +830,48 @@ def preview_salary_slip(employee, start_date, end_date):
     enable_el = cint(getattr(settings, "enable_el_provision", 1) if getattr(settings, "enable_el_provision", None) is not None else 1)
     el_days = flt(getattr(settings, "el_provision_days_per_year", 15.6) if getattr(settings, "el_provision_days_per_year", None) is not None else 15.6) if enable_el else 0.0
 
-    employer_pf = round(min(pf_base_for_employer, pf_ceiling) * pf_rate, 2)
-    pf_admin_charges = round(pf_base_for_employer * pf_admin_rate, 2)
-    edli_charges = round(pf_base_for_employer * edli_rate, 2)
-    employer_esi = round(grand_gross_pay * esi_rate, 2) if (earned_gross_salary <= esi_ceiling or grand_gross_pay <= esi_ceiling) else 0.0
-    tea_expenses = round(flt(present_days) * tea_rate, 2) if "worker" in emp_type else 0.0
+    enable_pf = cint(getattr(settings, "enable_auto_pf", 1) if getattr(settings, "enable_auto_pf", None) is not None else 1)
+    pf_no = emp.get("pf_number") if hasattr(emp, "get") else getattr(emp, "pf_number", None)
+    has_pf_component = False
+    if hasattr(emp, "deductions") and emp.deductions:
+        for d in emp.deductions:
+            c_name = (d.component_name or d.salary_component or "").lower() if hasattr(d, "component_name") else (d.get("component_name") or d.get("salary_component") or "").lower()
+            if any(k in c_name for k in ["pf", "provident fund", "epf"]) and "employer" not in c_name and "admin" not in c_name:
+                has_pf_component = True
+                break
+
+    if not enable_pf or (not pf_no and not has_pf_component):
+        employer_pf = 0.0
+        pf_admin_charges = 0.0
+        edli_charges = 0.0
+    else:
+        if employer_pf_ceiling > 0 and pf_base_for_employer >= employer_pf_ceiling:
+            employer_pf = float(round(employer_max_pf))
+        else:
+            employer_pf = float(round(pf_base_for_employer * pf_rate))
+        pf_admin_charges = float(round(pf_base_for_employer * pf_admin_rate))
+        edli_charges = float(round(pf_base_for_employer * edli_rate))
+
+    enable_esi = cint(getattr(settings, "enable_auto_esi", 1) if getattr(settings, "enable_auto_esi", None) is not None else 1)
+    esi_no = emp.get("esi_no") if hasattr(emp, "get") else getattr(emp, "esi_no", None)
+    has_esi_component = False
+    if hasattr(emp, "deductions") and emp.deductions:
+        for d in emp.deductions:
+            c_name = (d.component_name or d.salary_component or "").lower() if hasattr(d, "component_name") else (d.get("component_name") or d.get("salary_component") or "").lower()
+            if any(k in c_name for k in ["esi", "esic"]) and "employer" not in c_name:
+                has_esi_component = True
+                break
+
+    if not enable_esi or (not esi_no and not has_esi_component) or (esi_ceiling > 0 and earned_gross_salary > esi_ceiling and grand_gross_pay > esi_ceiling):
+        employer_esi = 0.0
+    else:
+        employer_esi = float(round(grand_gross_pay * esi_rate))
+
+    tea_expenses = float(round(flt(present_days) * tea_rate)) if "worker" in emp_type else 0.0
     total_employer_contrib = round(employer_pf + pf_admin_charges + edli_charges + employer_esi + tea_expenses, 2)
 
-    bonus_provision = round(earned_basic_da * bonus_rate, 2) if enable_bonus else 0.0
-    el_provision = round((earned_basic_da / 26.0) * (el_days / 12.0), 2) if (enable_el and month_working_days) else 0.0
+    bonus_provision = float(round(pf_base_for_employer * bonus_rate)) if enable_bonus else 0.0
+    el_provision = float(round((pf_base_for_employer / 26.0) * (el_days / 12.0))) if (enable_el and month_working_days) else 0.0
     total_monthly_ctc = round(grand_gross_pay + total_employer_contrib + bonus_provision + el_provision, 2)
 
     res = {
@@ -1038,7 +1075,8 @@ def get_salary_slip_with_details(name):
     pf_admin_rate = flt(getattr(settings, "pf_admin_rate", None) if getattr(settings, "pf_admin_rate", None) is not None else 0.5) / 100.0
     edli_rate = flt(getattr(settings, "edli_rate", None) if getattr(settings, "edli_rate", None) is not None else 0.5) / 100.0
     esi_rate = flt(getattr(settings, "employer_esi_rate", None) if getattr(settings, "employer_esi_rate", None) is not None else 3.25) / 100.0
-    pf_ceiling = flt(getattr(settings, "pf_wage_ceiling", 15000.0) if getattr(settings, "pf_wage_ceiling", None) is not None else 15000.0)
+    employer_pf_ceiling = flt(getattr(settings, "employer_pf_wage_ceiling", None) if getattr(settings, "employer_pf_wage_ceiling", None) is not None else (getattr(settings, "pf_wage_ceiling", 15000.0) if getattr(settings, "pf_wage_ceiling", None) is not None else 15000.0))
+    employer_max_pf = flt(getattr(settings, "employer_pf_max_amount", None) if getattr(settings, "employer_pf_max_amount", None) is not None else (employer_pf_ceiling * pf_rate if employer_pf_ceiling > 0 else 1800.0))
     esi_ceiling = flt(getattr(settings, "esi_wage_ceiling", 21000.0) if getattr(settings, "esi_wage_ceiling", None) is not None else 21000.0)
     pf_basis_raw = getattr(settings, "pf_wage_basis", None)
     selected_components = []
@@ -1080,15 +1118,48 @@ def get_salary_slip_with_details(name):
     el_days = flt(getattr(settings, "el_provision_days_per_year", 15.6) if getattr(settings, "el_provision_days_per_year", None) is not None else 15.6) if enable_el else 0.0
 
     tea_rate = flt(getattr(settings, "workers_tea_allowance_per_day", 5.0) if getattr(settings, "workers_tea_allowance_per_day", None) is not None else 5.0)
-    employer_pf = round(min(pf_base_for_employer, pf_ceiling) * pf_rate, 2)
-    pf_admin_charges = round(pf_base_for_employer * pf_admin_rate, 2)
-    edli_charges = round(pf_base_for_employer * edli_rate, 2)
-    employer_esi = round(gross_val * esi_rate, 2) if (earned_gross_salary <= esi_ceiling or gross_val <= esi_ceiling) else 0.0
-    tea_expenses = round(present_days_val * tea_rate, 2) if "worker" in emp_type else 0.0
+    enable_pf = cint(getattr(settings, "enable_auto_pf", 1) if getattr(settings, "enable_auto_pf", None) is not None else 1)
+    pf_no = getattr(doc, "pf_number", None) or (emp_doc.get("pf_number") if emp_doc else None)
+    has_pf_component = False
+    if hasattr(doc, "deductions") and doc.deductions:
+        for d in doc.deductions:
+            c_name = (d.component_name or d.salary_component or "").lower() if hasattr(d, "component_name") else (d.get("component_name") or d.get("salary_component") or "").lower()
+            if any(k in c_name for k in ["pf", "provident fund", "epf"]) and "employer" not in c_name and "admin" not in c_name:
+                has_pf_component = True
+                break
+
+    if not enable_pf or (not pf_no and not has_pf_component):
+        employer_pf = 0.0
+        pf_admin_charges = 0.0
+        edli_charges = 0.0
+    else:
+        if employer_pf_ceiling > 0 and pf_base_for_employer >= employer_pf_ceiling:
+            employer_pf = float(round(employer_max_pf))
+        else:
+            employer_pf = float(round(pf_base_for_employer * pf_rate))
+        pf_admin_charges = float(round(pf_base_for_employer * pf_admin_rate))
+        edli_charges = float(round(pf_base_for_employer * edli_rate))
+
+    enable_esi = cint(getattr(settings, "enable_auto_esi", 1) if getattr(settings, "enable_auto_esi", None) is not None else 1)
+    esi_no = getattr(doc, "esi_no", None) or (emp_doc.get("esi_no") if emp_doc else None)
+    has_esi_component = False
+    if hasattr(doc, "deductions") and doc.deductions:
+        for d in doc.deductions:
+            c_name = (d.component_name or d.salary_component or "").lower() if hasattr(d, "component_name") else (d.get("component_name") or d.get("salary_component") or "").lower()
+            if any(k in c_name for k in ["esi", "esic"]) and "employer" not in c_name:
+                has_esi_component = True
+                break
+
+    if not enable_esi or (not esi_no and not has_esi_component) or (esi_ceiling > 0 and earned_gross_salary > esi_ceiling and gross_val > esi_ceiling):
+        employer_esi = 0.0
+    else:
+        employer_esi = float(round(gross_val * esi_rate))
+
+    tea_expenses = float(round(present_days_val * tea_rate)) if "worker" in emp_type else 0.0
     total_employer_contrib = round(employer_pf + pf_admin_charges + edli_charges + employer_esi + tea_expenses, 2)
 
-    bonus_provision = round(earned_basic_da * bonus_rate, 2) if enable_bonus else 0.0
-    el_provision = round((earned_basic_da / 26.0) * (el_days / 12.0), 2) if enable_el else 0.0
+    bonus_provision = float(round(pf_base_for_employer * bonus_rate)) if enable_bonus else 0.0
+    el_provision = float(round((pf_base_for_employer / 26.0) * (el_days / 12.0))) if enable_el else 0.0
     total_monthly_ctc = round(gross_val + total_employer_contrib + bonus_provision + el_provision, 2)
 
     res.update({

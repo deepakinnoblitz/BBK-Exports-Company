@@ -222,6 +222,13 @@
    "label": "PF Statutory Wage Ceiling (\u20b9)"
   },
   {
+   "default": "1800",
+   "depends_on": "eval:doc.enable_auto_pf == 1",
+   "fieldname": "employee_pf_max_amount",
+   "fieldtype": "Currency",
+   "label": "Max Employee PF Deduction (\u20b9)"
+  },
+  {
    "default": "[\"Basic Pay\", \"DA\", \"Other Allowance\"]",
    "depends_on": "eval:doc.enable_auto_pf == 1",
    "fieldname": "pf_wage_basis",
@@ -261,6 +268,18 @@
    "fieldname": "employer_pf_rate",
    "fieldtype": "Float",
    "label": "Employer PF Contribution Rate (%)"
+  },
+  {
+   "default": "15000",
+   "fieldname": "employer_pf_wage_ceiling",
+   "fieldtype": "Currency",
+   "label": "Employer PF Wage Ceiling (\u20b9)"
+  },
+  {
+   "default": "1800",
+   "fieldname": "employer_pf_max_amount",
+   "fieldtype": "Currency",
+   "label": "Max Employer PF Contribution (\u20b9)"
   },
   {
    "default": "0.5",
