@@ -38,6 +38,7 @@
   "holiday_handling",
   "no_of_leave",
   "no_of_paid_leave",
+  "no_of_comp_off",
   "total_working_days",
   "lop_days",
   "column_break_egim",
@@ -111,6 +112,13 @@
    "fieldname": "no_of_paid_leave",
    "fieldtype": "Float",
    "label": "No of Paid Leave",
+   "precision": "1",
+   "read_only": 1
+  },
+  {
+   "fieldname": "no_of_comp_off",
+   "fieldtype": "Float",
+   "label": "No of Compensatory Off",
    "precision": "1",
    "read_only": 1
   },

@@ -1,4 +1,5 @@
 import json
+import math
 import frappe
 from frappe import _
 from datetime import datetime, timedelta
@@ -115,6 +116,117 @@ def calculate_attendance_bonus(emp, absent_days, settings):
     if "worker" in emp_type and flt(absent_days) <= 0.0:
         return flt(getattr(settings, "workers_attendance_bonus", 1500.0)) or 1500.0
     return 0.0
+
+
+def calculate_employee_pf(emp, earned_gross_salary, earned_basic_da, settings, prorated_earnings=None):
+    """
+    Calculate Employee PF deduction based on HRMS Settings and Excel formula:
+    =ROUND(+IF(AND(AF6>15000),1800,IF(AND(AF6<15000),AF6*12%)),0)
+    
+    Supports dynamic selected salary components for wage basis.
+    """
+    enable_pf = cint(getattr(settings, "enable_auto_pf", 1) if getattr(settings, "enable_auto_pf", None) is not None else 1)
+    if not enable_pf:
+        return None
+
+    pf_no = emp.get("pf_number") if hasattr(emp, "get") else getattr(emp, "pf_number", None)
+    has_pf_component = False
+    if hasattr(emp, "deductions"):
+        for d in emp.deductions:
+            c_name = (d.component_name or d.salary_component or "").lower() if hasattr(d, "component_name") else (d.get("component_name") or d.get("salary_component") or "").lower()
+            if any(k in c_name for k in ["pf", "provident fund", "epf"]) and "employer" not in c_name and "admin" not in c_name:
+                has_pf_component = True
+                break
+
+    # If employee has no PF number and PF is not in their deduction structure, return 0
+    if not pf_no and not has_pf_component:
+        return 0.0
+
+    pf_rate = flt(getattr(settings, "employee_pf_rate", 12.0) if getattr(settings, "employee_pf_rate", None) is not None else 12.0) / 100.0
+    pf_ceiling = flt(getattr(settings, "pf_wage_ceiling", 15000.0) if getattr(settings, "pf_wage_ceiling", None) is not None else 15000.0)
+    pf_basis_raw = getattr(settings, "pf_wage_basis", None)
+
+    # Dynamic selected components parsing
+    selected_components = []
+    if pf_basis_raw:
+        if isinstance(pf_basis_raw, list):
+            selected_components = [str(x).strip().lower() for x in pf_basis_raw if str(x).strip()]
+        elif isinstance(pf_basis_raw, str):
+            try:
+                parsed = json.loads(pf_basis_raw)
+                if isinstance(parsed, list):
+                    selected_components = [str(x).strip().lower() for x in parsed if str(x).strip()]
+            except Exception:
+                if pf_basis_raw.strip() == "Earned Basic + DA":
+                    selected_components = ["basic pay", "da", "basic", "dearness"]
+                elif "," in pf_basis_raw:
+                    selected_components = [x.strip().lower() for x in pf_basis_raw.split(",") if x.strip()]
+
+    if selected_components and prorated_earnings:
+        matching_total = sum(
+            flt(e.get("amount") if isinstance(e, dict) else getattr(e, "amount", 0.0))
+            for e in prorated_earnings
+            if (
+                ((e.get("component_name") or e.get("salary_component") or "") if isinstance(e, dict)
+                 else (getattr(e, "component_name", None) or getattr(e, "salary_component", None) or "")).lower().strip() in selected_components
+                or any(
+                    sc in ((e.get("component_name") or e.get("salary_component") or "").lower() if isinstance(e, dict)
+                           else (getattr(e, "component_name", None) or getattr(e, "salary_component", None) or "").lower())
+                    for sc in selected_components
+                )
+            )
+        )
+        base_wage = matching_total
+    elif selected_components and not prorated_earnings and (selected_components == ["basic pay", "da", "basic", "dearness"] or "basic" in selected_components and "other allowance" not in selected_components):
+        base_wage = flt(earned_basic_da)
+    elif pf_basis_raw == "Earned Basic + DA":
+        base_wage = flt(earned_basic_da)
+    else:
+        base_wage = flt(earned_gross_salary)
+
+    eligible_wage = min(base_wage, pf_ceiling) if pf_ceiling > 0 else base_wage
+    return round(eligible_wage * pf_rate)
+
+
+def calculate_employee_esi(emp, grand_gross_pay, earned_gross_salary, settings):
+    """
+    Calculate Employee ESI deduction based on HRMS Settings and Excel formula:
+    =ROUNDUP(AK6 * $AM$5, 0) -> Total Gross Earnings (AK6) * 0.75%
+    
+    Returns rounded deduction amount or None if auto calculation is disabled.
+    """
+    enable_esi = cint(getattr(settings, "enable_auto_esi", 1) if getattr(settings, "enable_auto_esi", None) is not None else 1)
+    if not enable_esi:
+        return None
+
+    esi_no = emp.get("esi_no") if hasattr(emp, "get") else getattr(emp, "esi_no", None)
+    has_esi_component = False
+    if hasattr(emp, "deductions"):
+        for d in emp.deductions:
+            c_name = (d.component_name or d.salary_component or "").lower() if hasattr(d, "component_name") else (d.get("component_name") or d.get("salary_component") or "").lower()
+            if any(k in c_name for k in ["esi", "esic"]) and "employer" not in c_name:
+                has_esi_component = True
+                break
+
+    # If employee has no ESI number and ESI is not in their deduction structure, return 0
+    if not esi_no and not has_esi_component:
+        return 0.0
+
+    esi_ceiling = flt(getattr(settings, "esi_wage_ceiling", 21000.0) if getattr(settings, "esi_wage_ceiling", None) is not None else 21000.0)
+    
+    # Statutory gross wage eligibility check (Gross <= ₹21,000)
+    std_earnings = flt(emp.get("total_earnings") or 0.0) if hasattr(emp, "get") else flt(getattr(emp, "total_earnings", 0.0))
+    if esi_ceiling > 0 and earned_gross_salary > esi_ceiling and std_earnings > esi_ceiling:
+        return 0.0
+
+    esi_rate = flt(getattr(settings, "employee_esi_rate", 0.75) if getattr(settings, "employee_esi_rate", None) is not None else 0.75) / 100.0
+    rounding_method = getattr(settings, "esi_rounding_method", "Round Up to Next Rupee (ROUNDUP / CEIL)") or "Round Up to Next Rupee (ROUNDUP / CEIL)"
+
+    raw_esi = flt(grand_gross_pay) * esi_rate
+    if "Round Up" in rounding_method or "ROUNDUP" in rounding_method or "CEIL" in rounding_method:
+        return float(math.ceil(raw_esi))
+    else:
+        return float(round(raw_esi))
 
 
 def calculate_professional_tax(gross_salary, pay_period_start, settings, employee=None, emp_doc=None, current_slip_name=None):
@@ -391,6 +503,7 @@ def preview_salary_slip(employee, start_date, end_date):
     present_days = 0
     total_absent_days = 0
     paid_leave_days = 0
+    comp_off_days = 0
     total_leave_days = 0
     unpaid_leave_days = 0
     half_day_count = 0
@@ -408,6 +521,7 @@ def preview_salary_slip(employee, start_date, end_date):
         day_attendance = None
         day_ot = 0.0
         leave_val = 0.0
+        comp_off_val = 0.0
         is_paid_leave = False
         
         if calc_source == "Daily Log":
@@ -438,40 +552,39 @@ def preview_salary_slip(employee, start_date, end_date):
                 physical_val = 0.5
                 half_day_count += 1
             elif day_attendance["status"] == "Compensatory Off":
-                leave_val = 1.0
-                is_paid_leave = True
+                comp_off_val = 1.0
             
         # Determine Holiday Recognition
         holiday_val = 0
-        if is_holiday and (physical_val + leave_val) < 1.0:
+        if is_holiday and (physical_val + comp_off_val + leave_val) < 1.0:
             if holiday_handling == "Include in Working Days":
-                holiday_val = 1.0 - (physical_val + leave_val)
+                holiday_val = 1.0 - (physical_val + comp_off_val + leave_val)
 
         # Determine Leave Recognition
         if leave_calc_source != "Via Direct Allocation":
-            if day_leave and (physical_val + holiday_val + leave_val) < 1.0:
+            if day_leave and (physical_val + comp_off_val + holiday_val + leave_val) < 1.0:
                 leave_unit = 0.5 if flt(day_leave.half_day) else 1.0
                 if leave_unit == 0.5:
                     half_day_count += 1
-                leave_val = min(leave_unit, 1.0 - (physical_val + holiday_val))
+                leave_val = min(leave_unit, 1.0 - (physical_val + comp_off_val + holiday_val))
                 is_paid_leave = bool(is_paid_map.get(day_leave.leave_type, 1))
 
         # Update Counters
         physical_attendance_days += physical_val
+        comp_off_days += comp_off_val
         
         # Diagnostic tracking
         components = []
         if physical_val > 0:
             components.append(f"Work ({physical_val})")
+        if comp_off_val > 0:
+            components.append(f"Compensatory Off ({comp_off_val})")
         if leave_val > 0:
-            if day_attendance and day_attendance.get("status") == "Compensatory Off":
-                components.append(f"Compensatory Off ({leave_val})")
-            else:
-                components.append(f"{'Paid' if is_paid_leave else 'Unpaid'} Leave ({leave_val})")
+            components.append(f"{'Paid' if is_paid_leave else 'Unpaid'} Leave ({leave_val})")
         if holiday_val > 0:
             components.append("Holiday" if holiday_val >= 1.0 else f"Holiday ({holiday_val})")
             
-        absent_val = round(max(0.0, 1.0 - (physical_val + leave_val + holiday_val)), 2)
+        absent_val = round(max(0.0, 1.0 - (physical_val + comp_off_val + leave_val + holiday_val)), 2)
         if absent_val > 0:
             if leave_calc_source != "Via Direct Allocation":
                 components.append(f"Unpaid Leave ({absent_val})" if absent_val < 1.0 else "Unpaid Leave")
@@ -492,8 +605,8 @@ def preview_salary_slip(employee, start_date, end_date):
             "ot_hours": round(day_ot, 2)
         })
         
-        # Present Days = Work + Paid Leave + Holiday
-        present_days += physical_val
+        # Present Days = Work + Comp Off + Paid Leave (Holidays are tracked separately)
+        present_days += physical_val + comp_off_val
         if is_paid_leave:
             present_days += leave_val
             paid_leave_days += leave_val
@@ -501,16 +614,15 @@ def preview_salary_slip(employee, start_date, end_date):
         elif leave_val > 0:
             unpaid_leave_days += leave_val
             total_leave_days += leave_val
-            
-        present_days += holiday_val
 
     # 5. Calculate Earnings & Deductions
     if leave_calc_source == "Via Direct Allocation":
-        paid_leave_days = min(total_absent_days, direct_paid_allocated)
+        direct_credit = min(total_absent_days, direct_paid_allocated)
+        paid_leave_days += direct_credit
         total_leave_days = paid_leave_days + direct_unpaid_allocated
         unpaid_leave_days = direct_unpaid_allocated
-        present_days += paid_leave_days
-        lop_days = max(0.0, total_absent_days - paid_leave_days)
+        present_days += direct_credit
+        lop_days = max(0.0, total_absent_days - direct_credit)
     else:
         lop_days = unpaid_leave_days
     
@@ -584,11 +696,24 @@ def preview_salary_slip(employee, start_date, end_date):
                 "amount": tea_allowance
             })
 
-    # 5.4. Calculate Earned Gross Pay
+    # 5.4. Calculate Earned Gross Pay (AF6: Earned Gross before dynamic OT/Bonus/Tea) & Grand Gross Pay (AK6)
+    earned_gross_salary = round(sum(
+        flt(e["amount"]) for e in prorated_earnings
+        if (e.get("component_name") or e.get("salary_component") or "") not in ["Overtime Pay (OT)", "Overtime Allowance", "Attendance Bonus", "Tea Allowance"]
+    ), 2)
     grand_gross_pay = round(sum(flt(e["amount"]) for e in prorated_earnings), 2)
 
-    # 5.5. Deductions & Professional Tax
+    earned_basic_da = sum(
+        flt(e.get("amount", 0)) for e in prorated_earnings 
+        if any(k in (e.get("component_name") or e.get("salary_component") or "").lower() for k in ["basic", "da", "dearness"])
+    )
+    if earned_basic_da <= 0:
+        earned_basic_da = earned_gross_salary
+
+    # 5.5. Deductions & Professional Tax, PF, ESI
     pt_amount = calculate_professional_tax(grand_gross_pay, start_date, settings, employee=emp.name, emp_doc=emp)
+    emp_pf = calculate_employee_pf(emp, earned_gross_salary, earned_basic_da, settings, prorated_earnings=prorated_earnings)
+    emp_esi = calculate_employee_esi(emp, grand_gross_pay, earned_gross_salary, settings)
 
     prorated_deductions = []
     base_deductions_total = 0.0
@@ -597,9 +722,20 @@ def preview_salary_slip(employee, start_date, end_date):
         item = d.as_dict()
         item["standard_amount"] = flt(d.amount)
         base_deductions_total += flt(d.amount)
+        c_lower = c_name.lower()
         if c_name in ["Prof.Tax", "Professional Tax", "PT"]:
             # Override PT amount according to slab and cycle
             item["amount"] = pt_amount
+        elif any(k in c_lower for k in ["pf", "provident fund", "epf"]) and "employer" not in c_lower and "admin" not in c_lower:
+            if emp_pf is not None:
+                item["amount"] = emp_pf
+            else:
+                item["amount"] = flt(d.amount)
+        elif any(k in c_lower for k in ["esi", "esic"]) and "employer" not in c_lower:
+            if emp_esi is not None:
+                item["amount"] = emp_esi
+            else:
+                item["amount"] = flt(d.amount)
         else:
             item["amount"] = flt(d.amount)
         prorated_deductions.append(item)
@@ -615,33 +751,85 @@ def preview_salary_slip(employee, start_date, end_date):
             "amount": pt_amount
         })
 
+    # If PF wasn't in employee structure but emp_pf > 0, add it
+    has_pf = any(any(k in (d.get("component_name") or d.get("salary_component") or "").lower() for k in ["pf", "provident fund", "epf"]) and "employer" not in (d.get("component_name") or d.get("salary_component") or "").lower() for d in prorated_deductions)
+    if not has_pf and emp_pf is not None and emp_pf > 0:
+        prorated_deductions.append({
+            "component_name": "PF",
+            "salary_component": "PF",
+            "type": "Deduction",
+            "standard_amount": 0.0,
+            "amount": emp_pf
+        })
+
+    # If ESI wasn't in employee structure but emp_esi > 0, add it
+    has_esi = any(any(k in (d.get("component_name") or d.get("salary_component") or "").lower() for k in ["esi", "esic"]) and "employer" not in (d.get("component_name") or d.get("salary_component") or "").lower() for d in prorated_deductions)
+    if not has_esi and emp_esi is not None and emp_esi > 0:
+        prorated_deductions.append({
+            "component_name": "ESI",
+            "salary_component": "ESI",
+            "type": "Deduction",
+            "standard_amount": 0.0,
+            "amount": emp_esi
+        })
+
     # LOP amount for informational and display breakdown purposes
     lop_amount = round(gross_pay * (lop_days / month_working_days), 2) if month_working_days else 0.0
     
     total_deductions = round(sum(flt(d["amount"]) for d in prorated_deductions), 2)
     grand_net_pay = round(grand_gross_pay - total_deductions, 2)
 
-    # 5.5. Employer Statutory Contributions & Total Monthly Cost to Company (CTC)
-    earned_basic_da = sum(
-        flt(e.get("amount", 0)) for e in prorated_earnings 
-        if any(k in (e.get("component_name") or e.get("salary_component") or "").lower() for k in ["basic", "da", "dearness"])
-    )
-    if earned_basic_da <= 0:
-        earned_basic_da = max(0.0, grand_gross_pay - ot_amount - attendance_bonus - tea_allowance)
-
+    # 5.6. Employer Statutory Contributions & Total Monthly Cost to Company (CTC)
     pf_rate = flt(getattr(settings, "employer_pf_rate", None) if getattr(settings, "employer_pf_rate", None) is not None else 12.0) / 100.0
     pf_admin_rate = flt(getattr(settings, "pf_admin_rate", None) if getattr(settings, "pf_admin_rate", None) is not None else 0.5) / 100.0
     edli_rate = flt(getattr(settings, "edli_rate", None) if getattr(settings, "edli_rate", None) is not None else 0.5) / 100.0
     esi_rate = flt(getattr(settings, "employer_esi_rate", None) if getattr(settings, "employer_esi_rate", None) is not None else 3.25) / 100.0
+    pf_ceiling = flt(getattr(settings, "pf_wage_ceiling", 15000.0) if getattr(settings, "pf_wage_ceiling", None) is not None else 15000.0)
+    esi_ceiling = flt(getattr(settings, "esi_wage_ceiling", 21000.0) if getattr(settings, "esi_wage_ceiling", None) is not None else 21000.0)
+    
+    # Dynamic PF base for Employer
+    pf_basis_raw = getattr(settings, "pf_wage_basis", None)
+    selected_pf_components = []
+    if pf_basis_raw:
+        if isinstance(pf_basis_raw, list):
+            selected_pf_components = [str(x).strip().lower() for x in pf_basis_raw if str(x).strip()]
+        elif isinstance(pf_basis_raw, str):
+            try:
+                parsed = json.loads(pf_basis_raw)
+                if isinstance(parsed, list):
+                    selected_pf_components = [str(x).strip().lower() for x in parsed if str(x).strip()]
+            except Exception:
+                if pf_basis_raw.strip() == "Earned Basic + DA":
+                    selected_pf_components = ["basic pay", "da", "basic", "dearness"]
+
+    if selected_pf_components and prorated_earnings:
+        pf_base_for_employer = sum(
+            flt(e.get("amount") if isinstance(e, dict) else getattr(e, "amount", 0.0))
+            for e in prorated_earnings
+            if (
+                ((e.get("component_name") or e.get("salary_component") or "") if isinstance(e, dict)
+                 else (getattr(e, "component_name", None) or getattr(e, "salary_component", None) or "")).lower().strip() in selected_pf_components
+                or any(
+                    sc in ((e.get("component_name") or e.get("salary_component") or "").lower() if isinstance(e, dict)
+                           else (getattr(e, "component_name", None) or getattr(e, "salary_component", None) or "").lower())
+                    for sc in selected_pf_components
+                )
+            )
+        )
+    elif pf_basis_raw == "Earned Basic + DA":
+        pf_base_for_employer = earned_basic_da
+    else:
+        pf_base_for_employer = earned_gross_salary
+
     enable_bonus = cint(getattr(settings, "enable_bonus_provision", 1) if getattr(settings, "enable_bonus_provision", None) is not None else 1)
     bonus_rate = (flt(getattr(settings, "bonus_provision_rate", 8.33) if getattr(settings, "bonus_provision_rate", None) is not None else 8.33) / 100.0) if enable_bonus else 0.0
     enable_el = cint(getattr(settings, "enable_el_provision", 1) if getattr(settings, "enable_el_provision", None) is not None else 1)
     el_days = flt(getattr(settings, "el_provision_days_per_year", 15.6) if getattr(settings, "el_provision_days_per_year", None) is not None else 15.6) if enable_el else 0.0
 
-    employer_pf = round(min(earned_basic_da, 15000.0) * pf_rate, 2)
-    pf_admin_charges = round(earned_basic_da * pf_admin_rate, 2)
-    edli_charges = round(earned_basic_da * edli_rate, 2)
-    employer_esi = round(grand_gross_pay * esi_rate, 2) if grand_gross_pay <= 21000.0 else 0.0
+    employer_pf = round(min(pf_base_for_employer, pf_ceiling) * pf_rate, 2)
+    pf_admin_charges = round(pf_base_for_employer * pf_admin_rate, 2)
+    edli_charges = round(pf_base_for_employer * edli_rate, 2)
+    employer_esi = round(grand_gross_pay * esi_rate, 2) if (earned_gross_salary <= esi_ceiling or grand_gross_pay <= esi_ceiling) else 0.0
     tea_expenses = round(flt(present_days) * tea_rate, 2) if "worker" in emp_type else 0.0
     total_employer_contrib = round(employer_pf + pf_admin_charges + edli_charges + employer_esi + tea_expenses, 2)
 
@@ -665,11 +853,15 @@ def preview_salary_slip(employee, start_date, end_date):
         "pay_period_end": end_date,
         "no_of_leave": unpaid_leave_days,
         "no_of_paid_leave": paid_leave_days,
+        "no_of_comp_off": comp_off_days,
         "base_gross_pay": base_gross_total if base_gross_total > 0 else gross_pay,
         "base_total_deduction": base_deductions_total,
         "base_net_pay": (base_gross_total if base_gross_total > 0 else gross_pay) - base_deductions_total,
         "gross_pay": grand_gross_pay,
         "grand_gross_pay": grand_gross_pay,
+        "earned_gross_salary": earned_gross_salary,
+        "emp_pf": emp_pf if emp_pf is not None else 0.0,
+        "emp_esi": emp_esi if emp_esi is not None else 0.0,
         "net_pay": grand_net_pay,
         "grand_net_pay": grand_net_pay,
         "total_deduction": total_deductions,
@@ -705,6 +897,7 @@ def preview_salary_slip(employee, start_date, end_date):
         # Detailed Breakdown Fields
         "total_days_in_period": total_days,
         "holiday_count": len(holiday_dates),
+        "holiday_working_days": total_days - len(holiday_dates),
         "holidays_details": holidays_details,
         "actual_present_days": present_days,
         "physical_attendance_days": physical_attendance_days,
@@ -825,6 +1018,11 @@ def get_salary_slip_with_details(name):
     # ── Employer Contributions & CTC ──────────────────────────────────────────
     emp_type = (res.get("employee_type") or "").lower()
     gross_val = flt(doc.grand_gross_pay or doc.gross_pay or 0.0)
+    earned_gross_salary = round(sum(
+        flt(e.amount or 0) for e in doc.earnings
+        if (e.component_name or e.salary_component or "") not in ["Overtime Pay (OT)", "Overtime Allowance", "Attendance Bonus", "Tea Allowance"]
+    ), 2)
+
     earned_basic_da = sum(
         flt(e.amount or 0) for e in doc.earnings
         if any(k in (e.component_name or e.salary_component or "").lower() for k in ["basic", "da", "dearness"])
@@ -840,16 +1038,52 @@ def get_salary_slip_with_details(name):
     pf_admin_rate = flt(getattr(settings, "pf_admin_rate", None) if getattr(settings, "pf_admin_rate", None) is not None else 0.5) / 100.0
     edli_rate = flt(getattr(settings, "edli_rate", None) if getattr(settings, "edli_rate", None) is not None else 0.5) / 100.0
     esi_rate = flt(getattr(settings, "employer_esi_rate", None) if getattr(settings, "employer_esi_rate", None) is not None else 3.25) / 100.0
+    pf_ceiling = flt(getattr(settings, "pf_wage_ceiling", 15000.0) if getattr(settings, "pf_wage_ceiling", None) is not None else 15000.0)
+    esi_ceiling = flt(getattr(settings, "esi_wage_ceiling", 21000.0) if getattr(settings, "esi_wage_ceiling", None) is not None else 21000.0)
+    pf_basis_raw = getattr(settings, "pf_wage_basis", None)
+    selected_components = []
+    if pf_basis_raw:
+        if isinstance(pf_basis_raw, list):
+            selected_components = [str(x).strip().lower() for x in pf_basis_raw if str(x).strip()]
+        elif isinstance(pf_basis_raw, str):
+            try:
+                parsed = json.loads(pf_basis_raw)
+                if isinstance(parsed, list):
+                    selected_components = [str(x).strip().lower() for x in parsed if str(x).strip()]
+            except Exception:
+                if pf_basis_raw.strip() == "Earned Basic + DA":
+                    selected_components = ["basic pay", "da", "basic", "dearness"]
+                elif "," in pf_basis_raw:
+                    selected_components = [x.strip().lower() for x in pf_basis_raw.split(",") if x.strip()]
+
+    if selected_components and doc.earnings:
+        matching_total = sum(
+            flt(e.amount or 0)
+            for e in doc.earnings
+            if (
+                (getattr(e, "component_name", None) or getattr(e, "salary_component", None) or "").lower().strip() in selected_components
+                or any(
+                    sc in (getattr(e, "component_name", None) or getattr(e, "salary_component", None) or "").lower()
+                    for sc in selected_components
+                )
+            )
+        )
+        pf_base_for_employer = matching_total
+    elif pf_basis_raw == "Earned Basic + DA":
+        pf_base_for_employer = earned_basic_da
+    else:
+        pf_base_for_employer = earned_gross_salary
+
     enable_bonus = cint(getattr(settings, "enable_bonus_provision", 1) if getattr(settings, "enable_bonus_provision", None) is not None else 1)
     bonus_rate = (flt(getattr(settings, "bonus_provision_rate", 8.33) if getattr(settings, "bonus_provision_rate", None) is not None else 8.33) / 100.0) if enable_bonus else 0.0
     enable_el = cint(getattr(settings, "enable_el_provision", 1) if getattr(settings, "enable_el_provision", None) is not None else 1)
     el_days = flt(getattr(settings, "el_provision_days_per_year", 15.6) if getattr(settings, "el_provision_days_per_year", None) is not None else 15.6) if enable_el else 0.0
 
     tea_rate = flt(getattr(settings, "workers_tea_allowance_per_day", 5.0) if getattr(settings, "workers_tea_allowance_per_day", None) is not None else 5.0)
-    employer_pf = round(min(earned_basic_da, 15000.0) * pf_rate, 2)
-    pf_admin_charges = round(earned_basic_da * pf_admin_rate, 2)
-    edli_charges = round(earned_basic_da * edli_rate, 2)
-    employer_esi = round(gross_val * esi_rate, 2) if gross_val <= 21000.0 else 0.0
+    employer_pf = round(min(pf_base_for_employer, pf_ceiling) * pf_rate, 2)
+    pf_admin_charges = round(pf_base_for_employer * pf_admin_rate, 2)
+    edli_charges = round(pf_base_for_employer * edli_rate, 2)
+    employer_esi = round(gross_val * esi_rate, 2) if (earned_gross_salary <= esi_ceiling or gross_val <= esi_ceiling) else 0.0
     tea_expenses = round(present_days_val * tea_rate, 2) if "worker" in emp_type else 0.0
     total_employer_contrib = round(employer_pf + pf_admin_charges + edli_charges + employer_esi + tea_expenses, 2)
 
@@ -858,6 +1092,7 @@ def get_salary_slip_with_details(name):
     total_monthly_ctc = round(gross_val + total_employer_contrib + bonus_provision + el_provision, 2)
 
     res.update({
+        "earned_gross_salary": earned_gross_salary,
         "employer_pf": employer_pf,
         "pf_admin_charges": pf_admin_charges,
         "edli_charges": edli_charges,
@@ -965,6 +1200,11 @@ def get_salary_slip_with_details(name):
 
     days_breakdown = []
     total_absent_days = 0.0
+    paid_leave_days = 0.0
+    comp_off_days = 0.0
+    unpaid_leave_days = 0.0
+    present_days = 0.0
+    physical_attendance_days = 0.0
     for i in range(total_days):
         single_day_date = start_date + timedelta(days=i)
 
@@ -976,6 +1216,9 @@ def get_salary_slip_with_details(name):
         day_hours = 0
         day_ot = 0.0
         day_attendance = None
+        leave_val = 0.0
+        comp_off_val = 0.0
+        is_paid_leave = False
 
         if calc_source == "Daily Log":
             day_hours = sum(
@@ -1003,29 +1246,41 @@ def get_salary_slip_with_details(name):
                 physical_val = 1.0
             elif day_attendance["status"] == "Half Day":
                 physical_val = 0.5
+            elif day_attendance["status"] == "Compensatory Off":
+                comp_off_val = 1.0
 
         holiday_val = 0
-        if is_holiday and physical_val < 1.0:
+        if is_holiday and (physical_val + comp_off_val + leave_val) < 1.0:
             if holiday_handling == "Include in Working Days":
-                holiday_val = 1.0 - physical_val
+                holiday_val = 1.0 - (physical_val + comp_off_val + leave_val)
 
-        leave_val    = 0
-        is_paid_leave = False
         if leave_calc_source != "Via Direct Allocation":
-            if day_leave and (physical_val + holiday_val) < 1.0:
+            if day_leave and (physical_val + comp_off_val + holiday_val + leave_val) < 1.0:
                 leave_unit    = 0.5 if flt(day_leave.half_day) else 1.0
-                leave_val     = min(leave_unit, 1.0 - (physical_val + holiday_val))
+                leave_val     = min(leave_unit, 1.0 - (physical_val + comp_off_val + holiday_val))
                 is_paid_leave = bool(is_paid_map.get(day_leave.leave_type, 1))
+
+        if is_paid_leave:
+            paid_leave_days += leave_val
+            present_days += leave_val
+        elif leave_val > 0:
+            unpaid_leave_days += leave_val
+
+        physical_attendance_days += physical_val
+        comp_off_days += comp_off_val
+        present_days += physical_val + comp_off_val
 
         components = []
         if physical_val > 0:
             components.append(f"Work ({physical_val})")
+        if comp_off_val > 0:
+            components.append(f"Compensatory Off ({comp_off_val})")
         if leave_val > 0:
             components.append(f"{'Paid' if is_paid_leave else 'Unpaid'} Leave ({leave_val})")
         if holiday_val > 0:
             components.append("Holiday" if holiday_val >= 1.0 else f"Holiday ({holiday_val})")
             
-        absent_val = round(max(0.0, 1.0 - (physical_val + leave_val + holiday_val)), 2)
+        absent_val = round(max(0.0, 1.0 - (physical_val + comp_off_val + leave_val + holiday_val)), 2)
         if absent_val > 0:
             if leave_calc_source != "Via Direct Allocation":
                 components.append(f"Unpaid Leave ({absent_val})" if absent_val < 1.0 else "Unpaid Leave")
@@ -1038,13 +1293,32 @@ def get_salary_slip_with_details(name):
         days_breakdown.append({
             "date":   single_day_date.strftime("%Y-%m-%d"),
             "status": day_status,
+            "is_holiday": is_holiday,
+            "holiday_desc": holiday_desc_map.get(single_day_date, "") if "holiday_desc_map" in locals() else "",
             "hours":  round(day_hours, 2),
             "ot_hours": round(day_ot, 2)
         })
 
+    if leave_calc_source == "Via Direct Allocation":
+        direct_credit = min(total_absent_days, direct_paid_remaining)
+        paid_leave_days += direct_credit
+        present_days += direct_credit
+        unpaid_leave_days = direct_unpaid_remaining
+        lop_days = max(0.0, total_absent_days - direct_credit)
+    else:
+        lop_days = unpaid_leave_days
+
     res["days_breakdown"] = days_breakdown
     res["leave_calc_source"] = leave_calc_source
     res["absent_days"] = total_absent_days
+    res["no_of_paid_leave"] = paid_leave_days
+    res["no_of_comp_off"] = comp_off_days
+    res["no_of_leave"] = unpaid_leave_days
+    res["lop_days"] = lop_days
+    res["holiday_count"] = len(holiday_dates)
+    res["holiday_working_days"] = total_days - len(holiday_dates)
+    res["actual_present_days"] = present_days
+    res["physical_attendance_days"] = physical_attendance_days
     return res
 
 
@@ -1102,6 +1376,7 @@ def generate_salary_slips_from_employee(year=None, month=None, employees=None, s
                 "pay_period_end": end_date,
                 "no_of_leave": data["no_of_leave"],
                 "no_of_paid_leave": data["no_of_paid_leave"],
+                "no_of_comp_off": data.get("no_of_comp_off", 0.0),
                 "total_days_in_period": data["total_days_in_period"],
                 "holiday_count": data["holiday_count"],
                 "actual_present_days": data["actual_present_days"],
