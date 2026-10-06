@@ -688,25 +688,10 @@ def preview_salary_slip(employee, start_date, end_date):
             "amount": attendance_bonus
         })
 
-    # 5.3. Workers Tea Allowance Calculation (Days Worked x Rate/Day)
-    tea_allowance = 0.0
-    tea_rate = flt(getattr(settings, "workers_tea_allowance_per_day", 5.0) if getattr(settings, "workers_tea_allowance_per_day", None) is not None else 5.0)
-    if "worker" in emp_type:
-        tea_allowance = round(flt(present_days) * tea_rate, 2)
-        has_tea = any("tea" in (e.get("component_name") or e.get("salary_component") or "").lower() for e in prorated_earnings)
-        if not has_tea and tea_allowance > 0:
-            prorated_earnings.append({
-                "component_name": "Tea Allowance",
-                "salary_component": "Tea Allowance",
-                "type": "Earning",
-                "standard_amount": 0.0,
-                "amount": tea_allowance
-            })
-
-    # 5.4. Calculate Earned Gross Pay (AF6: Earned Gross before dynamic OT/Bonus/Tea) & Grand Gross Pay (AK6)
+    # 5.3. Calculate Earned Gross Pay (AF6: Earned Gross before dynamic OT/Bonus) & Grand Gross Pay (AK6)
     earned_gross_salary = round(sum(
         flt(e["amount"]) for e in prorated_earnings
-        if (e.get("component_name") or e.get("salary_component") or "") not in ["Overtime Pay (OT)", "Overtime Allowance", "Attendance Bonus", "Tea Allowance"]
+        if (e.get("component_name") or e.get("salary_component") or "") not in ["Overtime Pay (OT)", "Overtime Allowance", "Attendance Bonus"]
     ), 2)
     grand_gross_pay = round(sum(flt(e["amount"]) for e in prorated_earnings), 2)
 
@@ -871,7 +856,9 @@ def preview_salary_slip(employee, start_date, end_date):
     else:
         employer_esi = float(round(grand_gross_pay * esi_rate))
 
-    tea_expenses = float(round(flt(present_days) * tea_rate)) if "worker" in emp_type else 0.0
+    enable_tea = cint(getattr(settings, "enable_workers_tea_allowance", 1) if getattr(settings, "enable_workers_tea_allowance", None) is not None else 1)
+    tea_rate = flt(getattr(settings, "workers_tea_allowance_per_day", 5.0) if getattr(settings, "workers_tea_allowance_per_day", None) is not None else 5.0) if enable_tea else 0.0
+    tea_expenses = float(round(flt(present_days) * tea_rate)) if ("worker" in emp_type and enable_tea) else 0.0
     total_employer_contrib = round(employer_pf + pf_admin_charges + edli_charges + employer_esi + tea_expenses, 2)
 
     bonus_provision = float(round(pf_base_for_employer * bonus_rate)) if enable_bonus else 0.0
@@ -913,7 +900,7 @@ def preview_salary_slip(employee, start_date, end_date):
         "ot_hours": round(total_ot_hours, 2),
         "ot_amount": ot_amount,
         "attendance_bonus": attendance_bonus,
-        "tea_allowance": tea_allowance,
+        "tea_allowance": 0.0,
         "pt_amount": pt_amount,
         "earnings": prorated_earnings,
         "deductions": prorated_deductions,
@@ -935,6 +922,8 @@ def preview_salary_slip(employee, start_date, end_date):
         "bonus_provision_rate": round(bonus_rate * 100.0, 2) if enable_bonus else 0.0,
         "enable_el_provision": enable_el,
         "el_provision_days_per_year": el_days if enable_el else 0.0,
+        "enable_workers_tea_allowance": enable_tea,
+        "workers_tea_allowance_per_day": round(tea_rate, 2),
         # Detailed Breakdown Fields
         "total_days_in_period": total_days,
         "holiday_count": len(holiday_dates),
@@ -1160,7 +1149,9 @@ def get_salary_slip_with_details(name):
     else:
         employer_esi = float(round(gross_val * esi_rate))
 
-    tea_expenses = float(round(present_days_val * tea_rate)) if "worker" in emp_type else 0.0
+    enable_tea = cint(getattr(settings, "enable_workers_tea_allowance", 1) if getattr(settings, "enable_workers_tea_allowance", None) is not None else 1)
+    tea_rate = flt(getattr(settings, "workers_tea_allowance_per_day", 5.0) if getattr(settings, "workers_tea_allowance_per_day", None) is not None else 5.0) if enable_tea else 0.0
+    tea_expenses = float(round(present_days_val * tea_rate)) if ("worker" in emp_type and enable_tea) else 0.0
     total_employer_contrib = round(employer_pf + pf_admin_charges + edli_charges + employer_esi + tea_expenses, 2)
 
     bonus_provision = float(round(pf_base_for_employer * bonus_rate)) if enable_bonus else 0.0
@@ -1186,6 +1177,8 @@ def get_salary_slip_with_details(name):
         "bonus_provision_rate": round(bonus_rate * 100.0, 2) if enable_bonus else 0.0,
         "enable_el_provision": enable_el,
         "el_provision_days_per_year": el_days if enable_el else 0.0,
+        "enable_workers_tea_allowance": enable_tea,
+        "workers_tea_allowance_per_day": round(tea_rate, 2),
     })
 
     # ── Days Breakdown (mirrors preview_salary_slip) ──────────────────────────
