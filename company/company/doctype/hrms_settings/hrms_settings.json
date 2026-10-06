@@ -26,7 +26,6 @@
   "workers_ot_rate_multiplier",
   "north_indian_ot_rate",
   "workers_attendance_bonus",
-  "workers_tea_allowance_per_day",
   "enable_auto_pf",
   "employee_pf_rate",
   "pf_wage_ceiling",
@@ -43,6 +42,8 @@
   "bonus_provision_rate",
   "enable_el_provision",
   "el_provision_days_per_year",
+  "enable_workers_tea_allowance",
+  "workers_tea_allowance_per_day",
   "notification_tab",
   "leave_notification",
   "salary_slip_notification",
@@ -188,19 +189,13 @@
    "default": "100",
    "fieldname": "north_indian_ot_rate",
    "fieldtype": "Currency",
-   "label": "North Indian OT Rate (\u20b9/Hour)"
+   "label": "North Indian OT Rate (₹/Hour)"
   },
   {
    "default": "1500",
    "fieldname": "workers_attendance_bonus",
    "fieldtype": "Currency",
    "label": "Workers Attendance Bonus (Full Present)"
-  },
-  {
-   "default": "5",
-   "fieldname": "workers_tea_allowance_per_day",
-   "fieldtype": "Currency",
-   "label": "Workers Tea Allowance (\u20b9/Day Worked)"
   },
   {
    "default": "1",
@@ -220,14 +215,14 @@
    "depends_on": "eval:doc.enable_auto_pf == 1",
    "fieldname": "pf_wage_ceiling",
    "fieldtype": "Currency",
-   "label": "PF Statutory Wage Ceiling (\u20b9)"
+   "label": "PF Statutory Wage Ceiling (₹)"
   },
   {
    "default": "1800",
    "depends_on": "eval:doc.enable_auto_pf == 1",
    "fieldname": "employee_pf_max_amount",
    "fieldtype": "Currency",
-   "label": "Max Employee PF Deduction (\u20b9)"
+   "label": "Max Employee PF Deduction (₹)"
   },
   {
    "default": "[\"Basic Pay\", \"DA\", \"Other Allowance\"]",
@@ -254,7 +249,7 @@
    "depends_on": "eval:doc.enable_auto_esi == 1",
    "fieldname": "esi_wage_ceiling",
    "fieldtype": "Currency",
-   "label": "ESI Statutory Wage Ceiling (\u20b9)"
+   "label": "ESI Statutory Wage Ceiling (₹)"
   },
   {
    "default": "Round Up to Next Rupee (ROUNDUP / CEIL)",
@@ -274,13 +269,13 @@
    "default": "15000",
    "fieldname": "employer_pf_wage_ceiling",
    "fieldtype": "Currency",
-   "label": "Employer PF Wage Ceiling (\u20b9)"
+   "label": "Employer PF Wage Ceiling (₹)"
   },
   {
    "default": "1800",
    "fieldname": "employer_pf_max_amount",
    "fieldtype": "Currency",
-   "label": "Max Employer PF Contribution (\u20b9)"
+   "label": "Max Employer PF Contribution (₹)"
   },
   {
    "default": "0.5",
@@ -325,6 +320,19 @@
    "fieldname": "el_provision_days_per_year",
    "fieldtype": "Float",
    "label": "EL Provision Days / Year"
+  },
+  {
+   "default": "1",
+   "fieldname": "enable_workers_tea_allowance",
+   "fieldtype": "Check",
+   "label": "Enable Workers Tea Expenses"
+  },
+  {
+   "default": "5",
+   "fieldname": "workers_tea_allowance_per_day",
+   "fieldtype": "Currency",
+   "label": "Workers Tea Allowance (₹/Day Worked)",
+   "depends_on": "eval:doc.enable_workers_tea_allowance == 1"
   },
   {
    "fieldname": "notification_tab",
