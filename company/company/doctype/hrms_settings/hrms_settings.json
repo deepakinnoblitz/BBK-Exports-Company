@@ -27,6 +27,14 @@
   "north_indian_ot_rate",
   "workers_attendance_bonus",
   "workers_tea_allowance_per_day",
+  "enable_auto_pf",
+  "employee_pf_rate",
+  "pf_wage_ceiling",
+  "pf_wage_basis",
+  "enable_auto_esi",
+  "employee_esi_rate",
+  "esi_wage_ceiling",
+  "esi_rounding_method",
   "employer_pf_rate",
   "pf_admin_rate",
   "edli_rate",
@@ -194,10 +202,84 @@
    "label": "Workers Tea Allowance (\u20b9/Day Worked)"
   },
   {
+   "default": "1",
+   "fieldname": "enable_auto_pf",
+   "fieldtype": "Check",
+   "label": "Enable Auto Employee PF Calculation"
+  },
+  {
+   "default": "12",
+   "depends_on": "eval:doc.enable_auto_pf == 1",
+   "fieldname": "employee_pf_rate",
+   "fieldtype": "Float",
+   "label": "Employee PF Contribution Rate (%)"
+  },
+  {
+   "default": "15000",
+   "depends_on": "eval:doc.enable_auto_pf == 1",
+   "fieldname": "pf_wage_ceiling",
+   "fieldtype": "Currency",
+   "label": "PF Statutory Wage Ceiling (\u20b9)"
+  },
+  {
+   "default": "1800",
+   "depends_on": "eval:doc.enable_auto_pf == 1",
+   "fieldname": "employee_pf_max_amount",
+   "fieldtype": "Currency",
+   "label": "Max Employee PF Deduction (\u20b9)"
+  },
+  {
+   "default": "[\"Basic Pay\", \"DA\", \"Other Allowance\"]",
+   "depends_on": "eval:doc.enable_auto_pf == 1",
+   "fieldname": "pf_wage_basis",
+   "fieldtype": "Small Text",
+   "label": "PF Wage Basis Components"
+  },
+  {
+   "default": "1",
+   "fieldname": "enable_auto_esi",
+   "fieldtype": "Check",
+   "label": "Enable Auto Employee ESI Calculation"
+  },
+  {
+   "default": "0.75",
+   "depends_on": "eval:doc.enable_auto_esi == 1",
+   "fieldname": "employee_esi_rate",
+   "fieldtype": "Float",
+   "label": "Employee ESI Contribution Rate (%)"
+  },
+  {
+   "default": "21000",
+   "depends_on": "eval:doc.enable_auto_esi == 1",
+   "fieldname": "esi_wage_ceiling",
+   "fieldtype": "Currency",
+   "label": "ESI Statutory Wage Ceiling (\u20b9)"
+  },
+  {
+   "default": "Round Up to Next Rupee (ROUNDUP / CEIL)",
+   "depends_on": "eval:doc.enable_auto_esi == 1",
+   "fieldname": "esi_rounding_method",
+   "fieldtype": "Select",
+   "label": "ESI Rounding Method",
+   "options": "Round Up to Next Rupee (ROUNDUP / CEIL)\nStandard Nearest Rupee (ROUND)"
+  },
+  {
    "default": "12",
    "fieldname": "employer_pf_rate",
    "fieldtype": "Float",
    "label": "Employer PF Contribution Rate (%)"
+  },
+  {
+   "default": "15000",
+   "fieldname": "employer_pf_wage_ceiling",
+   "fieldtype": "Currency",
+   "label": "Employer PF Wage Ceiling (\u20b9)"
+  },
+  {
+   "default": "1800",
+   "fieldname": "employer_pf_max_amount",
+   "fieldtype": "Currency",
+   "label": "Max Employer PF Contribution (\u20b9)"
   },
   {
    "default": "0.5",
