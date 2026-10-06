@@ -25,6 +25,8 @@ def bootstrap_salary_components():
         {"component_name": "Conveyance Allowances", "type": "Earning", "percentage": 10},
         {"component_name": "Medical Allowances", "type": "Earning", "percentage": 10},
         {"component_name": "Other Allowances", "type": "Earning", "percentage": 10},
+        {"component_name": "Tea Allowance", "type": "Earning", "static_amount": 0},
+        {"component_name": "Attendance Bonus", "type": "Earning", "static_amount": 0},
         {"component_name": "PF", "type": "Deduction", "static_amount": 1800},
         {"component_name": "ESI/Health Insurance", "type": "Deduction", "percentage": 0.75},
         {"component_name": "Professional Tax", "type": "Deduction", "static_amount": 200},

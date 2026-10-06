@@ -1,12 +1,18 @@
 import frappe
 from frappe.model.document import Document
-
-from frappe.utils import getdate
+from frappe.utils import getdate, flt
 
 class Employee(Document):
 	def validate(self):
 		self.validate_duplicate_components()
 		self.validate_status_and_dol()
+		self.calculate_totals()
+
+	def calculate_totals(self):
+		from frappe.utils import flt
+		self.total_earnings = round(sum(flt(e.amount) for e in self.get("earnings", [])), 2)
+		self.total_deductions = round(sum(flt(d.amount) for d in self.get("deductions", [])), 2)
+		self.net_salary = round(self.total_earnings - self.total_deductions, 2)
 
 	def validate_status_and_dol(self):
 		if self.status == "Active":

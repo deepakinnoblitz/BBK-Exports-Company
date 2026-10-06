@@ -158,14 +158,7 @@ def calculate_professional_tax(gross_salary, pay_period_start, settings, employe
     if frequency == "Every Month Deduction":
         return get_slab_tax(gross)
 
-    # 2. Half-Yearly Deduction
-    cycle_months_str = getattr(settings, "pt_half_yearly_months", "April, September") or "April, September"
-    month_name = formatdate(pay_period_start, "MMMM")
-    cycle_months = [m.strip().lower() for m in cycle_months_str.replace("&", ",").split(",") if m.strip()]
-
-    if month_name.lower() not in cycle_months:
-        return 0.0
-
+    # 2. Cumulative Progressive Half-Yearly Deduction
     # Determine 6-Month Cycle Date Range
     cur_year = pay_period_start.year
     cur_month = pay_period_start.month
@@ -180,57 +173,83 @@ def calculate_professional_tax(gross_salary, pay_period_start, settings, employe
         cycle_start = getdate(f"{cur_year - 1}-10-01")
         cycle_end = getdate(f"{cur_year}-03-31")
 
-    # Fetch prior salary slips in this cycle for this employee
+    # Check Employee Date of Joining (DOJ) & Date of Leaving (DOL)
+    doj = None
+    dol = None
+    std_monthly_earnings = 0.0
+
+    emp_id = employee or (emp_doc.get("name") if hasattr(emp_doc, "get") else getattr(emp_doc, "name", None))
+
+    if emp_doc:
+        doj = getdate(emp_doc.get("date_of_joining")) if emp_doc.get("date_of_joining") else None
+        dol = getdate(emp_doc.get("relieving_date") or emp_doc.get("date_of_leaving")) if (emp_doc.get("relieving_date") or emp_doc.get("date_of_leaving")) else None
+        std_monthly_earnings = flt(emp_doc.get("total_earnings") or 0.0)
+    elif emp_id:
+        emp_data = frappe.db.get_value("Employee", emp_id, ["date_of_joining", "relieving_date", "date_of_leaving", "total_earnings"], as_dict=True)
+        if emp_data:
+            doj = getdate(emp_data.get("date_of_joining")) if emp_data.get("date_of_joining") else None
+            dol = getdate(emp_data.get("relieving_date") or emp_data.get("date_of_leaving")) if (emp_data.get("relieving_date") or emp_data.get("date_of_leaving")) else None
+            std_monthly_earnings = flt(emp_data.get("total_earnings") or 0.0)
+
+    # If employee has not joined yet or already left prior to this pay period
+    if doj and doj > get_last_day(pay_period_start):
+        return 0.0
+    if dol and dol < pay_period_start:
+        return 0.0
+
+    effective_cycle_start = cycle_start
+    if doj and doj > cycle_start:
+        effective_cycle_start = getdate(f"{doj.year}-{doj.month:02d}-01")
+
+    # Fetch prior salary slips in this cycle for this employee strictly before this pay period
     past_gross = 0.0
     past_pt = 0.0
-    past_months_count = 0
+    recorded_past_months = set()
 
-    if employee:
+    if emp_id:
         past_slips = frappe.get_all(
             "Salary Slip",
             filters={
-                "employee": employee,
+                "employee": emp_id,
                 "docstatus": ["<", 2],
-                "pay_period_start": [">=", cycle_start],
-                "pay_period_end": ["<=", cycle_end],
+                "pay_period_start": [">=", effective_cycle_start],
+                "pay_period_end": ["<", pay_period_start],
             },
-            fields=["name", "gross_pay", "pt_amount", "pay_period_start"]
+            fields=["name", "gross_pay", "grand_gross_pay", "pt_amount", "pay_period_start"]
         )
 
         for ps in past_slips:
             if current_slip_name and ps.name == current_slip_name:
                 continue
-            if getdate(ps.pay_period_start) == pay_period_start:
+            ps_start = getdate(ps.pay_period_start)
+            if ps_start >= pay_period_start:
                 continue
-            past_gross += flt(ps.gross_pay)
+            past_gross += flt(ps.grand_gross_pay or ps.gross_pay)
             past_pt += flt(ps.pt_amount)
-            past_months_count += 1
+            recorded_past_months.add((ps_start.year, ps_start.month))
 
-    # Determine active months in cycle based on Date of Joining
-    doj = None
-    if emp_doc:
-        doj = getdate(emp_doc.get("date_of_joining")) if emp_doc.get("date_of_joining") else None
-    elif employee:
-        doj_raw = frappe.db.get_value("Employee", employee, "date_of_joining")
-        doj = getdate(doj_raw) if doj_raw else None
+        # Check for un-generated past active months within this cycle
+        iter_dt = effective_cycle_start
+        while (iter_dt.year, iter_dt.month) < (pay_period_start.year, pay_period_start.month):
+            m_key = (iter_dt.year, iter_dt.month)
+            if m_key not in recorded_past_months:
+                # Use standard monthly earnings as estimate for missing past month
+                past_gross += std_monthly_earnings
+            # Advance to next month
+            if iter_dt.month == 12:
+                iter_dt = iter_dt.replace(year=iter_dt.year + 1, month=1, day=1)
+            else:
+                iter_dt = iter_dt.replace(month=iter_dt.month + 1, day=1)
 
-    total_cycle_months = 6
-    if doj and doj > cycle_start:
-        m_diff = (pay_period_start.year - doj.year) * 12 + (pay_period_start.month - doj.month) + 1
-        total_cycle_months = max(1, min(6, m_diff))
+    # Cumulative gross in this cycle including current month
+    cumulative_gross = round(past_gross + gross, 2)
 
-    # Project any missing past months in this cycle using current gross
-    missing_past_months = max(0, total_cycle_months - 1 - past_months_count)
-    projected_missing_gross = gross * missing_past_months
+    # Target cumulative PT up to this month according to slab tiers
+    target_cumulative_pt = get_slab_tax(cumulative_gross)
 
-    cumulative_gross = past_gross + gross + projected_missing_gross
-
-    # Calculate PT slab for cumulative half-yearly gross
-    slab_tax = get_slab_tax(cumulative_gross)
-
-    # Net PT payable in this cycle month
-    final_pt = max(0.0, slab_tax - past_pt)
-    return final_pt
+    # Net PT payable in this month after subtracting past PT already deducted
+    current_month_pt = max(0.0, round(target_cumulative_pt - past_pt, 2))
+    return current_month_pt
 
 
 @frappe.whitelist()
@@ -550,10 +569,11 @@ def preview_salary_slip(employee, start_date, end_date):
             "amount": attendance_bonus
         })
 
-    # 5.3. Workers Tea Allowance Calculation (Days Worked x Rs. 5)
+    # 5.3. Workers Tea Allowance Calculation (Days Worked x Rate/Day)
     tea_allowance = 0.0
+    tea_rate = flt(getattr(settings, "workers_tea_allowance_per_day", 5.0) if getattr(settings, "workers_tea_allowance_per_day", None) is not None else 5.0)
     if "worker" in emp_type:
-        tea_allowance = round(flt(present_days) * 5.0, 2)
+        tea_allowance = round(flt(present_days) * tea_rate, 2)
         has_tea = any("tea" in (e.get("component_name") or e.get("salary_component") or "").lower() for e in prorated_earnings)
         if not has_tea and tea_allowance > 0:
             prorated_earnings.append({
@@ -564,8 +584,11 @@ def preview_salary_slip(employee, start_date, end_date):
                 "amount": tea_allowance
             })
 
-    # 5.4. Deductions & Professional Tax
-    pt_amount = calculate_professional_tax(gross_pay, start_date, settings, employee=emp.name, emp_doc=emp)
+    # 5.4. Calculate Earned Gross Pay
+    grand_gross_pay = round(sum(flt(e["amount"]) for e in prorated_earnings), 2)
+
+    # 5.5. Deductions & Professional Tax
+    pt_amount = calculate_professional_tax(grand_gross_pay, start_date, settings, employee=emp.name, emp_doc=emp)
 
     prorated_deductions = []
     base_deductions_total = 0.0
@@ -595,7 +618,6 @@ def preview_salary_slip(employee, start_date, end_date):
     # LOP amount for informational and display breakdown purposes
     lop_amount = round(gross_pay * (lop_days / month_working_days), 2) if month_working_days else 0.0
     
-    grand_gross_pay = round(sum(flt(e["amount"]) for e in prorated_earnings), 2)
     total_deductions = round(sum(flt(d["amount"]) for d in prorated_deductions), 2)
     grand_net_pay = round(grand_gross_pay - total_deductions, 2)
 
@@ -620,7 +642,7 @@ def preview_salary_slip(employee, start_date, end_date):
     pf_admin_charges = round(earned_basic_da * pf_admin_rate, 2)
     edli_charges = round(earned_basic_da * edli_rate, 2)
     employer_esi = round(grand_gross_pay * esi_rate, 2) if grand_gross_pay <= 21000.0 else 0.0
-    tea_expenses = round(flt(present_days) * 5.0, 2) if "worker" in emp_type else 0.0
+    tea_expenses = round(flt(present_days) * tea_rate, 2) if "worker" in emp_type else 0.0
     total_employer_contrib = round(employer_pf + pf_admin_charges + edli_charges + employer_esi + tea_expenses, 2)
 
     bonus_provision = round(earned_basic_da * bonus_rate, 2) if enable_bonus else 0.0
@@ -643,9 +665,9 @@ def preview_salary_slip(employee, start_date, end_date):
         "pay_period_end": end_date,
         "no_of_leave": unpaid_leave_days,
         "no_of_paid_leave": paid_leave_days,
-        "base_gross_pay": base_gross_total or gross_pay,
-        "base_total_deduction": base_deductions_total or base_deductions,
-        "base_net_pay": (base_gross_total or gross_pay) - (base_deductions_total or base_deductions),
+        "base_gross_pay": base_gross_total if base_gross_total > 0 else gross_pay,
+        "base_total_deduction": base_deductions_total,
+        "base_net_pay": (base_gross_total if base_gross_total > 0 else gross_pay) - base_deductions_total,
         "gross_pay": grand_gross_pay,
         "grand_gross_pay": grand_gross_pay,
         "net_pay": grand_net_pay,
@@ -772,8 +794,8 @@ def get_salary_slip_with_details(name):
             emp = frappe.get_doc("Employee", doc.employee)
             emp_earnings_map = { (e.component_name or e.salary_component or ""): flt(e.amount) for e in emp.earnings }
             emp_deductions_map = { (d.component_name or d.salary_component or ""): flt(d.amount) for d in emp.deductions }
-            base_gross_total = flt(emp.total_earnings)
-            base_deductions_total = flt(emp.total_deductions)
+            base_gross_total = round(sum(flt(e.amount) for e in emp.earnings), 2)
+            base_deductions_total = round(sum(flt(d.amount) for d in emp.deductions), 2)
         except Exception:
             pass
 
@@ -823,11 +845,12 @@ def get_salary_slip_with_details(name):
     enable_el = cint(getattr(settings, "enable_el_provision", 1) if getattr(settings, "enable_el_provision", None) is not None else 1)
     el_days = flt(getattr(settings, "el_provision_days_per_year", 15.6) if getattr(settings, "el_provision_days_per_year", None) is not None else 15.6) if enable_el else 0.0
 
+    tea_rate = flt(getattr(settings, "workers_tea_allowance_per_day", 5.0) if getattr(settings, "workers_tea_allowance_per_day", None) is not None else 5.0)
     employer_pf = round(min(earned_basic_da, 15000.0) * pf_rate, 2)
     pf_admin_charges = round(earned_basic_da * pf_admin_rate, 2)
     edli_charges = round(earned_basic_da * edli_rate, 2)
     employer_esi = round(gross_val * esi_rate, 2) if gross_val <= 21000.0 else 0.0
-    tea_expenses = round(present_days_val * 5.0, 2) if "worker" in emp_type else 0.0
+    tea_expenses = round(present_days_val * tea_rate, 2) if "worker" in emp_type else 0.0
     total_employer_contrib = round(employer_pf + pf_admin_charges + edli_charges + employer_esi + tea_expenses, 2)
 
     bonus_provision = round(earned_basic_da * bonus_rate, 2) if enable_bonus else 0.0
@@ -1130,6 +1153,45 @@ def submit_salary_slip(name):
         frappe.throw(_("Draft salary slip not found with ID: {0}").format(name))
     doc.submit()
     return doc.as_dict()
+
+
+@frappe.whitelist()
+def cancel_salary_slip(name):
+    doc = frappe.get_doc("Salary Slip", name)
+    if doc.docstatus != 1:
+        frappe.throw(_("Only submitted salary slips can be cancelled. Current status of {0} is {1}").format(name, doc.docstatus))
+    doc.cancel()
+    return doc.as_dict()
+
+
+@frappe.whitelist()
+def save_salary_slip(doc):
+    if isinstance(doc, str):
+        import json
+        doc = json.loads(doc)
+    doc_name = doc.get("name")
+    if doc_name and frappe.db.exists("Salary Slip", doc_name):
+        current_docstatus = frappe.db.get_value("Salary Slip", doc_name, "docstatus")
+        if current_docstatus == 2:
+            frappe.db.set_value("Salary Slip", doc_name, "docstatus", 0)
+            frappe.db.commit()
+            doc["docstatus"] = 0
+
+    salary_slip_doc = frappe.get_doc(doc)
+    if salary_slip_doc.docstatus == 2:
+        salary_slip_doc.docstatus = 0
+    salary_slip_doc.flags.ignore_validate_update_after_submit = True
+    salary_slip_doc.save()
+    return salary_slip_doc.as_dict()
+
+
+@frappe.whitelist()
+def delete_salary_slip(name):
+    doc = frappe.get_doc("Salary Slip", name)
+    if doc.docstatus == 1:
+        frappe.throw(_("Cannot delete a submitted salary slip. Please cancel it first."))
+    frappe.delete_doc("Salary Slip", name, force=1)
+    return {"status": "success", "name": name}
 
 
 @frappe.whitelist()
