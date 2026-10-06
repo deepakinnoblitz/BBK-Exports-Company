@@ -45,6 +45,7 @@
   "el_provision_days_per_year",
   "notification_tab",
   "leave_notification",
+  "salary_slip_notification",
   "wfh_notification",
   "request_notification",
   "reimbursement_notification",
@@ -335,6 +336,12 @@
    "fieldname": "leave_notification",
    "fieldtype": "Check",
    "label": "Leave Application Mail"
+  },
+  {
+   "default": "1",
+   "fieldname": "salary_slip_notification",
+   "fieldtype": "Check",
+   "label": "Salary Slip Mail"
   },
   {
    "default": "1",
