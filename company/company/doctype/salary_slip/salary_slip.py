@@ -1023,6 +1023,7 @@ def get_salary_slip_with_details(name):
     base_gross_total = 0.0
     base_deductions_total = 0.0
 
+    emp = None
     if doc.employee:
         try:
             emp = frappe.get_doc("Employee", doc.employee)
@@ -1123,7 +1124,7 @@ def get_salary_slip_with_details(name):
 
     tea_rate = flt(getattr(settings, "workers_tea_allowance_per_day", 5.0) if getattr(settings, "workers_tea_allowance_per_day", None) is not None else 5.0)
     enable_pf = cint(getattr(settings, "enable_auto_pf", 1) if getattr(settings, "enable_auto_pf", None) is not None else 1)
-    pf_no = getattr(doc, "pf_number", None) or (emp_doc.get("pf_number") if emp_doc else None)
+    pf_no = getattr(doc, "pf_number", None) or (emp.get("pf_number") if emp else None)
     has_pf_component = False
     if hasattr(doc, "deductions") and doc.deductions:
         for d in doc.deductions:
@@ -1145,7 +1146,7 @@ def get_salary_slip_with_details(name):
         edli_charges = float(round(pf_base_for_employer * edli_rate))
 
     enable_esi = cint(getattr(settings, "enable_auto_esi", 1) if getattr(settings, "enable_auto_esi", None) is not None else 1)
-    esi_no = getattr(doc, "esi_no", None) or (emp_doc.get("esi_no") if emp_doc else None)
+    esi_no = getattr(doc, "esi_no", None) or (emp.get("esi_no") if emp else None)
     has_esi_component = False
     if hasattr(doc, "deductions") and doc.deductions:
         for d in doc.deductions:
