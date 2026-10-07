@@ -44,6 +44,52 @@
   "el_provision_days_per_year",
   "enable_workers_tea_allowance",
   "workers_tea_allowance_per_day",
+  "workers_enable_pt",
+  "workers_pt_deduction_frequency",
+  "workers_pt_half_yearly_months",
+  "workers_pt_slabs",
+  "workers_enable_auto_pf",
+  "workers_employee_pf_rate",
+  "workers_pf_wage_ceiling",
+  "workers_employee_pf_max_amount",
+  "workers_pf_wage_basis",
+  "workers_enable_auto_esi",
+  "workers_employee_esi_rate",
+  "workers_esi_wage_ceiling",
+  "workers_esi_rounding_method",
+  "workers_employer_pf_rate",
+  "workers_employer_pf_wage_ceiling",
+  "workers_employer_pf_max_amount",
+  "workers_pf_admin_rate",
+  "workers_edli_rate",
+  "workers_employer_esi_rate",
+  "workers_enable_bonus_provision",
+  "workers_bonus_provision_rate",
+  "workers_enable_el_provision",
+  "workers_el_provision_days_per_year",
+  "north_indian_enable_pt",
+  "north_indian_pt_deduction_frequency",
+  "north_indian_pt_half_yearly_months",
+  "north_indian_pt_slabs",
+  "north_indian_enable_auto_pf",
+  "north_indian_employee_pf_rate",
+  "north_indian_pf_wage_ceiling",
+  "north_indian_employee_pf_max_amount",
+  "north_indian_pf_wage_basis",
+  "north_indian_enable_auto_esi",
+  "north_indian_employee_esi_rate",
+  "north_indian_esi_wage_ceiling",
+  "north_indian_esi_rounding_method",
+  "north_indian_employer_pf_rate",
+  "north_indian_employer_pf_wage_ceiling",
+  "north_indian_employer_pf_max_amount",
+  "north_indian_pf_admin_rate",
+  "north_indian_edli_rate",
+  "north_indian_employer_esi_rate",
+  "north_indian_enable_bonus_provision",
+  "north_indian_bonus_provision_rate",
+  "north_indian_enable_el_provision",
+  "north_indian_el_provision_days_per_year",
   "notification_tab",
   "leave_notification",
   "salary_slip_notification",
@@ -448,6 +494,282 @@
    "fieldname": "show_daily_log_report",
    "fieldtype": "Check",
    "label": "Show Daily Log Report"
+  },
+  {
+   "fieldname": "workers_enable_pt",
+   "fieldtype": "Check",
+   "label": "Enable Workers PT",
+   "default": "1"
+  },
+  {
+   "fieldname": "workers_pt_deduction_frequency",
+   "fieldtype": "Select",
+   "label": "Workers PT Frequency",
+   "options": "Half-Yearly (Sep & Feb)\nMonthly",
+   "default": "Half-Yearly (Sep & Feb)"
+  },
+  {
+   "fieldname": "workers_pt_half_yearly_months",
+   "fieldtype": "Data",
+   "label": "Workers PT Deduction Months",
+   "default": "[\"09\", \"02\"]"
+  },
+  {
+   "fieldname": "workers_pt_slabs",
+   "fieldtype": "Long Text",
+   "label": "Workers PT Slabs"
+  },
+  {
+   "fieldname": "workers_enable_auto_pf",
+   "fieldtype": "Check",
+   "label": "Enable Workers PF",
+   "default": "1"
+  },
+  {
+   "fieldname": "workers_employee_pf_rate",
+   "fieldtype": "Float",
+   "label": "Workers Employee PF Rate (%)",
+   "default": "12"
+  },
+  {
+   "fieldname": "workers_pf_wage_ceiling",
+   "fieldtype": "Currency",
+   "label": "Workers PF Ceiling (₹)",
+   "default": "15000"
+  },
+  {
+   "fieldname": "workers_employee_pf_max_amount",
+   "fieldtype": "Currency",
+   "label": "Workers Max Employee PF (₹)",
+   "default": "1800"
+  },
+  {
+   "fieldname": "workers_pf_wage_basis",
+   "fieldtype": "Small Text",
+   "label": "Workers PF Wage Basis"
+  },
+  {
+   "fieldname": "workers_enable_auto_esi",
+   "fieldtype": "Check",
+   "label": "Enable Workers ESI",
+   "default": "1"
+  },
+  {
+   "fieldname": "workers_employee_esi_rate",
+   "fieldtype": "Float",
+   "label": "Workers Employee ESI Rate (%)",
+   "default": "0.75"
+  },
+  {
+   "fieldname": "workers_esi_wage_ceiling",
+   "fieldtype": "Currency",
+   "label": "Workers ESI Ceiling (₹)",
+   "default": "21000"
+  },
+  {
+   "fieldname": "workers_esi_rounding_method",
+   "fieldtype": "Select",
+   "label": "Workers ESI Rounding",
+   "options": "Round Up to Next Rupee (ROUNDUP / CEIL)\nStandard Math Round (ROUND)",
+   "default": "Round Up to Next Rupee (ROUNDUP / CEIL)"
+  },
+  {
+   "fieldname": "workers_employer_pf_rate",
+   "fieldtype": "Float",
+   "label": "Workers Employer PF Rate (%)",
+   "default": "12"
+  },
+  {
+   "fieldname": "workers_employer_pf_wage_ceiling",
+   "fieldtype": "Currency",
+   "label": "Workers Employer PF Ceiling (₹)",
+   "default": "15000"
+  },
+  {
+   "fieldname": "workers_employer_pf_max_amount",
+   "fieldtype": "Currency",
+   "label": "Workers Max Employer PF (₹)",
+   "default": "1800"
+  },
+  {
+   "fieldname": "workers_pf_admin_rate",
+   "fieldtype": "Float",
+   "label": "Workers PF Admin Rate (%)",
+   "default": "0.5"
+  },
+  {
+   "fieldname": "workers_edli_rate",
+   "fieldtype": "Float",
+   "label": "Workers EDLI Rate (%)",
+   "default": "0.5"
+  },
+  {
+   "fieldname": "workers_employer_esi_rate",
+   "fieldtype": "Float",
+   "label": "Workers Employer ESI Rate (%)",
+   "default": "3.25"
+  },
+  {
+   "fieldname": "workers_enable_bonus_provision",
+   "fieldtype": "Check",
+   "label": "Enable Workers Bonus Provision",
+   "default": "1"
+  },
+  {
+   "fieldname": "workers_bonus_provision_rate",
+   "fieldtype": "Float",
+   "label": "Workers Bonus Provision Rate (%)",
+   "default": "8.33"
+  },
+  {
+   "fieldname": "workers_enable_el_provision",
+   "fieldtype": "Check",
+   "label": "Enable Workers EL Provision",
+   "default": "1"
+  },
+  {
+   "fieldname": "workers_el_provision_days_per_year",
+   "fieldtype": "Float",
+   "label": "Workers EL Provision Days / Year",
+   "default": "15.6"
+  },
+  {
+   "fieldname": "north_indian_enable_pt",
+   "fieldtype": "Check",
+   "label": "Enable North Indian PT",
+   "default": "1"
+  },
+  {
+   "fieldname": "north_indian_pt_deduction_frequency",
+   "fieldtype": "Select",
+   "label": "North Indian PT Frequency",
+   "options": "Half-Yearly (Sep & Feb)\nMonthly",
+   "default": "Half-Yearly (Sep & Feb)"
+  },
+  {
+   "fieldname": "north_indian_pt_half_yearly_months",
+   "fieldtype": "Data",
+   "label": "North Indian PT Deduction Months",
+   "default": "[\"09\", \"02\"]"
+  },
+  {
+   "fieldname": "north_indian_pt_slabs",
+   "fieldtype": "Long Text",
+   "label": "North Indian PT Slabs"
+  },
+  {
+   "fieldname": "north_indian_enable_auto_pf",
+   "fieldtype": "Check",
+   "label": "Enable North Indian PF",
+   "default": "1"
+  },
+  {
+   "fieldname": "north_indian_employee_pf_rate",
+   "fieldtype": "Float",
+   "label": "North Indian Employee PF Rate (%)",
+   "default": "12"
+  },
+  {
+   "fieldname": "north_indian_pf_wage_ceiling",
+   "fieldtype": "Currency",
+   "label": "North Indian PF Ceiling (₹)",
+   "default": "15000"
+  },
+  {
+   "fieldname": "north_indian_employee_pf_max_amount",
+   "fieldtype": "Currency",
+   "label": "North Indian Max Employee PF (₹)",
+   "default": "1800"
+  },
+  {
+   "fieldname": "north_indian_pf_wage_basis",
+   "fieldtype": "Small Text",
+   "label": "North Indian PF Wage Basis"
+  },
+  {
+   "fieldname": "north_indian_enable_auto_esi",
+   "fieldtype": "Check",
+   "label": "Enable North Indian ESI",
+   "default": "1"
+  },
+  {
+   "fieldname": "north_indian_employee_esi_rate",
+   "fieldtype": "Float",
+   "label": "North Indian Employee ESI Rate (%)",
+   "default": "0.75"
+  },
+  {
+   "fieldname": "north_indian_esi_wage_ceiling",
+   "fieldtype": "Currency",
+   "label": "North Indian ESI Ceiling (₹)",
+   "default": "21000"
+  },
+  {
+   "fieldname": "north_indian_esi_rounding_method",
+   "fieldtype": "Select",
+   "label": "North Indian ESI Rounding",
+   "options": "Round Up to Next Rupee (ROUNDUP / CEIL)\nStandard Math Round (ROUND)",
+   "default": "Round Up to Next Rupee (ROUNDUP / CEIL)"
+  },
+  {
+   "fieldname": "north_indian_employer_pf_rate",
+   "fieldtype": "Float",
+   "label": "North Indian Employer PF Rate (%)",
+   "default": "12"
+  },
+  {
+   "fieldname": "north_indian_employer_pf_wage_ceiling",
+   "fieldtype": "Currency",
+   "label": "North Indian Employer PF Ceiling (₹)",
+   "default": "15000"
+  },
+  {
+   "fieldname": "north_indian_employer_pf_max_amount",
+   "fieldtype": "Currency",
+   "label": "North Indian Max Employer PF (₹)",
+   "default": "1800"
+  },
+  {
+   "fieldname": "north_indian_pf_admin_rate",
+   "fieldtype": "Float",
+   "label": "North Indian PF Admin Rate (%)",
+   "default": "0.5"
+  },
+  {
+   "fieldname": "north_indian_edli_rate",
+   "fieldtype": "Float",
+   "label": "North Indian EDLI Rate (%)",
+   "default": "0.5"
+  },
+  {
+   "fieldname": "north_indian_employer_esi_rate",
+   "fieldtype": "Float",
+   "label": "North Indian Employer ESI Rate (%)",
+   "default": "3.25"
+  },
+  {
+   "fieldname": "north_indian_enable_bonus_provision",
+   "fieldtype": "Check",
+   "label": "Enable North Indian Bonus Provision",
+   "default": "1"
+  },
+  {
+   "fieldname": "north_indian_bonus_provision_rate",
+   "fieldtype": "Float",
+   "label": "North Indian Bonus Provision Rate (%)",
+   "default": "8.33"
+  },
+  {
+   "fieldname": "north_indian_enable_el_provision",
+   "fieldtype": "Check",
+   "label": "Enable North Indian EL Provision",
+   "default": "1"
+  },
+  {
+   "fieldname": "north_indian_el_provision_days_per_year",
+   "fieldtype": "Float",
+   "label": "North Indian EL Provision Days / Year",
+   "default": "15.6"
   }
  ],
  "issingle": 1,
