@@ -1,11 +1,22 @@
 import json
 import math
+from decimal import Decimal, ROUND_HALF_UP
 import frappe
 from frappe import _
 from datetime import datetime, timedelta
 from frappe.utils import cint, flt, get_first_day, get_last_day, getdate, formatdate
 from frappe.model.document import Document
 from calendar import monthrange
+
+
+def excel_round(val):
+    """Exact Excel ROUND(val, 0) arithmetic half-up rounding."""
+    if val is None:
+        return 0.0
+    try:
+        return float(Decimal(str(round(flt(val), 8))).quantize(Decimal('1'), rounding=ROUND_HALF_UP))
+    except Exception:
+        return float(round(flt(val)))
 
 class SalarySlip(Document):
     def on_submit(self):
@@ -121,13 +132,13 @@ def calculate_overtime_pay(emp, gross_salary, ot_hours, settings):
     
     if "worker" in emp_type:
         multiplier = flt(getattr(settings, "workers_ot_rate_multiplier", 2.0)) or 2.0
-        # Formula: (Gross Salary / 26 / 8) * OT Hours * multiplier
-        hourly_rate = flt(gross_salary) / 26.0 / 8.0
-        return round(hourly_rate * ot_h * multiplier, 2)
+        # Formula: ROUND(Gross Salary / 26 / 8 * OT Hours, 0) * multiplier
+        single_rate_ot = excel_round((flt(gross_salary) / 26.0 / 8.0) * ot_h)
+        return excel_round(single_rate_ot * multiplier)
     elif "north indian" in emp_type:
         rate = flt(getattr(settings, "north_indian_ot_rate", 100.0)) or 100.0
         # Formula: rate * OT Hours
-        return round(rate * ot_h, 2)
+        return excel_round(rate * ot_h)
     return 0.0
 
 
@@ -706,7 +717,7 @@ def preview_salary_slip(employee, start_date, end_date):
             continue
         item = e.as_dict()
         item["standard_amount"] = flt(e.amount)
-        item["amount"] = round(flt(e.amount) * period_factor, 2)
+        item["amount"] = excel_round(flt(e.amount) * period_factor)
         base_gross_total += flt(e.amount)
         prorated_earnings.append(item)
 
@@ -741,11 +752,11 @@ def preview_salary_slip(employee, start_date, end_date):
         })
 
     # 5.3. Calculate Earned Gross Pay (AF6: Earned Gross before dynamic OT/Bonus) & Grand Gross Pay (AK6)
-    earned_gross_salary = round(sum(
+    earned_gross_salary = excel_round(sum(
         flt(e["amount"]) for e in prorated_earnings
         if (e.get("component_name") or e.get("salary_component") or "") not in ["Overtime Pay (OT)", "Overtime Allowance", "Attendance Bonus"]
-    ), 2)
-    grand_gross_pay = round(sum(flt(e["amount"]) for e in prorated_earnings), 2)
+    ))
+    grand_gross_pay = excel_round(sum(flt(e["amount"]) for e in prorated_earnings))
 
     earned_basic_da = sum(
         flt(e.get("amount", 0)) for e in prorated_earnings 
@@ -818,10 +829,10 @@ def preview_salary_slip(employee, start_date, end_date):
         })
 
     # LOP amount for informational and display breakdown purposes
-    lop_amount = round(gross_pay * (lop_days / month_working_days), 2) if month_working_days else 0.0
+    lop_amount = excel_round(gross_pay * (lop_days / month_working_days)) if month_working_days else 0.0
     
-    total_deductions = round(sum(flt(d["amount"]) for d in prorated_deductions), 2)
-    grand_net_pay = round(grand_gross_pay - total_deductions, 2)
+    total_deductions = excel_round(sum(flt(d["amount"]) for d in prorated_deductions))
+    grand_net_pay = excel_round(grand_gross_pay - total_deductions)
 
     # 5.6. Employer Statutory Contributions & Total Monthly Cost to Company (CTC)
     pf_rate = flt(get_category_setting(settings, "employer_pf_rate", emp_type, default=12.0)) / 100.0
