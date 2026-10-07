@@ -108,23 +108,25 @@ def get_monthly_canteen(month=None, year=None, department=None, employee=None, m
 	values["start"] = start
 
 	# Determine Employee Order By
-	# For Newest First (modified_desc) and Oldest First (modified_asc),
-	# sort by the latest Canteen Entry modified date so employees with newly created entries appear at the top!
 	join_ce = False
-	if not order_by or order_by in ["modified_desc", "modified desc"]:
+	if not order_by or order_by in ["employee_id_asc", "employee_asc", "name_asc", "employee_id asc", "name asc", "employee asc"]:
+		sql_order = "e.name ASC"
+	elif order_by in ["employee_id_desc", "employee_desc", "name_desc", "employee_id desc", "name desc", "employee desc"]:
+		sql_order = "e.name DESC"
+	elif order_by in ["modified_desc", "modified desc"]:
 		join_ce = True
-		sql_order = "CASE WHEN MAX(ce.modified) IS NOT NULL THEN 0 ELSE 1 END, MAX(ce.modified) DESC, e.employee_name ASC"
+		sql_order = "CASE WHEN MAX(ce.modified) IS NOT NULL THEN 0 ELSE 1 END, MAX(ce.modified) DESC, e.name ASC"
 	elif order_by in ["modified_asc", "modified asc"]:
 		join_ce = True
-		sql_order = "CASE WHEN MIN(ce.modified) IS NOT NULL THEN 0 ELSE 1 END, MIN(ce.modified) ASC, e.employee_name ASC"
-	elif order_by in ["employee_name_asc", "name_asc", "employee_name asc"]:
-		sql_order = "e.employee_name ASC"
-	elif order_by in ["employee_name_desc", "name_desc", "employee_name desc"]:
-		sql_order = "e.employee_name DESC"
+		sql_order = "CASE WHEN MIN(ce.modified) IS NOT NULL THEN 0 ELSE 1 END, MIN(ce.modified) ASC, e.name ASC"
+	elif order_by in ["employee_name_asc", "employee_name asc"]:
+		sql_order = "e.employee_name ASC, e.name ASC"
+	elif order_by in ["employee_name_desc", "employee_name desc"]:
+		sql_order = "e.employee_name DESC, e.name ASC"
 	elif order_by in ["department_asc", "department asc"]:
-		sql_order = "e.department ASC, e.employee_name ASC"
+		sql_order = "e.department ASC, e.name ASC"
 	elif order_by in ["department_desc", "department desc"]:
-		sql_order = "e.department DESC, e.employee_name ASC"
+		sql_order = "e.department DESC, e.name ASC"
 	else:
 		sql_order = f"e.{order_by}"
 
