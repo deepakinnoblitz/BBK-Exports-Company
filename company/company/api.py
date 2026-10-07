@@ -845,8 +845,6 @@ def get_holiday_dates_for_month(year, month):
 
 @frappe.whitelist()
 def populate_holidays_for_ui(month, year):
-    
-
     month = int(month)
     year = int(year)
     num_days = monthrange(year, month)[1]
@@ -857,20 +855,19 @@ def populate_holidays_for_ui(month, year):
     for day in range(1, num_days + 1):
         d = getdate(f"{year}-{month:02d}-{day:02d}")
         weekday = d.weekday()  # Monday=0, Sunday=6
-        is_holiday = False
-        description = ""
+        is_sunday = (weekday == 6)
+        description = "Sunday" if is_sunday else ""
 
-        if weekday == 6:  # Sunday
-            is_holiday = True
-            description = "Sunday"
+        is_working_day = 0 if is_sunday else 1
+        is_holiday = 0  # Declared festival / company holiday default
 
-        is_working_day = 0 if is_holiday else 1
         if is_working_day:
             working_days_count += 1
 
         holidays.append({
             "holiday_date": d,
-            "description": description if is_holiday else "",
+            "description": description,
+            "is_holiday": is_holiday,
             "is_working_day": is_working_day
         })
 

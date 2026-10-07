@@ -92,6 +92,23 @@ def parse_time_to_hours(val):
     return flt(val_str)
 
 
+def get_category_setting(settings, fieldname, emp_type="", default=None):
+    emp_type_lower = (emp_type or "").lower()
+    prefix = ""
+    if "worker" in emp_type_lower:
+        prefix = "workers_"
+    elif "north indian" in emp_type_lower:
+        prefix = "north_indian_"
+    
+    if prefix:
+        val = getattr(settings, f"{prefix}{fieldname}", None)
+        if val is not None and val != "":
+            return val
+    
+    val = getattr(settings, fieldname, None)
+    return val if (val is not None and val != "") else default
+
+
 def calculate_overtime_pay(emp, gross_salary, ot_hours, settings):
     ot_h = round(flt(ot_hours), 2)
     if ot_h <= 0:
@@ -129,7 +146,8 @@ def calculate_employee_pf(emp, earned_gross_salary, earned_basic_da, settings, p
     
     Supports dynamic selected salary components for wage basis.
     """
-    enable_pf = cint(getattr(settings, "enable_auto_pf", 1) if getattr(settings, "enable_auto_pf", None) is not None else 1)
+    emp_type = (emp.get("employee_type") if hasattr(emp, "get") else getattr(emp, "employee_type", "")) or ""
+    enable_pf = cint(get_category_setting(settings, "enable_auto_pf", emp_type, default=1))
     if not enable_pf:
         return None
 
@@ -146,10 +164,10 @@ def calculate_employee_pf(emp, earned_gross_salary, earned_basic_da, settings, p
     if not pf_no and not has_pf_component:
         return 0.0
 
-    pf_rate = flt(getattr(settings, "employee_pf_rate", 12.0) if getattr(settings, "employee_pf_rate", None) is not None else 12.0) / 100.0
-    pf_ceiling = flt(getattr(settings, "pf_wage_ceiling", 15000.0) if getattr(settings, "pf_wage_ceiling", None) is not None else 15000.0)
-    max_pf_amount = flt(getattr(settings, "employee_pf_max_amount", None) if getattr(settings, "employee_pf_max_amount", None) is not None else (pf_ceiling * pf_rate if pf_ceiling > 0 else 1800.0))
-    pf_basis_raw = getattr(settings, "pf_wage_basis", None)
+    pf_rate = flt(get_category_setting(settings, "employee_pf_rate", emp_type, default=12.0)) / 100.0
+    pf_ceiling = flt(get_category_setting(settings, "pf_wage_ceiling", emp_type, default=15000.0))
+    max_pf_amount = flt(get_category_setting(settings, "employee_pf_max_amount", emp_type, default=(pf_ceiling * pf_rate if pf_ceiling > 0 else 1800.0)))
+    pf_basis_raw = get_category_setting(settings, "pf_wage_basis", emp_type)
 
     # Dynamic selected components parsing
     selected_components = []
@@ -202,7 +220,8 @@ def calculate_employee_esi(emp, grand_gross_pay, earned_gross_salary, settings):
     
     Returns rounded deduction amount or None if auto calculation is disabled.
     """
-    enable_esi = cint(getattr(settings, "enable_auto_esi", 1) if getattr(settings, "enable_auto_esi", None) is not None else 1)
+    emp_type = (emp.get("employee_type") if hasattr(emp, "get") else getattr(emp, "employee_type", "")) or ""
+    enable_esi = cint(get_category_setting(settings, "enable_auto_esi", emp_type, default=1))
     if not enable_esi:
         return None
 
@@ -219,15 +238,15 @@ def calculate_employee_esi(emp, grand_gross_pay, earned_gross_salary, settings):
     if not esi_no and not has_esi_component:
         return 0.0
 
-    esi_ceiling = flt(getattr(settings, "esi_wage_ceiling", 21000.0) if getattr(settings, "esi_wage_ceiling", None) is not None else 21000.0)
+    esi_ceiling = flt(get_category_setting(settings, "esi_wage_ceiling", emp_type, default=21000.0))
     
     # Statutory gross wage eligibility check (Gross <= ₹21,000)
     std_earnings = flt(emp.get("total_earnings") or 0.0) if hasattr(emp, "get") else flt(getattr(emp, "total_earnings", 0.0))
     if esi_ceiling > 0 and earned_gross_salary > esi_ceiling and std_earnings > esi_ceiling:
         return 0.0
 
-    esi_rate = flt(getattr(settings, "employee_esi_rate", 0.75) if getattr(settings, "employee_esi_rate", None) is not None else 0.75) / 100.0
-    rounding_method = getattr(settings, "esi_rounding_method", "Round Up to Next Rupee (ROUNDUP / CEIL)") or "Round Up to Next Rupee (ROUNDUP / CEIL)"
+    esi_rate = flt(get_category_setting(settings, "employee_esi_rate", emp_type, default=0.75)) / 100.0
+    rounding_method = get_category_setting(settings, "esi_rounding_method", emp_type, default="Round Up to Next Rupee (ROUNDUP / CEIL)")
 
     raw_esi = flt(grand_gross_pay) * esi_rate
     if "Round Up" in rounding_method or "ROUNDUP" in rounding_method or "CEIL" in rounding_method:
@@ -237,11 +256,19 @@ def calculate_employee_esi(emp, grand_gross_pay, earned_gross_salary, settings):
 
 
 def calculate_professional_tax(gross_salary, pay_period_start, settings, employee=None, emp_doc=None, current_slip_name=None):
+    emp_type = (emp_doc.get("employee_type") if hasattr(emp_doc, "get") else getattr(emp_doc, "employee_type", "")) if emp_doc else ""
+    if not emp_type and employee:
+        emp_type = frappe.db.get_value("Employee", employee, "employee_type") or ""
+
+    enable_pt = cint(get_category_setting(settings, "enable_pt", emp_type, default=1))
+    if not enable_pt:
+        return 0.0
+
     pay_period_start = getdate(pay_period_start)
     gross = flt(gross_salary)
 
     # 1. Load dynamic slabs from settings if available
-    configured_slabs = getattr(settings, "pt_slabs", None)
+    configured_slabs = get_category_setting(settings, "pt_slabs", emp_type)
     slabs_list = []
     if configured_slabs:
         if isinstance(configured_slabs, str):
@@ -273,7 +300,7 @@ def calculate_professional_tax(gross_salary, pay_period_start, settings, employe
                         break
         return slab_amount
 
-    frequency = getattr(settings, "pt_deduction_frequency", "Half-Yearly Deduction") or "Half-Yearly Deduction"
+    frequency = get_category_setting(settings, "pt_deduction_frequency", emp_type, default="Half-Yearly (Sep & Feb)")
     if frequency == "Every Month Deduction":
         return get_slab_tax(gross)
 
@@ -404,13 +431,19 @@ def preview_salary_slip(employee, start_date, end_date):
     )
     
     holiday_dates = []
+    non_working_dates = []
+    working_dates = []
     holiday_desc_map = {}
     holidays_details = []
+    non_working_days_details = []
     if holiday_list:
         holiday_doc = frappe.get_doc("Holiday List", holiday_list[0].name)
         for row in holiday_doc.holidays:
-            if not row.is_working_day:
-                h_date = getdate(row.holiday_date)
+            h_date = getdate(row.holiday_date)
+            is_declared_holiday = bool(getattr(row, "is_holiday", 0))
+            is_work_day = bool(getattr(row, "is_working_day", 1))
+
+            if is_declared_holiday:
                 if start_date <= h_date <= end_date:
                     holiday_dates.append(h_date)
                     holiday_desc_map[h_date] = row.description or "Holiday"
@@ -419,6 +452,17 @@ def preview_salary_slip(employee, start_date, end_date):
                         "description": row.description or "Holiday",
                         "status": "Holiday"
                     })
+            elif not is_work_day:
+                if start_date <= h_date <= end_date:
+                    non_working_dates.append(h_date)
+                    non_working_days_details.append({
+                        "date": h_date.strftime("%Y-%m-%d"),
+                        "description": row.description or h_date.strftime("%A"),
+                        "status": "Non Working Day"
+                    })
+            else:
+                if start_date <= h_date <= end_date:
+                    working_dates.append(h_date)
 
     # 3. Fetch Data based on source
     attendance_records = []
@@ -498,7 +542,7 @@ def preview_salary_slip(employee, start_date, end_date):
     month_holiday_dates = []
     if month_holiday_list:
         mh_doc = frappe.get_doc("Holiday List", month_holiday_list[0].name)
-        month_holiday_dates = [getdate(row.holiday_date) for row in mh_doc.holidays if not row.is_working_day and m_start <= getdate(row.holiday_date) <= m_end]
+        month_holiday_dates = [getdate(row.holiday_date) for row in mh_doc.holidays if (bool(getattr(row, "is_holiday", 0)) or not bool(getattr(row, "is_working_day", 1))) and m_start <= getdate(row.holiday_date) <= m_end]
 
     if working_days_basis == "Fixed Number of Days":
         month_working_days = fixed_working_days
@@ -523,6 +567,9 @@ def preview_salary_slip(employee, start_date, end_date):
         
         # --- DAY CALCULATION START ---
         is_holiday = single_day_date in holiday_dates
+        is_non_working_day = single_day_date in non_working_dates
+        is_scheduled_work_day = single_day_date in working_dates or (not is_holiday and not is_non_working_day)
+
         day_leave = next((l for l in leave_applications if l.from_date <= single_day_date <= l.to_date), None)
         day_hours = 0
         day_attendance = None
@@ -590,23 +637,28 @@ def preview_salary_slip(employee, start_date, end_date):
             components.append(f"{'Paid' if is_paid_leave else 'Unpaid'} Leave ({leave_val})")
         if holiday_val > 0:
             components.append("Holiday" if holiday_val >= 1.0 else f"Holiday ({holiday_val})")
+        elif is_non_working_day and physical_val == 0 and comp_off_val == 0 and leave_val == 0:
+            components.append("Non Working Day")
             
-        absent_val = round(max(0.0, 1.0 - (physical_val + comp_off_val + leave_val + holiday_val)), 2)
-        if absent_val > 0:
-            if leave_calc_source != "Via Direct Allocation":
-                components.append(f"Unpaid Leave ({absent_val})" if absent_val < 1.0 else "Unpaid Leave")
-                unpaid_leave_days += absent_val
-                total_leave_days += absent_val
-            else:
-                components.append(f"Absent ({absent_val})" if absent_val < 1.0 else "Absent")
-            total_absent_days += absent_val
+        absent_val = 0.0
+        if is_scheduled_work_day:
+            absent_val = round(max(0.0, 1.0 - (physical_val + comp_off_val + leave_val + holiday_val)), 2)
+            if absent_val > 0:
+                if leave_calc_source != "Via Direct Allocation":
+                    components.append(f"Unpaid Leave ({absent_val})" if absent_val < 1.0 else "Unpaid Leave")
+                    unpaid_leave_days += absent_val
+                    total_leave_days += absent_val
+                else:
+                    components.append(f"Absent ({absent_val})" if absent_val < 1.0 else "Absent")
+                total_absent_days += absent_val
             
-        day_status = " + ".join(components) if components else "Absent"
+        day_status = " + ".join(components) if components else ("Non Working Day" if is_non_working_day else "Absent")
         
         days_breakdown.append({
             "date": single_day_date.strftime("%Y-%m-%d"),
             "status": day_status,
             "is_holiday": is_holiday,
+            "is_non_working_day": is_non_working_day,
             "holiday_desc": holiday_desc_map.get(single_day_date, ""),
             "hours": round(day_hours, 2),
             "ot_hours": round(day_ot, 2)
@@ -772,16 +824,16 @@ def preview_salary_slip(employee, start_date, end_date):
     grand_net_pay = round(grand_gross_pay - total_deductions, 2)
 
     # 5.6. Employer Statutory Contributions & Total Monthly Cost to Company (CTC)
-    pf_rate = flt(getattr(settings, "employer_pf_rate", None) if getattr(settings, "employer_pf_rate", None) is not None else 12.0) / 100.0
-    pf_admin_rate = flt(getattr(settings, "pf_admin_rate", None) if getattr(settings, "pf_admin_rate", None) is not None else 0.5) / 100.0
-    edli_rate = flt(getattr(settings, "edli_rate", None) if getattr(settings, "edli_rate", None) is not None else 0.5) / 100.0
-    esi_rate = flt(getattr(settings, "employer_esi_rate", None) if getattr(settings, "employer_esi_rate", None) is not None else 3.25) / 100.0
-    employer_pf_ceiling = flt(getattr(settings, "employer_pf_wage_ceiling", None) if getattr(settings, "employer_pf_wage_ceiling", None) is not None else (getattr(settings, "pf_wage_ceiling", 15000.0) if getattr(settings, "pf_wage_ceiling", None) is not None else 15000.0))
-    employer_max_pf = flt(getattr(settings, "employer_pf_max_amount", None) if getattr(settings, "employer_pf_max_amount", None) is not None else (employer_pf_ceiling * pf_rate if employer_pf_ceiling > 0 else 1800.0))
-    esi_ceiling = flt(getattr(settings, "esi_wage_ceiling", 21000.0) if getattr(settings, "esi_wage_ceiling", None) is not None else 21000.0)
+    pf_rate = flt(get_category_setting(settings, "employer_pf_rate", emp_type, default=12.0)) / 100.0
+    pf_admin_rate = flt(get_category_setting(settings, "pf_admin_rate", emp_type, default=0.5)) / 100.0
+    edli_rate = flt(get_category_setting(settings, "edli_rate", emp_type, default=0.5)) / 100.0
+    esi_rate = flt(get_category_setting(settings, "employer_esi_rate", emp_type, default=3.25)) / 100.0
+    employer_pf_ceiling = flt(get_category_setting(settings, "employer_pf_wage_ceiling", emp_type, default=(get_category_setting(settings, "pf_wage_ceiling", emp_type, default=15000.0))))
+    employer_max_pf = flt(get_category_setting(settings, "employer_pf_max_amount", emp_type, default=(employer_pf_ceiling * pf_rate if employer_pf_ceiling > 0 else 1800.0)))
+    esi_ceiling = flt(get_category_setting(settings, "esi_wage_ceiling", emp_type, default=21000.0))
     
     # Dynamic PF base for Employer
-    pf_basis_raw = getattr(settings, "pf_wage_basis", None)
+    pf_basis_raw = get_category_setting(settings, "pf_wage_basis", emp_type)
     selected_pf_components = []
     if pf_basis_raw:
         if isinstance(pf_basis_raw, list):
@@ -814,12 +866,12 @@ def preview_salary_slip(employee, start_date, end_date):
     else:
         pf_base_for_employer = earned_gross_salary
 
-    enable_bonus = cint(getattr(settings, "enable_bonus_provision", 1) if getattr(settings, "enable_bonus_provision", None) is not None else 1)
-    bonus_rate = (flt(getattr(settings, "bonus_provision_rate", 8.33) if getattr(settings, "bonus_provision_rate", None) is not None else 8.33) / 100.0) if enable_bonus else 0.0
-    enable_el = cint(getattr(settings, "enable_el_provision", 1) if getattr(settings, "enable_el_provision", None) is not None else 1)
-    el_days = flt(getattr(settings, "el_provision_days_per_year", 15.6) if getattr(settings, "el_provision_days_per_year", None) is not None else 15.6) if enable_el else 0.0
+    enable_bonus = cint(get_category_setting(settings, "enable_bonus_provision", emp_type, default=1))
+    bonus_rate = (flt(get_category_setting(settings, "bonus_provision_rate", emp_type, default=8.33)) / 100.0) if enable_bonus else 0.0
+    enable_el = cint(get_category_setting(settings, "enable_el_provision", emp_type, default=1))
+    el_days = flt(get_category_setting(settings, "el_provision_days_per_year", emp_type, default=15.6)) if enable_el else 0.0
 
-    enable_pf = cint(getattr(settings, "enable_auto_pf", 1) if getattr(settings, "enable_auto_pf", None) is not None else 1)
+    enable_pf = cint(get_category_setting(settings, "enable_auto_pf", emp_type, default=1))
     pf_no = emp.get("pf_number") if hasattr(emp, "get") else getattr(emp, "pf_number", None)
     has_pf_component = False
     if hasattr(emp, "deductions") and emp.deductions:
@@ -927,8 +979,10 @@ def preview_salary_slip(employee, start_date, end_date):
         # Detailed Breakdown Fields
         "total_days_in_period": total_days,
         "holiday_count": len(holiday_dates),
-        "holiday_working_days": total_days - len(holiday_dates),
+        "non_working_count": len(non_working_dates),
+        "holiday_working_days": len(working_dates) if holiday_list else (total_days - len(holiday_dates)),
         "holidays_details": holidays_details,
+        "non_working_days_details": non_working_days_details,
         "actual_present_days": present_days,
         "physical_attendance_days": physical_attendance_days,
         "unpaid_leave_days": unpaid_leave_days,
@@ -1065,14 +1119,14 @@ def get_salary_slip_with_details(name):
 
     present_days_val = flt(getattr(doc, "actual_present_days", None) or getattr(doc, "total_working_days", 0.0))
     settings = frappe.get_single("HRMS Settings")
-    pf_rate = flt(getattr(settings, "employer_pf_rate", None) if getattr(settings, "employer_pf_rate", None) is not None else 12.0) / 100.0
-    pf_admin_rate = flt(getattr(settings, "pf_admin_rate", None) if getattr(settings, "pf_admin_rate", None) is not None else 0.5) / 100.0
-    edli_rate = flt(getattr(settings, "edli_rate", None) if getattr(settings, "edli_rate", None) is not None else 0.5) / 100.0
-    esi_rate = flt(getattr(settings, "employer_esi_rate", None) if getattr(settings, "employer_esi_rate", None) is not None else 3.25) / 100.0
-    employer_pf_ceiling = flt(getattr(settings, "employer_pf_wage_ceiling", None) if getattr(settings, "employer_pf_wage_ceiling", None) is not None else (getattr(settings, "pf_wage_ceiling", 15000.0) if getattr(settings, "pf_wage_ceiling", None) is not None else 15000.0))
-    employer_max_pf = flt(getattr(settings, "employer_pf_max_amount", None) if getattr(settings, "employer_pf_max_amount", None) is not None else (employer_pf_ceiling * pf_rate if employer_pf_ceiling > 0 else 1800.0))
-    esi_ceiling = flt(getattr(settings, "esi_wage_ceiling", 21000.0) if getattr(settings, "esi_wage_ceiling", None) is not None else 21000.0)
-    pf_basis_raw = getattr(settings, "pf_wage_basis", None)
+    pf_rate = flt(get_category_setting(settings, "employer_pf_rate", emp_type, default=12.0)) / 100.0
+    pf_admin_rate = flt(get_category_setting(settings, "pf_admin_rate", emp_type, default=0.5)) / 100.0
+    edli_rate = flt(get_category_setting(settings, "edli_rate", emp_type, default=0.5)) / 100.0
+    esi_rate = flt(get_category_setting(settings, "employer_esi_rate", emp_type, default=3.25)) / 100.0
+    employer_pf_ceiling = flt(get_category_setting(settings, "employer_pf_wage_ceiling", emp_type, default=(get_category_setting(settings, "pf_wage_ceiling", emp_type, default=15000.0))))
+    employer_max_pf = flt(get_category_setting(settings, "employer_pf_max_amount", emp_type, default=(employer_pf_ceiling * pf_rate if employer_pf_ceiling > 0 else 1800.0)))
+    esi_ceiling = flt(get_category_setting(settings, "esi_wage_ceiling", emp_type, default=21000.0))
+    pf_basis_raw = get_category_setting(settings, "pf_wage_basis", emp_type)
     selected_components = []
     if pf_basis_raw:
         if isinstance(pf_basis_raw, list):
@@ -1106,13 +1160,13 @@ def get_salary_slip_with_details(name):
     else:
         pf_base_for_employer = earned_gross_salary
 
-    enable_bonus = cint(getattr(settings, "enable_bonus_provision", 1) if getattr(settings, "enable_bonus_provision", None) is not None else 1)
-    bonus_rate = (flt(getattr(settings, "bonus_provision_rate", 8.33) if getattr(settings, "bonus_provision_rate", None) is not None else 8.33) / 100.0) if enable_bonus else 0.0
-    enable_el = cint(getattr(settings, "enable_el_provision", 1) if getattr(settings, "enable_el_provision", None) is not None else 1)
-    el_days = flt(getattr(settings, "el_provision_days_per_year", 15.6) if getattr(settings, "el_provision_days_per_year", None) is not None else 15.6) if enable_el else 0.0
+    enable_bonus = cint(get_category_setting(settings, "enable_bonus_provision", emp_type, default=1))
+    bonus_rate = (flt(get_category_setting(settings, "bonus_provision_rate", emp_type, default=8.33)) / 100.0) if enable_bonus else 0.0
+    enable_el = cint(get_category_setting(settings, "enable_el_provision", emp_type, default=1))
+    el_days = flt(get_category_setting(settings, "el_provision_days_per_year", emp_type, default=15.6)) if enable_el else 0.0
 
     tea_rate = flt(getattr(settings, "workers_tea_allowance_per_day", 5.0) if getattr(settings, "workers_tea_allowance_per_day", None) is not None else 5.0)
-    enable_pf = cint(getattr(settings, "enable_auto_pf", 1) if getattr(settings, "enable_auto_pf", None) is not None else 1)
+    enable_pf = cint(get_category_setting(settings, "enable_auto_pf", emp_type, default=1))
     pf_no = getattr(doc, "pf_number", None) or (emp.get("pf_number") if emp else None)
     has_pf_component = False
     if hasattr(doc, "deductions") and doc.deductions:
@@ -1134,7 +1188,7 @@ def get_salary_slip_with_details(name):
         pf_admin_charges = float(round(pf_base_for_employer * pf_admin_rate))
         edli_charges = float(round(pf_base_for_employer * edli_rate))
 
-    enable_esi = cint(getattr(settings, "enable_auto_esi", 1) if getattr(settings, "enable_auto_esi", None) is not None else 1)
+    enable_esi = cint(get_category_setting(settings, "enable_auto_esi", emp_type, default=1))
     esi_no = getattr(doc, "esi_no", None) or (emp.get("esi_no") if emp else None)
     has_esi_component = False
     if hasattr(doc, "deductions") and doc.deductions:
@@ -1200,13 +1254,38 @@ def get_salary_slip_with_details(name):
         fields=["name"]
     )
     holiday_dates = []
+    non_working_dates = []
+    working_dates = []
+    holiday_desc_map = {}
+    holidays_details = []
+    non_working_days_details = []
     if holiday_list:
         h_doc = frappe.get_doc("Holiday List", holiday_list[0].name)
         for row in h_doc.holidays:
-            if not row.is_working_day:
-                h_date = getdate(row.holiday_date)
+            h_date = getdate(row.holiday_date)
+            is_declared_holiday = bool(getattr(row, "is_holiday", 0))
+            is_work_day = bool(getattr(row, "is_working_day", 1))
+
+            if is_declared_holiday:
                 if start_date <= h_date <= end_date:
                     holiday_dates.append(h_date)
+                    holiday_desc_map[h_date] = row.description or "Holiday"
+                    holidays_details.append({
+                        "date": h_date.strftime("%Y-%m-%d"),
+                        "description": row.description or "Holiday",
+                        "status": "Holiday"
+                    })
+            elif not is_work_day:
+                if start_date <= h_date <= end_date:
+                    non_working_dates.append(h_date)
+                    non_working_days_details.append({
+                        "date": h_date.strftime("%Y-%m-%d"),
+                        "description": row.description or h_date.strftime("%A"),
+                        "status": "Non Working Day"
+                    })
+            else:
+                if start_date <= h_date <= end_date:
+                    working_dates.append(h_date)
 
     total_days = (end_date - start_date).days + 1
     attendance_records = []
@@ -1278,6 +1357,9 @@ def get_salary_slip_with_details(name):
         single_day_date = start_date + timedelta(days=i)
 
         is_holiday = single_day_date in holiday_dates
+        is_non_working_day = single_day_date in non_working_dates
+        is_scheduled_work_day = single_day_date in working_dates or (not is_holiday and not is_non_working_day)
+
         day_leave  = next(
             (l for l in leave_applications if l.from_date <= single_day_date <= l.to_date),
             None
@@ -1348,21 +1430,26 @@ def get_salary_slip_with_details(name):
             components.append(f"{'Paid' if is_paid_leave else 'Unpaid'} Leave ({leave_val})")
         if holiday_val > 0:
             components.append("Holiday" if holiday_val >= 1.0 else f"Holiday ({holiday_val})")
+        elif is_non_working_day and physical_val == 0 and comp_off_val == 0 and leave_val == 0:
+            components.append("Non Working Day")
             
-        absent_val = round(max(0.0, 1.0 - (physical_val + comp_off_val + leave_val + holiday_val)), 2)
-        if absent_val > 0:
-            if leave_calc_source != "Via Direct Allocation":
-                components.append(f"Unpaid Leave ({absent_val})" if absent_val < 1.0 else "Unpaid Leave")
-            else:
-                components.append(f"Absent ({absent_val})" if absent_val < 1.0 else "Absent")
-            total_absent_days += absent_val
+        absent_val = 0.0
+        if is_scheduled_work_day:
+            absent_val = round(max(0.0, 1.0 - (physical_val + comp_off_val + leave_val + holiday_val)), 2)
+            if absent_val > 0:
+                if leave_calc_source != "Via Direct Allocation":
+                    components.append(f"Unpaid Leave ({absent_val})" if absent_val < 1.0 else "Unpaid Leave")
+                else:
+                    components.append(f"Absent ({absent_val})" if absent_val < 1.0 else "Absent")
+                total_absent_days += absent_val
             
-        day_status = " + ".join(components) if components else "Absent"
+        day_status = " + ".join(components) if components else ("Non Working Day" if is_non_working_day else "Absent")
 
         days_breakdown.append({
             "date":   single_day_date.strftime("%Y-%m-%d"),
             "status": day_status,
             "is_holiday": is_holiday,
+            "is_non_working_day": is_non_working_day,
             "holiday_desc": holiday_desc_map.get(single_day_date, "") if "holiday_desc_map" in locals() else "",
             "hours":  round(day_hours, 2),
             "ot_hours": round(day_ot, 2)
@@ -1385,7 +1472,10 @@ def get_salary_slip_with_details(name):
     res["no_of_leave"] = unpaid_leave_days
     res["lop_days"] = lop_days
     res["holiday_count"] = len(holiday_dates)
-    res["holiday_working_days"] = total_days - len(holiday_dates)
+    res["non_working_count"] = len(non_working_dates)
+    res["holidays_details"] = holidays_details
+    res["non_working_days_details"] = non_working_days_details
+    res["holiday_working_days"] = len(working_dates) if holiday_list else (total_days - len(holiday_dates))
     res["actual_present_days"] = present_days
     res["physical_attendance_days"] = physical_attendance_days
     return res
