@@ -160,7 +160,27 @@
   "staff_non_ctc_el_provision_days_per_year",
   "apply_pf_ceiling",
   "workers_apply_pf_ceiling",
-  "north_indian_apply_pf_ceiling"
+  "north_indian_apply_pf_ceiling",
+  "enable_tea_allowance",
+  "tea_allowance_per_day",
+  "enable_lunch_allowance",
+  "lunch_allowance_per_meal",
+  "lunch_allowance_per_day",
+  "staff_ctc_enable_tea_allowance",
+  "staff_ctc_tea_allowance_per_day",
+  "staff_ctc_enable_lunch_allowance",
+  "staff_ctc_lunch_allowance_per_meal",
+  "staff_non_ctc_enable_tea_allowance",
+  "staff_non_ctc_tea_allowance_per_day",
+  "staff_non_ctc_enable_lunch_allowance",
+  "staff_non_ctc_lunch_allowance_per_meal",
+  "workers_enable_tea_allowance",
+  "workers_enable_lunch_allowance",
+  "workers_lunch_allowance_per_meal",
+  "north_indian_enable_tea_allowance",
+  "north_indian_tea_allowance_per_day",
+  "north_indian_enable_lunch_allowance",
+  "north_indian_lunch_allowance_per_meal"
  ],
  "fields": [
   {
@@ -1133,6 +1153,126 @@
    "fieldtype": "Check",
    "label": "North Indian Apply PF Wage Ceiling",
    "default": "1"
+  },
+  {
+   "default": "1",
+   "fieldname": "enable_tea_allowance",
+   "fieldtype": "Check",
+   "label": "Enable Tea Allowance"
+  },
+  {
+   "default": "14",
+   "fieldname": "tea_allowance_per_day",
+   "fieldtype": "Currency",
+   "label": "Tea Allowance (\u20b9/Day)"
+  },
+  {
+   "default": "1",
+   "fieldname": "enable_lunch_allowance",
+   "fieldtype": "Check",
+   "label": "Enable Lunch Allowance"
+  },
+  {
+   "default": "50",
+   "fieldname": "lunch_allowance_per_meal",
+   "fieldtype": "Currency",
+   "label": "Lunch Allowance (\u20b9/Meal)"
+  },
+  {
+   "default": "50",
+   "fieldname": "lunch_allowance_per_day",
+   "fieldtype": "Currency",
+   "label": "Lunch Allowance (\u20b9/Day)"
+  },
+  {
+   "default": "1",
+   "fieldname": "staff_ctc_enable_tea_allowance",
+   "fieldtype": "Check",
+   "label": "Staff CTC Enable Tea Allowance"
+  },
+  {
+   "default": "14",
+   "fieldname": "staff_ctc_tea_allowance_per_day",
+   "fieldtype": "Currency",
+   "label": "Staff CTC Tea Allowance (\u20b9/Day)"
+  },
+  {
+   "default": "1",
+   "fieldname": "staff_ctc_enable_lunch_allowance",
+   "fieldtype": "Check",
+   "label": "Staff CTC Enable Lunch Allowance"
+  },
+  {
+   "default": "50",
+   "fieldname": "staff_ctc_lunch_allowance_per_meal",
+   "fieldtype": "Currency",
+   "label": "Staff CTC Lunch Allowance (\u20b9/Meal)"
+  },
+  {
+   "default": "1",
+   "fieldname": "staff_non_ctc_enable_tea_allowance",
+   "fieldtype": "Check",
+   "label": "Staff Non-CTC Enable Tea Allowance"
+  },
+  {
+   "default": "14",
+   "fieldname": "staff_non_ctc_tea_allowance_per_day",
+   "fieldtype": "Currency",
+   "label": "Staff Non-CTC Tea Allowance (\u20b9/Day)"
+  },
+  {
+   "default": "1",
+   "fieldname": "staff_non_ctc_enable_lunch_allowance",
+   "fieldtype": "Check",
+   "label": "Staff Non-CTC Enable Lunch Allowance"
+  },
+  {
+   "default": "50",
+   "fieldname": "staff_non_ctc_lunch_allowance_per_meal",
+   "fieldtype": "Currency",
+   "label": "Staff Non-CTC Lunch Allowance (\u20b9/Meal)"
+  },
+  {
+   "default": "1",
+   "fieldname": "workers_enable_tea_allowance",
+   "fieldtype": "Check",
+   "label": "Workers Enable Tea Allowance"
+  },
+  {
+   "default": "1",
+   "fieldname": "workers_enable_lunch_allowance",
+   "fieldtype": "Check",
+   "label": "Workers Enable Lunch Allowance"
+  },
+  {
+   "default": "50",
+   "fieldname": "workers_lunch_allowance_per_meal",
+   "fieldtype": "Currency",
+   "label": "Workers Lunch Allowance (\u20b9/Meal)"
+  },
+  {
+   "default": "1",
+   "fieldname": "north_indian_enable_tea_allowance",
+   "fieldtype": "Check",
+   "label": "North Indian Enable Tea Allowance"
+  },
+  {
+   "default": "5",
+   "fieldname": "north_indian_tea_allowance_per_day",
+   "fieldtype": "Currency",
+   "label": "North Indian Tea Allowance (\u20b9/Day)"
+  },
+  {
+   "default": "1",
+   "fieldname": "north_indian_enable_lunch_allowance",
+   "fieldtype": "Check",
+   "label": "North Indian Enable Lunch Allowance"
+  },
+  {
+   "default": "50",
+   "fieldname": "north_indian_lunch_allowance_per_meal",
+   "fieldtype": "Currency",
+   "label": "North Indian Lunch Allowance (\u20b9/Meal)"
   }
  ],
  "issingle": 1,

@@ -984,16 +984,42 @@ def preview_salary_slip(employee, start_date, end_date):
 
     is_staff = "staff" in (emp_type or "").lower()
     enable_tea = cint(get_category_setting(settings, "enable_tea_allowance", emp_type, default=1))
-    if is_staff:
-        tea_rate = flt(get_category_setting(settings, "staff_tea_allowance_per_day", emp_type, default=14.0)) or 14.0
+    tea_rate_default = 14.0 if is_staff else 5.0
+    tea_rate_val = get_category_setting(settings, "tea_allowance_per_day", emp_type, default=None)
+    if tea_rate_val is None or tea_rate_val == "":
+        tea_rate = tea_rate_default
     else:
-        tea_rate = flt(get_category_setting(settings, "workers_tea_allowance_per_day", emp_type, default=5.0)) or 5.0
+        tea_rate = flt(tea_rate_val)
     tea_expenses = float(round(flt(present_days) * tea_rate)) if enable_tea else 0.0
-    lunch_expenses = 0.0
+
+    enable_lunch = cint(get_category_setting(settings, "enable_lunch_allowance", emp_type, default=1))
+    lunch_rate_val = get_category_setting(settings, "lunch_allowance_per_meal", emp_type, default=None)
+    if lunch_rate_val is None or lunch_rate_val == "":
+        lunch_rate_val = get_category_setting(settings, "lunch_allowance_per_day", emp_type, default=None)
+    lunch_rate = flt(lunch_rate_val) if (lunch_rate_val is not None and lunch_rate_val != "") else 50.0
+
+    canteen_entries = []
+    canteen_meals_count = 0
+    emp_id_val = getattr(emp, "employee_id", None) or (emp.get("employee_id") if isinstance(emp, dict) else "") or emp.name
+    if enable_lunch and (frappe.db.table_exists("Canteen Entry") or frappe.db.exists("DocType", "Canteen Entry")):
+        canteen_entries = frappe.db.sql(
+            """
+            SELECT name, canteen_date, meal_type, meal_count, status, source, remarks
+            FROM `tabCanteen Entry`
+            WHERE (employee = %s OR employee = %s)
+              AND canteen_date BETWEEN %s AND %s
+            ORDER BY canteen_date ASC
+            """,
+            (emp.name, emp_id_val, start_date, end_date),
+            as_dict=True
+        )
+        canteen_meals_count = sum(flt(e.get("meal_count") or 1) for e in canteen_entries)
+
+    lunch_expenses = float(round(canteen_meals_count * lunch_rate)) if enable_lunch else 0.0
 
     # Earned CTC = Gross Earnings + Employer PF + EDLI + Admin + Employer ESI
     earned_ctc = round(grand_gross_pay + employer_pf + pf_admin_charges + edli_charges + employer_esi, 2)
-    total_employer_contrib = round(employer_pf + pf_admin_charges + edli_charges + employer_esi + tea_expenses + lunch_expenses, 2)
+    total_employer_contrib = round(employer_pf + pf_admin_charges + edli_charges + employer_esi, 2)
 
     has_bonus_in_earnings = any(
         "bonus" in ((e.get("component_name") or e.get("salary_component") or "").lower())
@@ -1080,6 +1106,12 @@ def preview_salary_slip(employee, start_date, end_date):
         "has_el_in_earnings": has_el_in_earnings,
         "enable_workers_tea_allowance": enable_tea,
         "workers_tea_allowance_per_day": round(tea_rate, 2),
+        "enable_lunch_allowance": enable_lunch,
+        "lunch_allowance_per_meal": round(lunch_rate, 2),
+        "lunch_rate": lunch_rate,
+        "lunch_count": canteen_meals_count,
+        "canteen_meals_count": canteen_meals_count,
+        "canteen_entries_details": canteen_entries,
         # Detailed Breakdown Fields
         "total_days_in_period": total_days,
         "holiday_count": len(holiday_dates),
@@ -1336,16 +1368,48 @@ def get_salary_slip_with_details(name):
 
     is_staff = "staff" in (emp_type or "").lower()
     enable_tea = cint(get_category_setting(settings, "enable_tea_allowance", emp_type, default=1))
-    if is_staff:
-        tea_rate = flt(get_category_setting(settings, "staff_tea_allowance_per_day", emp_type, default=14.0)) or 14.0
+    tea_rate_default = 14.0 if is_staff else 5.0
+    tea_rate_val = get_category_setting(settings, "tea_allowance_per_day", emp_type, default=None)
+    if tea_rate_val is None or tea_rate_val == "":
+        tea_rate = tea_rate_default
     else:
-        tea_rate = flt(get_category_setting(settings, "workers_tea_allowance_per_day", emp_type, default=5.0)) or 5.0
+        tea_rate = flt(tea_rate_val)
     tea_expenses = float(round(present_days_val * tea_rate)) if enable_tea else 0.0
-    lunch_expenses = flt(getattr(doc, "lunch_amount", 0.0) or 0.0)
+
+    enable_lunch = cint(get_category_setting(settings, "enable_lunch_allowance", emp_type, default=1))
+    lunch_rate_val = get_category_setting(settings, "lunch_allowance_per_meal", emp_type, default=None)
+    if lunch_rate_val is None or lunch_rate_val == "":
+        lunch_rate_val = get_category_setting(settings, "lunch_allowance_per_day", emp_type, default=None)
+    lunch_rate = flt(lunch_rate_val) if (lunch_rate_val is not None and lunch_rate_val != "") else 50.0
+
+    canteen_entries = []
+    canteen_meals_count = 0
+    emp_name = getattr(doc, "employee", None) or (emp.get("name") if emp else None)
+    emp_id = getattr(doc, "employee_id", None) or (getattr(emp, "employee_id", None) if emp else None) or emp_name
+    p_start = getattr(doc, "pay_period_start", None)
+    p_end = getattr(doc, "pay_period_end", None)
+
+    if enable_lunch and emp_name and p_start and p_end and (frappe.db.table_exists("Canteen Entry") or frappe.db.exists("DocType", "Canteen Entry")):
+        canteen_entries = frappe.db.sql(
+            """
+            SELECT name, canteen_date, meal_type, meal_count, status, source, remarks
+            FROM `tabCanteen Entry`
+            WHERE (employee = %s OR employee = %s)
+              AND canteen_date BETWEEN %s AND %s
+            ORDER BY canteen_date ASC
+            """,
+            (emp_name, emp_id, p_start, p_end),
+            as_dict=True
+        )
+        canteen_meals_count = sum(flt(e.get("meal_count") or 1) for e in canteen_entries)
+
+    lunch_expenses = float(round(canteen_meals_count * lunch_rate)) if enable_lunch else 0.0
+    if not lunch_expenses and getattr(doc, "lunch_amount", 0):
+        lunch_expenses = flt(doc.lunch_amount)
 
     # Earned CTC = Gross Earnings + Employer PF + EDLI + Admin + Employer ESI
     earned_ctc = round(gross_val + employer_pf + pf_admin_charges + edli_charges + employer_esi, 2)
-    total_employer_contrib = round(employer_pf + pf_admin_charges + edli_charges + employer_esi + tea_expenses + lunch_expenses, 2)
+    total_employer_contrib = round(employer_pf + pf_admin_charges + edli_charges + employer_esi, 2)
 
     earnings_list = doc.earnings if hasattr(doc, "earnings") else []
     has_bonus_in_earnings = any(
@@ -1378,6 +1442,11 @@ def get_salary_slip_with_details(name):
         "earned_ctc": earned_ctc,
         "tea_expenses": tea_expenses,
         "lunch_expenses": lunch_expenses,
+        "lunch_count": canteen_meals_count,
+        "canteen_meals_count": canteen_meals_count,
+        "lunch_rate": lunch_rate,
+        "enable_lunch_allowance": enable_lunch,
+        "canteen_entries_details": canteen_entries,
         "total_employer_contribution": total_employer_contrib,
         "bonus_provision": bonus_provision,
         "el_provision": el_provision,
