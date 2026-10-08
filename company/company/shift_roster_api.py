@@ -1224,3 +1224,30 @@ def get_filtered_employee_ids(department=None, shift=None, line_order=None, sear
 	return ids
 
 
+@frappe.whitelist()
+def get_shift_report(from_date=None, to_date=None, employee=None, shift=None, status=None, department=None):
+	"""
+	Returns the Shift Report columns and dataset.
+	"""
+	from company.company.report.shift_report.shift_report import execute
+	if isinstance(employee, str) and (employee.startswith("[") or employee.startswith("{")):
+		try:
+			employee = json.loads(employee)
+		except Exception:
+			pass
+	filters = {
+		"from_date": from_date,
+		"to_date": to_date,
+		"employee": employee,
+		"shift": shift,
+		"status": status,
+		"department": department
+	}
+	columns, data = execute(filters)
+	return {
+		"columns": columns,
+		"result": data
+	}
+
+
+
