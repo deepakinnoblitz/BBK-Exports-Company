@@ -705,8 +705,20 @@ def preview_salary_slip(employee, start_date, end_date):
         period_factor = (payable_days / month_working_days) if month_working_days else 1.0
 
     gross_pay = flt(emp.total_earnings)
-    base_deductions = flt(emp.total_deductions)
-    
+    emp_type = (emp.get("employee_type") or "").lower()
+    is_staff = "staff" in emp_type
+
+    bonus_rate = (flt(get_category_setting(settings, "bonus_provision_rate", emp_type, default=8.33)) / 100.0)
+    el_days = flt(get_category_setting(settings, "el_provision_days_per_year", emp_type, default=14.0 if is_staff else 15.6))
+
+    # Identify standard basic + DA in employee earnings
+    std_basic_da = sum(
+        flt(e.amount) for e in emp.earnings
+        if any(k in (e.component_name or e.salary_component or "").lower() for k in ["basic", "da", "dearness"])
+    )
+    if std_basic_da <= 0:
+        std_basic_da = flt(emp.total_earnings)
+
     # Calculate individual components based on period factor (prorated for payable/present days)
     prorated_earnings = []
     base_gross_total = 0.0
@@ -716,10 +728,34 @@ def preview_salary_slip(employee, start_date, end_date):
         if c_name in ["Overtime Pay (OT)", "Overtime Allowance", "Attendance Bonus"]:
             continue
         item = e.as_dict()
-        item["standard_amount"] = flt(e.amount)
-        item["amount"] = excel_round(flt(e.amount) * period_factor)
-        base_gross_total += flt(e.amount)
+        c_name_lower = c_name.lower().strip()
+
+        if c_name_lower in ["bonus", "bonus provision"]:
+            if flt(e.amount) > 0:
+                std_bonus = flt(e.amount)
+            else:
+                std_bonus = excel_round(std_basic_da * (bonus_rate if bonus_rate > 0 else 0.0833))
+            item["standard_amount"] = std_bonus
+            item["amount"] = excel_round(std_bonus * period_factor)
+            base_gross_total += std_bonus
+        elif any(k in c_name_lower for k in ["earned leave", "el"]):
+            if flt(e.amount) > 0:
+                std_el = flt(e.amount)
+            else:
+                staff_el_days = el_days if el_days > 0 else 14.0
+                std_el = excel_round(((std_basic_da / 26.0) * (staff_el_days / 12.0)))
+            item["standard_amount"] = std_el
+            item["amount"] = excel_round(std_el * period_factor)
+            base_gross_total += std_el
+        else:
+            item["standard_amount"] = flt(e.amount)
+            item["amount"] = excel_round(flt(e.amount) * period_factor)
+            base_gross_total += flt(e.amount)
+
         prorated_earnings.append(item)
+
+    if base_gross_total > 0:
+        gross_pay = base_gross_total
 
     # 5.1. Overtime Pay Calculation
     emp_type = (emp.get("employee_type") or "").lower()
@@ -924,8 +960,25 @@ def preview_salary_slip(employee, start_date, end_date):
     tea_expenses = float(round(flt(present_days) * tea_rate)) if ("worker" in emp_type and enable_tea) else 0.0
     total_employer_contrib = round(employer_pf + pf_admin_charges + edli_charges + employer_esi + tea_expenses, 2)
 
-    bonus_provision = float(round(pf_base_for_employer * bonus_rate)) if enable_bonus else 0.0
-    el_provision = float(round((pf_base_for_employer / 26.0) * (el_days / 12.0))) if (enable_el and month_working_days) else 0.0
+    has_bonus_in_earnings = any(
+        "bonus" in ((e.get("component_name") or e.get("salary_component") or "").lower())
+        for e in prorated_earnings
+        if "attendance" not in ((e.get("component_name") or e.get("salary_component") or "").lower())
+    )
+    has_el_in_earnings = any(
+        any(k in ((e.get("component_name") or e.get("salary_component") or "").lower()) for k in ["earned leave", "el"])
+        for e in prorated_earnings
+    )
+
+    if has_bonus_in_earnings or "staff" in emp_type:
+        bonus_provision = 0.0
+    else:
+        bonus_provision = float(round(earned_gross_salary * bonus_rate)) if enable_bonus else 0.0
+
+    if has_el_in_earnings or "staff" in emp_type:
+        el_provision = 0.0
+    else:
+        el_provision = float(round((earned_gross_salary / 26.0) * (el_days / 12.0))) if (enable_el and month_working_days) else 0.0
     total_monthly_ctc = round(grand_gross_pay + total_employer_contrib + bonus_provision + el_provision, 2)
 
     res = {
@@ -985,6 +1038,8 @@ def preview_salary_slip(employee, start_date, end_date):
         "bonus_provision_rate": round(bonus_rate * 100.0, 2) if enable_bonus else 0.0,
         "enable_el_provision": enable_el,
         "el_provision_days_per_year": el_days if enable_el else 0.0,
+        "has_bonus_in_earnings": has_bonus_in_earnings,
+        "has_el_in_earnings": has_el_in_earnings,
         "enable_workers_tea_allowance": enable_tea,
         "workers_tea_allowance_per_day": round(tea_rate, 2),
         # Detailed Breakdown Fields
@@ -1038,6 +1093,8 @@ def get_salary_slip_with_details(name):
     """
     doc = frappe.get_doc("Salary Slip", name)
     res = doc.as_dict()
+    settings = frappe.get_single("HRMS Settings")
+    emp_type = (doc.employee_type or res.get("employee_type") or "").lower()
 
     # Enrich with Employee Details (Bank Account, etc.)
     if doc.employee:
@@ -1076,6 +1133,7 @@ def get_salary_slip_with_details(name):
     emp_deductions_map = {}
     base_gross_total = 0.0
     base_deductions_total = 0.0
+    std_basic_da = 0.0
 
     emp = None
     if doc.employee:
@@ -1083,16 +1141,33 @@ def get_salary_slip_with_details(name):
             emp = frappe.get_doc("Employee", doc.employee)
             emp_earnings_map = { (e.component_name or e.salary_component or ""): flt(e.amount) for e in emp.earnings }
             emp_deductions_map = { (d.component_name or d.salary_component or ""): flt(d.amount) for d in emp.deductions }
+            std_basic_da = sum(
+                flt(e.amount) for e in emp.earnings
+                if any(k in (e.component_name or e.salary_component or "").lower() for k in ["basic", "da", "dearness"])
+            )
             base_gross_total = round(sum(flt(e.amount) for e in emp.earnings), 2)
             base_deductions_total = round(sum(flt(d.amount) for d in emp.deductions), 2)
         except Exception:
             pass
 
+    bonus_rate = (flt(get_category_setting(settings, "bonus_provision_rate", emp_type, default=8.33)) / 100.0)
+    el_days = flt(get_category_setting(settings, "el_provision_days_per_year", emp_type, default=14.0 if ("staff" in emp_type) else 15.6))
+
     enriched_earnings = []
     for e in doc.earnings:
         item = e.as_dict()
         c_name = e.component_name or e.salary_component or ""
-        item["standard_amount"] = emp_earnings_map.get(c_name, 0.0)
+        c_name_lower = c_name.lower().strip()
+        std_val = emp_earnings_map.get(c_name, 0.0)
+
+        if std_val <= 0 and std_basic_da > 0:
+            if c_name_lower in ["bonus", "bonus provision"]:
+                std_val = excel_round(std_basic_da * (bonus_rate if bonus_rate > 0 else 0.0833))
+            elif any(k in c_name_lower for k in ["earned leave", "el"]):
+                staff_el_days = el_days if el_days > 0 else 14.0
+                std_val = excel_round(((std_basic_da / 26.0) * (staff_el_days / 12.0)))
+
+        item["standard_amount"] = std_val
         enriched_earnings.append(item)
     res["earnings"] = enriched_earnings
 
@@ -1104,7 +1179,11 @@ def get_salary_slip_with_details(name):
         enriched_deductions.append(item)
     res["deductions"] = enriched_deductions
 
-    res["base_gross_pay"] = base_gross_total or sum(
+    computed_base_gross = sum(
+        flt(e["standard_amount"]) for e in enriched_earnings
+        if (e.get("component_name") or e.get("salary_component") or "") not in ["Overtime Pay (OT)", "Overtime Allowance", "Attendance Bonus"]
+    )
+    res["base_gross_pay"] = computed_base_gross or base_gross_total or sum(
         flt(e.amount) for e in doc.earnings
         if (e.component_name or e.salary_component or "") not in ["Overtime Pay (OT)", "Overtime Allowance", "Attendance Bonus"]
     )
@@ -1219,8 +1298,26 @@ def get_salary_slip_with_details(name):
     tea_expenses = float(round(present_days_val * tea_rate)) if ("worker" in emp_type and enable_tea) else 0.0
     total_employer_contrib = round(employer_pf + pf_admin_charges + edli_charges + employer_esi + tea_expenses, 2)
 
-    bonus_provision = float(round(pf_base_for_employer * bonus_rate)) if enable_bonus else 0.0
-    el_provision = float(round((pf_base_for_employer / 26.0) * (el_days / 12.0))) if enable_el else 0.0
+    earnings_list = doc.earnings if hasattr(doc, "earnings") else []
+    has_bonus_in_earnings = any(
+        "bonus" in ((getattr(e, "component_name", None) or getattr(e, "salary_component", None) or (e.get("component_name") if isinstance(e, dict) else "") or "").lower())
+        for e in earnings_list
+        if "attendance" not in ((getattr(e, "component_name", None) or getattr(e, "salary_component", None) or (e.get("component_name") if isinstance(e, dict) else "") or "").lower())
+    )
+    has_el_in_earnings = any(
+        any(k in ((getattr(e, "component_name", None) or getattr(e, "salary_component", None) or (e.get("component_name") if isinstance(e, dict) else "") or "").lower()) for k in ["earned leave", "el"])
+        for e in earnings_list
+    )
+
+    if has_bonus_in_earnings or "staff" in emp_type:
+        bonus_provision = 0.0
+    else:
+        bonus_provision = float(round(earned_gross_salary * bonus_rate)) if enable_bonus else 0.0
+
+    if has_el_in_earnings or "staff" in emp_type:
+        el_provision = 0.0
+    else:
+        el_provision = float(round((earned_gross_salary / 26.0) * (el_days / 12.0))) if enable_el else 0.0
     total_monthly_ctc = round(gross_val + total_employer_contrib + bonus_provision + el_provision, 2)
 
     res.update({
@@ -1242,6 +1339,8 @@ def get_salary_slip_with_details(name):
         "bonus_provision_rate": round(bonus_rate * 100.0, 2) if enable_bonus else 0.0,
         "enable_el_provision": enable_el,
         "el_provision_days_per_year": el_days if enable_el else 0.0,
+        "has_bonus_in_earnings": has_bonus_in_earnings,
+        "has_el_in_earnings": has_el_in_earnings,
         "enable_workers_tea_allowance": enable_tea,
         "workers_tea_allowance_per_day": round(tea_rate, 2),
     })
