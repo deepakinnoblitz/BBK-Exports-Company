@@ -1198,3 +1198,29 @@ def get_filtered_employee_ids(department=None, shift=None, line_order=None, sear
 
 	ids = frappe.db.sql(f"SELECT name FROM `tabEmployee` {where_clause} ORDER BY employee_name ASC", values, pluck="name")
 	return ids
+
+
+@frappe.whitelist()
+def get_line_report(from_date=None, to_date=None, employee=None, line=None, status=None, department=None):
+	"""
+	Returns the Line Report columns and dataset.
+	"""
+	from company.company.report.line_report.line_report import execute
+	if isinstance(employee, str) and (employee.startswith("[") or employee.startswith("{")):
+		try:
+			employee = json.loads(employee)
+		except Exception:
+			pass
+	filters = {
+		"from_date": from_date,
+		"to_date": to_date,
+		"employee": employee,
+		"line": line,
+		"status": status,
+		"department": department
+	}
+	columns, data = execute(filters)
+	return {
+		"columns": columns,
+		"result": data
+	}
