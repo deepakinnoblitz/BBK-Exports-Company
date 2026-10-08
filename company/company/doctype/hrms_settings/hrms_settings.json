@@ -109,7 +109,78 @@
   "show_attendance_list",
   "show_daily_log",
   "show_attendance_report",
-  "show_daily_log_report"
+  "show_daily_log_report",
+  "staff_ctc_enable_pt",
+  "staff_ctc_pt_deduction_frequency",
+  "staff_ctc_pt_half_yearly_months",
+  "staff_ctc_pt_slabs",
+  "staff_ctc_enable_auto_pf",
+  "staff_ctc_apply_pf_ceiling",
+  "staff_ctc_employee_pf_rate",
+  "staff_ctc_pf_wage_ceiling",
+  "staff_ctc_employee_pf_max_amount",
+  "staff_ctc_pf_wage_basis",
+  "staff_ctc_enable_auto_esi",
+  "staff_ctc_employee_esi_rate",
+  "staff_ctc_esi_wage_ceiling",
+  "staff_ctc_esi_rounding_method",
+  "staff_ctc_employer_pf_rate",
+  "staff_ctc_employer_pf_wage_ceiling",
+  "staff_ctc_employer_pf_max_amount",
+  "staff_ctc_pf_admin_rate",
+  "staff_ctc_edli_rate",
+  "staff_ctc_employer_esi_rate",
+  "staff_ctc_enable_bonus_provision",
+  "staff_ctc_bonus_provision_rate",
+  "staff_ctc_enable_el_provision",
+  "staff_ctc_el_provision_days_per_year",
+  "staff_non_ctc_enable_pt",
+  "staff_non_ctc_pt_deduction_frequency",
+  "staff_non_ctc_pt_half_yearly_months",
+  "staff_non_ctc_pt_slabs",
+  "staff_non_ctc_enable_auto_pf",
+  "staff_non_ctc_apply_pf_ceiling",
+  "staff_non_ctc_employee_pf_rate",
+  "staff_non_ctc_pf_wage_ceiling",
+  "staff_non_ctc_employee_pf_max_amount",
+  "staff_non_ctc_pf_wage_basis",
+  "staff_non_ctc_enable_auto_esi",
+  "staff_non_ctc_employee_esi_rate",
+  "staff_non_ctc_esi_wage_ceiling",
+  "staff_non_ctc_esi_rounding_method",
+  "staff_non_ctc_employer_pf_rate",
+  "staff_non_ctc_employer_pf_wage_ceiling",
+  "staff_non_ctc_employer_pf_max_amount",
+  "staff_non_ctc_pf_admin_rate",
+  "staff_non_ctc_edli_rate",
+  "staff_non_ctc_employer_esi_rate",
+  "staff_non_ctc_enable_bonus_provision",
+  "staff_non_ctc_bonus_provision_rate",
+  "staff_non_ctc_enable_el_provision",
+  "staff_non_ctc_el_provision_days_per_year",
+  "apply_pf_ceiling",
+  "workers_apply_pf_ceiling",
+  "north_indian_apply_pf_ceiling",
+  "enable_tea_allowance",
+  "tea_allowance_per_day",
+  "enable_lunch_allowance",
+  "lunch_allowance_per_meal",
+  "lunch_allowance_per_day",
+  "staff_ctc_enable_tea_allowance",
+  "staff_ctc_tea_allowance_per_day",
+  "staff_ctc_enable_lunch_allowance",
+  "staff_ctc_lunch_allowance_per_meal",
+  "staff_non_ctc_enable_tea_allowance",
+  "staff_non_ctc_tea_allowance_per_day",
+  "staff_non_ctc_enable_lunch_allowance",
+  "staff_non_ctc_lunch_allowance_per_meal",
+  "workers_enable_tea_allowance",
+  "workers_enable_lunch_allowance",
+  "workers_lunch_allowance_per_meal",
+  "north_indian_enable_tea_allowance",
+  "north_indian_tea_allowance_per_day",
+  "north_indian_enable_lunch_allowance",
+  "north_indian_lunch_allowance_per_meal"
  ],
  "fields": [
   {
@@ -235,7 +306,7 @@
    "default": "100",
    "fieldname": "north_indian_ot_rate",
    "fieldtype": "Currency",
-   "label": "North Indian OT Rate (₹/Hour)"
+   "label": "North Indian OT Rate (\u20b9/Hour)"
   },
   {
    "default": "1500",
@@ -261,14 +332,14 @@
    "depends_on": "eval:doc.enable_auto_pf == 1",
    "fieldname": "pf_wage_ceiling",
    "fieldtype": "Currency",
-   "label": "PF Statutory Wage Ceiling (₹)"
+   "label": "PF Statutory Wage Ceiling (\u20b9)"
   },
   {
    "default": "1800",
    "depends_on": "eval:doc.enable_auto_pf == 1",
    "fieldname": "employee_pf_max_amount",
    "fieldtype": "Currency",
-   "label": "Max Employee PF Deduction (₹)"
+   "label": "Max Employee PF Deduction (\u20b9)"
   },
   {
    "default": "[\"Basic Pay\", \"DA\", \"Other Allowance\"]",
@@ -295,7 +366,7 @@
    "depends_on": "eval:doc.enable_auto_esi == 1",
    "fieldname": "esi_wage_ceiling",
    "fieldtype": "Currency",
-   "label": "ESI Statutory Wage Ceiling (₹)"
+   "label": "ESI Statutory Wage Ceiling (\u20b9)"
   },
   {
    "default": "Round Up to Next Rupee (ROUNDUP / CEIL)",
@@ -315,13 +386,13 @@
    "default": "15000",
    "fieldname": "employer_pf_wage_ceiling",
    "fieldtype": "Currency",
-   "label": "Employer PF Wage Ceiling (₹)"
+   "label": "Employer PF Wage Ceiling (\u20b9)"
   },
   {
    "default": "1800",
    "fieldname": "employer_pf_max_amount",
    "fieldtype": "Currency",
-   "label": "Max Employer PF Contribution (₹)"
+   "label": "Max Employer PF Contribution (\u20b9)"
   },
   {
    "default": "0.5",
@@ -377,7 +448,7 @@
    "default": "5",
    "fieldname": "workers_tea_allowance_per_day",
    "fieldtype": "Currency",
-   "label": "Workers Tea Allowance (₹/Day Worked)",
+   "label": "Workers Tea Allowance (\u20b9/Day Worked)",
    "depends_on": "eval:doc.enable_workers_tea_allowance == 1"
   },
   {
@@ -534,13 +605,13 @@
   {
    "fieldname": "workers_pf_wage_ceiling",
    "fieldtype": "Currency",
-   "label": "Workers PF Ceiling (₹)",
+   "label": "Workers PF Ceiling (\u20b9)",
    "default": "15000"
   },
   {
    "fieldname": "workers_employee_pf_max_amount",
    "fieldtype": "Currency",
-   "label": "Workers Max Employee PF (₹)",
+   "label": "Workers Max Employee PF (\u20b9)",
    "default": "1800"
   },
   {
@@ -563,7 +634,7 @@
   {
    "fieldname": "workers_esi_wage_ceiling",
    "fieldtype": "Currency",
-   "label": "Workers ESI Ceiling (₹)",
+   "label": "Workers ESI Ceiling (\u20b9)",
    "default": "21000"
   },
   {
@@ -582,13 +653,13 @@
   {
    "fieldname": "workers_employer_pf_wage_ceiling",
    "fieldtype": "Currency",
-   "label": "Workers Employer PF Ceiling (₹)",
+   "label": "Workers Employer PF Ceiling (\u20b9)",
    "default": "15000"
   },
   {
    "fieldname": "workers_employer_pf_max_amount",
    "fieldtype": "Currency",
-   "label": "Workers Max Employer PF (₹)",
+   "label": "Workers Max Employer PF (\u20b9)",
    "default": "1800"
   },
   {
@@ -672,13 +743,13 @@
   {
    "fieldname": "north_indian_pf_wage_ceiling",
    "fieldtype": "Currency",
-   "label": "North Indian PF Ceiling (₹)",
+   "label": "North Indian PF Ceiling (\u20b9)",
    "default": "15000"
   },
   {
    "fieldname": "north_indian_employee_pf_max_amount",
    "fieldtype": "Currency",
-   "label": "North Indian Max Employee PF (₹)",
+   "label": "North Indian Max Employee PF (\u20b9)",
    "default": "1800"
   },
   {
@@ -701,7 +772,7 @@
   {
    "fieldname": "north_indian_esi_wage_ceiling",
    "fieldtype": "Currency",
-   "label": "North Indian ESI Ceiling (₹)",
+   "label": "North Indian ESI Ceiling (\u20b9)",
    "default": "21000"
   },
   {
@@ -720,13 +791,13 @@
   {
    "fieldname": "north_indian_employer_pf_wage_ceiling",
    "fieldtype": "Currency",
-   "label": "North Indian Employer PF Ceiling (₹)",
+   "label": "North Indian Employer PF Ceiling (\u20b9)",
    "default": "15000"
   },
   {
    "fieldname": "north_indian_employer_pf_max_amount",
    "fieldtype": "Currency",
-   "label": "North Indian Max Employer PF (₹)",
+   "label": "North Indian Max Employer PF (\u20b9)",
    "default": "1800"
   },
   {
@@ -770,6 +841,438 @@
    "fieldtype": "Float",
    "label": "North Indian EL Provision Days / Year",
    "default": "15.6"
+  },
+  {
+   "fieldname": "staff_ctc_enable_pt",
+   "fieldtype": "Check",
+   "label": "Staff CTC Enable PT",
+   "default": "1"
+  },
+  {
+   "fieldname": "staff_ctc_pt_deduction_frequency",
+   "fieldtype": "Select",
+   "label": "Staff CTC PT Frequency",
+   "default": "Half-Yearly Deduction",
+   "options": "Half-Yearly Deduction\nEvery Month Deduction"
+  },
+  {
+   "fieldname": "staff_ctc_pt_half_yearly_months",
+   "fieldtype": "Select",
+   "label": "Staff CTC PT Half-Yearly Cycle Months",
+   "default": "April, September",
+   "options": "April, September\nMarch, September\nApril, October"
+  },
+  {
+   "fieldname": "staff_ctc_pt_slabs",
+   "fieldtype": "Long Text",
+   "label": "Staff CTC PT Slabs",
+   "default": ""
+  },
+  {
+   "fieldname": "staff_ctc_enable_auto_pf",
+   "fieldtype": "Check",
+   "label": "Staff CTC Enable Auto PF",
+   "default": "1"
+  },
+  {
+   "fieldname": "staff_ctc_apply_pf_ceiling",
+   "fieldtype": "Check",
+   "label": "Staff CTC Apply PF Wage Ceiling",
+   "default": "0"
+  },
+  {
+   "fieldname": "staff_ctc_employee_pf_rate",
+   "fieldtype": "Float",
+   "label": "Staff CTC Employee PF Rate (%)",
+   "default": "12"
+  },
+  {
+   "fieldname": "staff_ctc_pf_wage_ceiling",
+   "fieldtype": "Currency",
+   "label": "Staff CTC PF Statutory Wage Ceiling (\u20b9)",
+   "default": "0"
+  },
+  {
+   "fieldname": "staff_ctc_employee_pf_max_amount",
+   "fieldtype": "Currency",
+   "label": "Staff CTC Max Employee PF Deduction (\u20b9)",
+   "default": "0"
+  },
+  {
+   "fieldname": "staff_ctc_pf_wage_basis",
+   "fieldtype": "Small Text",
+   "label": "Staff CTC PF Wage Basis Components",
+   "default": "[\"Basic Pay\", \"DA\"]"
+  },
+  {
+   "fieldname": "staff_ctc_enable_auto_esi",
+   "fieldtype": "Check",
+   "label": "Staff CTC Enable Auto ESI",
+   "default": "1"
+  },
+  {
+   "fieldname": "staff_ctc_employee_esi_rate",
+   "fieldtype": "Float",
+   "label": "Staff CTC Employee ESI Rate (%)",
+   "default": "0.75"
+  },
+  {
+   "fieldname": "staff_ctc_esi_wage_ceiling",
+   "fieldtype": "Currency",
+   "label": "Staff CTC ESI Statutory Wage Ceiling (\u20b9)",
+   "default": "21000"
+  },
+  {
+   "fieldname": "staff_ctc_esi_rounding_method",
+   "fieldtype": "Select",
+   "label": "Staff CTC ESI Rounding Method",
+   "default": "Round Up to Next Rupee (ROUNDUP / CEIL)",
+   "options": "Round Up to Next Rupee (ROUNDUP / CEIL)\nStandard Nearest Rupee (ROUND)"
+  },
+  {
+   "fieldname": "staff_ctc_employer_pf_rate",
+   "fieldtype": "Float",
+   "label": "Staff CTC Employer PF Rate (%)",
+   "default": "12"
+  },
+  {
+   "fieldname": "staff_ctc_employer_pf_wage_ceiling",
+   "fieldtype": "Currency",
+   "label": "Staff CTC Employer PF Wage Ceiling (\u20b9)",
+   "default": "15000"
+  },
+  {
+   "fieldname": "staff_ctc_employer_pf_max_amount",
+   "fieldtype": "Currency",
+   "label": "Staff CTC Max Employer PF Contribution (\u20b9)",
+   "default": "1800"
+  },
+  {
+   "fieldname": "staff_ctc_pf_admin_rate",
+   "fieldtype": "Float",
+   "label": "Staff CTC PF Admin Charges Rate (%)",
+   "default": "0.5"
+  },
+  {
+   "fieldname": "staff_ctc_edli_rate",
+   "fieldtype": "Float",
+   "label": "Staff CTC EDLI Charges Rate (%)",
+   "default": "0.5"
+  },
+  {
+   "fieldname": "staff_ctc_employer_esi_rate",
+   "fieldtype": "Float",
+   "label": "Staff CTC Employer ESI Rate (%)",
+   "default": "3.25"
+  },
+  {
+   "fieldname": "staff_ctc_enable_bonus_provision",
+   "fieldtype": "Check",
+   "label": "Staff CTC Enable Bonus Provision",
+   "default": "0"
+  },
+  {
+   "fieldname": "staff_ctc_bonus_provision_rate",
+   "fieldtype": "Float",
+   "label": "Staff CTC Bonus Provision Rate (%)",
+   "default": "8.33"
+  },
+  {
+   "fieldname": "staff_ctc_enable_el_provision",
+   "fieldtype": "Check",
+   "label": "Staff CTC Enable EL Provision",
+   "default": "0"
+  },
+  {
+   "fieldname": "staff_ctc_el_provision_days_per_year",
+   "fieldtype": "Float",
+   "label": "Staff CTC EL Provision Days / Year",
+   "default": "15.6"
+  },
+  {
+   "fieldname": "staff_non_ctc_enable_pt",
+   "fieldtype": "Check",
+   "label": "Staff Non CTC Enable PT",
+   "default": "1"
+  },
+  {
+   "fieldname": "staff_non_ctc_pt_deduction_frequency",
+   "fieldtype": "Select",
+   "label": "Staff Non CTC PT Frequency",
+   "default": "Half-Yearly Deduction",
+   "options": "Half-Yearly Deduction\nEvery Month Deduction"
+  },
+  {
+   "fieldname": "staff_non_ctc_pt_half_yearly_months",
+   "fieldtype": "Select",
+   "label": "Staff Non CTC PT Half-Yearly Cycle Months",
+   "default": "April, September",
+   "options": "April, September\nMarch, September\nApril, October"
+  },
+  {
+   "fieldname": "staff_non_ctc_pt_slabs",
+   "fieldtype": "Long Text",
+   "label": "Staff Non CTC PT Slabs",
+   "default": ""
+  },
+  {
+   "fieldname": "staff_non_ctc_enable_auto_pf",
+   "fieldtype": "Check",
+   "label": "Staff Non CTC Enable Auto PF",
+   "default": "1"
+  },
+  {
+   "fieldname": "staff_non_ctc_apply_pf_ceiling",
+   "fieldtype": "Check",
+   "label": "Staff Non CTC Apply PF Wage Ceiling",
+   "default": "1"
+  },
+  {
+   "fieldname": "staff_non_ctc_employee_pf_rate",
+   "fieldtype": "Float",
+   "label": "Staff Non CTC Employee PF Rate (%)",
+   "default": "12"
+  },
+  {
+   "fieldname": "staff_non_ctc_pf_wage_ceiling",
+   "fieldtype": "Currency",
+   "label": "Staff Non CTC PF Statutory Wage Ceiling (\u20b9)",
+   "default": "15000"
+  },
+  {
+   "fieldname": "staff_non_ctc_employee_pf_max_amount",
+   "fieldtype": "Currency",
+   "label": "Staff Non CTC Max Employee PF Deduction (\u20b9)",
+   "default": "1800"
+  },
+  {
+   "fieldname": "staff_non_ctc_pf_wage_basis",
+   "fieldtype": "Small Text",
+   "label": "Staff Non CTC PF Wage Basis Components",
+   "default": "[\"Basic Pay\", \"DA\", \"Other Allowance\"]"
+  },
+  {
+   "fieldname": "staff_non_ctc_enable_auto_esi",
+   "fieldtype": "Check",
+   "label": "Staff Non CTC Enable Auto ESI",
+   "default": "1"
+  },
+  {
+   "fieldname": "staff_non_ctc_employee_esi_rate",
+   "fieldtype": "Float",
+   "label": "Staff Non CTC Employee ESI Rate (%)",
+   "default": "0.75"
+  },
+  {
+   "fieldname": "staff_non_ctc_esi_wage_ceiling",
+   "fieldtype": "Currency",
+   "label": "Staff Non CTC ESI Statutory Wage Ceiling (\u20b9)",
+   "default": "21000"
+  },
+  {
+   "fieldname": "staff_non_ctc_esi_rounding_method",
+   "fieldtype": "Select",
+   "label": "Staff Non CTC ESI Rounding Method",
+   "default": "Round Up to Next Rupee (ROUNDUP / CEIL)",
+   "options": "Round Up to Next Rupee (ROUNDUP / CEIL)\nStandard Nearest Rupee (ROUND)"
+  },
+  {
+   "fieldname": "staff_non_ctc_employer_pf_rate",
+   "fieldtype": "Float",
+   "label": "Staff Non CTC Employer PF Rate (%)",
+   "default": "12"
+  },
+  {
+   "fieldname": "staff_non_ctc_employer_pf_wage_ceiling",
+   "fieldtype": "Currency",
+   "label": "Staff Non CTC Employer PF Wage Ceiling (\u20b9)",
+   "default": "15000"
+  },
+  {
+   "fieldname": "staff_non_ctc_employer_pf_max_amount",
+   "fieldtype": "Currency",
+   "label": "Staff Non CTC Max Employer PF Contribution (\u20b9)",
+   "default": "1800"
+  },
+  {
+   "fieldname": "staff_non_ctc_pf_admin_rate",
+   "fieldtype": "Float",
+   "label": "Staff Non CTC PF Admin Charges Rate (%)",
+   "default": "0.5"
+  },
+  {
+   "fieldname": "staff_non_ctc_edli_rate",
+   "fieldtype": "Float",
+   "label": "Staff Non CTC EDLI Charges Rate (%)",
+   "default": "0.5"
+  },
+  {
+   "fieldname": "staff_non_ctc_employer_esi_rate",
+   "fieldtype": "Float",
+   "label": "Staff Non CTC Employer ESI Rate (%)",
+   "default": "3.25"
+  },
+  {
+   "fieldname": "staff_non_ctc_enable_bonus_provision",
+   "fieldtype": "Check",
+   "label": "Staff Non CTC Enable Bonus Provision",
+   "default": "1"
+  },
+  {
+   "fieldname": "staff_non_ctc_bonus_provision_rate",
+   "fieldtype": "Float",
+   "label": "Staff Non CTC Bonus Provision Rate (%)",
+   "default": "8.33"
+  },
+  {
+   "fieldname": "staff_non_ctc_enable_el_provision",
+   "fieldtype": "Check",
+   "label": "Staff Non CTC Enable EL Provision",
+   "default": "1"
+  },
+  {
+   "fieldname": "staff_non_ctc_el_provision_days_per_year",
+   "fieldtype": "Float",
+   "label": "Staff Non CTC EL Provision Days / Year",
+   "default": "15.6"
+  },
+  {
+   "fieldname": "apply_pf_ceiling",
+   "fieldtype": "Check",
+   "label": "Apply PF Wage Ceiling",
+   "default": "1"
+  },
+  {
+   "fieldname": "workers_apply_pf_ceiling",
+   "fieldtype": "Check",
+   "label": "Workers Apply PF Wage Ceiling",
+   "default": "1"
+  },
+  {
+   "fieldname": "north_indian_apply_pf_ceiling",
+   "fieldtype": "Check",
+   "label": "North Indian Apply PF Wage Ceiling",
+   "default": "1"
+  },
+  {
+   "default": "1",
+   "fieldname": "enable_tea_allowance",
+   "fieldtype": "Check",
+   "label": "Enable Tea Allowance"
+  },
+  {
+   "default": "14",
+   "fieldname": "tea_allowance_per_day",
+   "fieldtype": "Currency",
+   "label": "Tea Allowance (\u20b9/Day)"
+  },
+  {
+   "default": "1",
+   "fieldname": "enable_lunch_allowance",
+   "fieldtype": "Check",
+   "label": "Enable Lunch Allowance"
+  },
+  {
+   "default": "50",
+   "fieldname": "lunch_allowance_per_meal",
+   "fieldtype": "Currency",
+   "label": "Lunch Allowance (\u20b9/Meal)"
+  },
+  {
+   "default": "50",
+   "fieldname": "lunch_allowance_per_day",
+   "fieldtype": "Currency",
+   "label": "Lunch Allowance (\u20b9/Day)"
+  },
+  {
+   "default": "1",
+   "fieldname": "staff_ctc_enable_tea_allowance",
+   "fieldtype": "Check",
+   "label": "Staff CTC Enable Tea Allowance"
+  },
+  {
+   "default": "14",
+   "fieldname": "staff_ctc_tea_allowance_per_day",
+   "fieldtype": "Currency",
+   "label": "Staff CTC Tea Allowance (\u20b9/Day)"
+  },
+  {
+   "default": "1",
+   "fieldname": "staff_ctc_enable_lunch_allowance",
+   "fieldtype": "Check",
+   "label": "Staff CTC Enable Lunch Allowance"
+  },
+  {
+   "default": "50",
+   "fieldname": "staff_ctc_lunch_allowance_per_meal",
+   "fieldtype": "Currency",
+   "label": "Staff CTC Lunch Allowance (\u20b9/Meal)"
+  },
+  {
+   "default": "1",
+   "fieldname": "staff_non_ctc_enable_tea_allowance",
+   "fieldtype": "Check",
+   "label": "Staff Non-CTC Enable Tea Allowance"
+  },
+  {
+   "default": "14",
+   "fieldname": "staff_non_ctc_tea_allowance_per_day",
+   "fieldtype": "Currency",
+   "label": "Staff Non-CTC Tea Allowance (\u20b9/Day)"
+  },
+  {
+   "default": "1",
+   "fieldname": "staff_non_ctc_enable_lunch_allowance",
+   "fieldtype": "Check",
+   "label": "Staff Non-CTC Enable Lunch Allowance"
+  },
+  {
+   "default": "50",
+   "fieldname": "staff_non_ctc_lunch_allowance_per_meal",
+   "fieldtype": "Currency",
+   "label": "Staff Non-CTC Lunch Allowance (\u20b9/Meal)"
+  },
+  {
+   "default": "1",
+   "fieldname": "workers_enable_tea_allowance",
+   "fieldtype": "Check",
+   "label": "Workers Enable Tea Allowance"
+  },
+  {
+   "default": "1",
+   "fieldname": "workers_enable_lunch_allowance",
+   "fieldtype": "Check",
+   "label": "Workers Enable Lunch Allowance"
+  },
+  {
+   "default": "50",
+   "fieldname": "workers_lunch_allowance_per_meal",
+   "fieldtype": "Currency",
+   "label": "Workers Lunch Allowance (\u20b9/Meal)"
+  },
+  {
+   "default": "1",
+   "fieldname": "north_indian_enable_tea_allowance",
+   "fieldtype": "Check",
+   "label": "North Indian Enable Tea Allowance"
+  },
+  {
+   "default": "5",
+   "fieldname": "north_indian_tea_allowance_per_day",
+   "fieldtype": "Currency",
+   "label": "North Indian Tea Allowance (\u20b9/Day)"
+  },
+  {
+   "default": "1",
+   "fieldname": "north_indian_enable_lunch_allowance",
+   "fieldtype": "Check",
+   "label": "North Indian Enable Lunch Allowance"
+  },
+  {
+   "default": "50",
+   "fieldname": "north_indian_lunch_allowance_per_meal",
+   "fieldtype": "Currency",
+   "label": "North Indian Lunch Allowance (\u20b9/Meal)"
   }
  ],
  "issingle": 1,

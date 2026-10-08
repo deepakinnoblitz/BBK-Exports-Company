@@ -4,6 +4,7 @@ from frappe.model.document import Document
 
 class Attendance(Document):
     def validate(self):
+        self.docstatus = 0
         self.check_duplicate_attendance()
         self.populate_shift()
         self.sync_punches_data()
@@ -287,3 +288,53 @@ class Attendance(Document):
 
             self.official_overtime = f"{ot_hours}:{ot_minutes:02d}"
             self.unofficial_overtime = f"{ot_hours}:{ot_minutes:02d}"
+
+
+@frappe.whitelist()
+def save_attendance_record(doc):
+    import json
+    if isinstance(doc, str):
+        doc = json.loads(doc)
+
+    name = doc.get("name")
+    punches_data = doc.get("attendance_punches") or []
+
+    ignored_fields = ["name", "doctype", "attendance_punches", "creation", "modified", "modified_by", "owner", "docstatus"]
+
+    if name and frappe.db.exists("Attendance", name):
+        att_doc = frappe.get_doc("Attendance", name)
+        att_doc.update({k: v for k, v in doc.items() if k not in ignored_fields})
+        att_doc.docstatus = 0
+        
+        # Cleanly rebuild attendance punches
+        att_doc.set("attendance_punches", [])
+        for p in punches_data:
+            if p.get("punch_time"):
+                att_doc.append("attendance_punches", {
+                    "punch_time": p.get("punch_time"),
+                    "punch_type": p.get("punch_type") or "IN",
+                    "device": p.get("device") or None,
+                    "serial_number": p.get("serial_number") or None,
+                    "source": p.get("source") or "Manual",
+                    "biometric_log": p.get("biometric_log") or None
+                })
+        att_doc.save(ignore_permissions=True)
+        return att_doc.as_dict()
+    else:
+        att_doc = frappe.get_doc({
+            "doctype": "Attendance",
+            **{k: v for k, v in doc.items() if k not in ignored_fields},
+            "docstatus": 0
+        })
+        for p in punches_data:
+            if p.get("punch_time"):
+                att_doc.append("attendance_punches", {
+                    "punch_time": p.get("punch_time"),
+                    "punch_type": p.get("punch_type") or "IN",
+                    "device": p.get("device") or None,
+                    "serial_number": p.get("serial_number") or None,
+                    "source": p.get("source") or "Manual",
+                    "biometric_log": p.get("biometric_log") or None
+                })
+        att_doc.insert(ignore_permissions=True)
+        return att_doc.as_dict()

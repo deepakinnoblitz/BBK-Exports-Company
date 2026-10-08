@@ -104,14 +104,21 @@ def parse_time_to_hours(val):
 
 
 def get_category_setting(settings, fieldname, emp_type="", default=None):
-    emp_type_lower = (emp_type or "").lower()
-    prefix = ""
-    if "worker" in emp_type_lower:
-        prefix = "workers_"
-    elif "north indian" in emp_type_lower:
-        prefix = "north_indian_"
+    emp_type_clean = (emp_type or "").lower().strip()
+    prefixes = []
+    if "staff" in emp_type_clean:
+        if "non ctc" in emp_type_clean or "non-ctc" in emp_type_clean:
+            prefixes = ["staff_non_ctc_", "staff_"]
+        elif "ctc" in emp_type_clean:
+            prefixes = ["staff_ctc_", "staff_"]
+        else:
+            prefixes = ["staff_"]
+    elif "worker" in emp_type_clean:
+        prefixes = ["workers_"]
+    elif "north indian" in emp_type_clean:
+        prefixes = ["north_indian_"]
     
-    if prefix:
+    for prefix in prefixes:
         val = getattr(settings, f"{prefix}{fieldname}", None)
         if val is not None and val != "":
             return val
@@ -153,9 +160,10 @@ def calculate_attendance_bonus(emp, absent_days, settings):
 def calculate_employee_pf(emp, earned_gross_salary, earned_basic_da, settings, prorated_earnings=None):
     """
     Calculate Employee PF deduction based on HRMS Settings and Excel formula:
-    =ROUND(+IF(AND(AF6>15000),1800,IF(AND(AF6<15000),AF6*12%)),0)
+    - For Staff - CTC: =ROUND((Earned Basic + DA) * 12%, 0) (Uncapped 12%)
+    - For Staff - Non CTC / Workers: =ROUND(+IF(AND(AF6>15000),1800,IF(AND(AF6<15000),AF6*12%)),0) (Capped at 1800)
     
-    Supports dynamic selected salary components for wage basis.
+    Supports dynamic selected salary components for wage basis and ceiling cap settings.
     """
     emp_type = (emp.get("employee_type") if hasattr(emp, "get") else getattr(emp, "employee_type", "")) or ""
     enable_pf = cint(get_category_setting(settings, "enable_auto_pf", emp_type, default=1))
@@ -175,8 +183,20 @@ def calculate_employee_pf(emp, earned_gross_salary, earned_basic_da, settings, p
     if not pf_no and not has_pf_component:
         return 0.0
 
+    emp_type_clean = emp_type.lower().strip()
+    is_staff_ctc = "staff" in emp_type_clean and "ctc" in emp_type_clean and "non" not in emp_type_clean
+
     pf_rate = flt(get_category_setting(settings, "employee_pf_rate", emp_type, default=12.0)) / 100.0
-    pf_ceiling = flt(get_category_setting(settings, "pf_wage_ceiling", emp_type, default=15000.0))
+    
+    # Check if ceiling applies from settings or default for staff ctc
+    apply_ceiling_setting = get_category_setting(settings, "apply_pf_ceiling", emp_type, default=None)
+    if apply_ceiling_setting is not None and apply_ceiling_setting != "":
+        apply_ceiling = cint(apply_ceiling_setting)
+    else:
+        # Default: Staff - CTC has no ceiling (0), all other categories have ceiling enabled (1)
+        apply_ceiling = 0 if is_staff_ctc else 1
+
+    pf_ceiling = flt(get_category_setting(settings, "pf_wage_ceiling", emp_type, default=15000.0 if apply_ceiling else 0.0))
     max_pf_amount = flt(get_category_setting(settings, "employee_pf_max_amount", emp_type, default=(pf_ceiling * pf_rate if pf_ceiling > 0 else 1800.0)))
     pf_basis_raw = get_category_setting(settings, "pf_wage_basis", emp_type)
 
@@ -216,9 +236,9 @@ def calculate_employee_pf(emp, earned_gross_salary, earned_basic_da, settings, p
     elif pf_basis_raw == "Earned Basic + DA":
         base_wage = flt(earned_basic_da)
     else:
-        base_wage = flt(earned_gross_salary)
+        base_wage = flt(earned_basic_da) if (is_staff_ctc or "staff" in emp_type_clean) else flt(earned_gross_salary)
 
-    if pf_ceiling > 0 and base_wage >= pf_ceiling:
+    if apply_ceiling and pf_ceiling > 0 and base_wage >= pf_ceiling:
         return float(round(max_pf_amount))
     else:
         return float(round(base_wage * pf_rate))
@@ -238,11 +258,15 @@ def calculate_employee_esi(emp, grand_gross_pay, earned_gross_salary, settings):
 
     esi_no = emp.get("esi_no") if hasattr(emp, "get") else getattr(emp, "esi_no", None)
     has_esi_component = False
-    if hasattr(emp, "deductions"):
+    custom_esi_amount = None
+    if hasattr(emp, "deductions") and emp.deductions:
         for d in emp.deductions:
             c_name = (d.component_name or d.salary_component or "").lower() if hasattr(d, "component_name") else (d.get("component_name") or d.get("salary_component") or "").lower()
             if any(k in c_name for k in ["esi", "esic"]) and "employer" not in c_name:
                 has_esi_component = True
+                amt = flt(d.amount if hasattr(d, "amount") else d.get("amount", 0.0))
+                if amt > 0:
+                    custom_esi_amount = amt
                 break
 
     # If employee has no ESI number and ESI is not in their deduction structure, return 0
@@ -250,11 +274,11 @@ def calculate_employee_esi(emp, grand_gross_pay, earned_gross_salary, settings):
         return 0.0
 
     esi_ceiling = flt(get_category_setting(settings, "esi_wage_ceiling", emp_type, default=21000.0))
+    std_earnings = flt(emp.get("total_earnings") or 0.0) if hasattr(emp, "get") else flt(getattr(emp, "total_earnings", 0.0))
     
     # Statutory gross wage eligibility check (Gross <= ₹21,000)
-    std_earnings = flt(emp.get("total_earnings") or 0.0) if hasattr(emp, "get") else flt(getattr(emp, "total_earnings", 0.0))
     if esi_ceiling > 0 and earned_gross_salary > esi_ceiling and std_earnings > esi_ceiling:
-        return 0.0
+        return float(custom_esi_amount) if custom_esi_amount is not None else 0.0
 
     esi_rate = flt(get_category_setting(settings, "employee_esi_rate", emp_type, default=0.75)) / 100.0
     rounding_method = get_category_setting(settings, "esi_rounding_method", emp_type, default="Round Up to Next Rupee (ROUNDUP / CEIL)")
@@ -705,8 +729,20 @@ def preview_salary_slip(employee, start_date, end_date):
         period_factor = (payable_days / month_working_days) if month_working_days else 1.0
 
     gross_pay = flt(emp.total_earnings)
-    base_deductions = flt(emp.total_deductions)
-    
+    emp_type = (emp.get("employee_type") or "").lower()
+    is_staff = "staff" in emp_type
+
+    bonus_rate = (flt(get_category_setting(settings, "bonus_provision_rate", emp_type, default=8.33)) / 100.0)
+    el_days = flt(get_category_setting(settings, "el_provision_days_per_year", emp_type, default=14.0 if is_staff else 15.6))
+
+    # Identify standard basic + DA in employee earnings
+    std_basic_da = sum(
+        flt(e.amount) for e in emp.earnings
+        if any(k in (e.component_name or e.salary_component or "").lower() for k in ["basic", "da", "dearness"])
+    )
+    if std_basic_da <= 0:
+        std_basic_da = flt(emp.total_earnings)
+
     # Calculate individual components based on period factor (prorated for payable/present days)
     prorated_earnings = []
     base_gross_total = 0.0
@@ -716,10 +752,34 @@ def preview_salary_slip(employee, start_date, end_date):
         if c_name in ["Overtime Pay (OT)", "Overtime Allowance", "Attendance Bonus"]:
             continue
         item = e.as_dict()
-        item["standard_amount"] = flt(e.amount)
-        item["amount"] = excel_round(flt(e.amount) * period_factor)
-        base_gross_total += flt(e.amount)
+        c_name_lower = c_name.lower().strip()
+
+        if c_name_lower in ["bonus", "bonus provision"]:
+            if flt(e.amount) > 0:
+                std_bonus = flt(e.amount)
+            else:
+                std_bonus = excel_round(std_basic_da * (bonus_rate if bonus_rate > 0 else 0.0833))
+            item["standard_amount"] = std_bonus
+            item["amount"] = excel_round(std_bonus * period_factor)
+            base_gross_total += std_bonus
+        elif any(k in c_name_lower for k in ["earned leave", "el"]):
+            if flt(e.amount) > 0:
+                std_el = flt(e.amount)
+            else:
+                staff_el_days = el_days if el_days > 0 else 14.0
+                std_el = excel_round(((std_basic_da / 26.0) * (staff_el_days / 12.0)))
+            item["standard_amount"] = std_el
+            item["amount"] = excel_round(std_el * period_factor)
+            base_gross_total += std_el
+        else:
+            item["standard_amount"] = flt(e.amount)
+            item["amount"] = excel_round(flt(e.amount) * period_factor)
+            base_gross_total += flt(e.amount)
+
         prorated_earnings.append(item)
+
+    if base_gross_total > 0:
+        gross_pay = base_gross_total
 
     # 5.1. Overtime Pay Calculation
     emp_type = (emp.get("employee_type") or "").lower()
@@ -901,10 +961,13 @@ def preview_salary_slip(employee, start_date, end_date):
             employer_pf = float(round(employer_max_pf))
         else:
             employer_pf = float(round(pf_base_for_employer * pf_rate))
-        pf_admin_charges = float(round(pf_base_for_employer * pf_admin_rate))
-        edli_charges = float(round(pf_base_for_employer * edli_rate))
+        
+        # Statutory EPFO cap on EDLI and Admin Charges (₹15,000 ceiling -> max ₹75.00 each)
+        pf_statutory_base = min(pf_base_for_employer, employer_pf_ceiling) if employer_pf_ceiling > 0 else pf_base_for_employer
+        pf_admin_charges = float(round(pf_statutory_base * pf_admin_rate))
+        edli_charges = float(round(pf_statutory_base * edli_rate))
 
-    enable_esi = cint(getattr(settings, "enable_auto_esi", 1) if getattr(settings, "enable_auto_esi", None) is not None else 1)
+    enable_esi = cint(get_category_setting(settings, "enable_auto_esi", emp_type, default=1))
     esi_no = emp.get("esi_no") if hasattr(emp, "get") else getattr(emp, "esi_no", None)
     has_esi_component = False
     if hasattr(emp, "deductions") and emp.deductions:
@@ -919,14 +982,65 @@ def preview_salary_slip(employee, start_date, end_date):
     else:
         employer_esi = float(round(grand_gross_pay * esi_rate))
 
-    enable_tea = cint(getattr(settings, "enable_workers_tea_allowance", 1) if getattr(settings, "enable_workers_tea_allowance", None) is not None else 1)
-    tea_rate = flt(getattr(settings, "workers_tea_allowance_per_day", 5.0) if getattr(settings, "workers_tea_allowance_per_day", None) is not None else 5.0) if enable_tea else 0.0
-    tea_expenses = float(round(flt(present_days) * tea_rate)) if ("worker" in emp_type and enable_tea) else 0.0
-    total_employer_contrib = round(employer_pf + pf_admin_charges + edli_charges + employer_esi + tea_expenses, 2)
+    is_staff = "staff" in (emp_type or "").lower()
+    enable_tea = cint(get_category_setting(settings, "enable_tea_allowance", emp_type, default=1))
+    tea_rate_default = 14.0 if is_staff else 5.0
+    tea_rate_val = get_category_setting(settings, "tea_allowance_per_day", emp_type, default=None)
+    if tea_rate_val is None or tea_rate_val == "":
+        tea_rate = tea_rate_default
+    else:
+        tea_rate = flt(tea_rate_val)
+    tea_expenses = float(round(flt(present_days) * tea_rate)) if enable_tea else 0.0
 
-    bonus_provision = float(round(pf_base_for_employer * bonus_rate)) if enable_bonus else 0.0
-    el_provision = float(round((pf_base_for_employer / 26.0) * (el_days / 12.0))) if (enable_el and month_working_days) else 0.0
-    total_monthly_ctc = round(grand_gross_pay + total_employer_contrib + bonus_provision + el_provision, 2)
+    enable_lunch = cint(get_category_setting(settings, "enable_lunch_allowance", emp_type, default=1))
+    lunch_rate_val = get_category_setting(settings, "lunch_allowance_per_meal", emp_type, default=None)
+    if lunch_rate_val is None or lunch_rate_val == "":
+        lunch_rate_val = get_category_setting(settings, "lunch_allowance_per_day", emp_type, default=None)
+    lunch_rate = flt(lunch_rate_val) if (lunch_rate_val is not None and lunch_rate_val != "") else 50.0
+
+    canteen_entries = []
+    canteen_meals_count = 0
+    emp_id_val = getattr(emp, "employee_id", None) or (emp.get("employee_id") if isinstance(emp, dict) else "") or emp.name
+    if enable_lunch and (frappe.db.table_exists("Canteen Entry") or frappe.db.exists("DocType", "Canteen Entry")):
+        canteen_entries = frappe.db.sql(
+            """
+            SELECT name, canteen_date, meal_type, meal_count, status, source, remarks
+            FROM `tabCanteen Entry`
+            WHERE (employee = %s OR employee = %s)
+              AND canteen_date BETWEEN %s AND %s
+            ORDER BY canteen_date ASC
+            """,
+            (emp.name, emp_id_val, start_date, end_date),
+            as_dict=True
+        )
+        canteen_meals_count = sum(flt(e.get("meal_count") or 1) for e in canteen_entries)
+
+    lunch_expenses = float(round(canteen_meals_count * lunch_rate)) if enable_lunch else 0.0
+
+    # Earned CTC = Gross Earnings + Employer PF + EDLI + Admin + Employer ESI
+    earned_ctc = round(grand_gross_pay + employer_pf + pf_admin_charges + edli_charges + employer_esi, 2)
+    total_employer_contrib = round(employer_pf + pf_admin_charges + edli_charges + employer_esi, 2)
+
+    has_bonus_in_earnings = any(
+        "bonus" in ((e.get("component_name") or e.get("salary_component") or "").lower())
+        for e in prorated_earnings
+        if "attendance" not in ((e.get("component_name") or e.get("salary_component") or "").lower())
+    )
+    has_el_in_earnings = any(
+        any(k in ((e.get("component_name") or e.get("salary_component") or "").lower()) for k in ["earned leave", "el"])
+        for e in prorated_earnings
+    )
+
+    if has_bonus_in_earnings or "staff" in emp_type:
+        bonus_provision = 0.0
+    else:
+        bonus_provision = float(round(earned_gross_salary * bonus_rate)) if enable_bonus else 0.0
+
+    if has_el_in_earnings or "staff" in emp_type:
+        el_provision = 0.0
+    else:
+        el_provision = float(round((earned_gross_salary / 26.0) * (el_days / 12.0))) if (enable_el and month_working_days) else 0.0
+    total_monthly_ctc = round(earned_ctc + tea_expenses + lunch_expenses + bonus_provision + el_provision, 2)
 
     res = {
         "employee": emp.name,
@@ -972,11 +1086,14 @@ def preview_salary_slip(employee, start_date, end_date):
         "pf_admin_charges": pf_admin_charges,
         "edli_charges": edli_charges,
         "employer_esi": employer_esi,
+        "earned_ctc": earned_ctc,
         "tea_expenses": tea_expenses,
+        "lunch_expenses": lunch_expenses,
         "total_employer_contribution": total_employer_contrib,
         "bonus_provision": bonus_provision,
         "el_provision": el_provision,
         "total_monthly_ctc": total_monthly_ctc,
+        "total_ctc": total_monthly_ctc,
         "employer_pf_rate": round(pf_rate * 100.0, 2),
         "pf_admin_rate": round(pf_admin_rate * 100.0, 2),
         "edli_rate": round(edli_rate * 100.0, 2),
@@ -985,8 +1102,16 @@ def preview_salary_slip(employee, start_date, end_date):
         "bonus_provision_rate": round(bonus_rate * 100.0, 2) if enable_bonus else 0.0,
         "enable_el_provision": enable_el,
         "el_provision_days_per_year": el_days if enable_el else 0.0,
+        "has_bonus_in_earnings": has_bonus_in_earnings,
+        "has_el_in_earnings": has_el_in_earnings,
         "enable_workers_tea_allowance": enable_tea,
         "workers_tea_allowance_per_day": round(tea_rate, 2),
+        "enable_lunch_allowance": enable_lunch,
+        "lunch_allowance_per_meal": round(lunch_rate, 2),
+        "lunch_rate": lunch_rate,
+        "lunch_count": canteen_meals_count,
+        "canteen_meals_count": canteen_meals_count,
+        "canteen_entries_details": canteen_entries,
         # Detailed Breakdown Fields
         "total_days_in_period": total_days,
         "holiday_count": len(holiday_dates),
@@ -1038,6 +1163,8 @@ def get_salary_slip_with_details(name):
     """
     doc = frappe.get_doc("Salary Slip", name)
     res = doc.as_dict()
+    settings = frappe.get_single("HRMS Settings")
+    emp_type = (doc.employee_type or res.get("employee_type") or "").lower()
 
     # Enrich with Employee Details (Bank Account, etc.)
     if doc.employee:
@@ -1076,6 +1203,7 @@ def get_salary_slip_with_details(name):
     emp_deductions_map = {}
     base_gross_total = 0.0
     base_deductions_total = 0.0
+    std_basic_da = 0.0
 
     emp = None
     if doc.employee:
@@ -1083,16 +1211,33 @@ def get_salary_slip_with_details(name):
             emp = frappe.get_doc("Employee", doc.employee)
             emp_earnings_map = { (e.component_name or e.salary_component or ""): flt(e.amount) for e in emp.earnings }
             emp_deductions_map = { (d.component_name or d.salary_component or ""): flt(d.amount) for d in emp.deductions }
+            std_basic_da = sum(
+                flt(e.amount) for e in emp.earnings
+                if any(k in (e.component_name or e.salary_component or "").lower() for k in ["basic", "da", "dearness"])
+            )
             base_gross_total = round(sum(flt(e.amount) for e in emp.earnings), 2)
             base_deductions_total = round(sum(flt(d.amount) for d in emp.deductions), 2)
         except Exception:
             pass
 
+    bonus_rate = (flt(get_category_setting(settings, "bonus_provision_rate", emp_type, default=8.33)) / 100.0)
+    el_days = flt(get_category_setting(settings, "el_provision_days_per_year", emp_type, default=14.0 if ("staff" in emp_type) else 15.6))
+
     enriched_earnings = []
     for e in doc.earnings:
         item = e.as_dict()
         c_name = e.component_name or e.salary_component or ""
-        item["standard_amount"] = emp_earnings_map.get(c_name, 0.0)
+        c_name_lower = c_name.lower().strip()
+        std_val = emp_earnings_map.get(c_name, 0.0)
+
+        if std_val <= 0 and std_basic_da > 0:
+            if c_name_lower in ["bonus", "bonus provision"]:
+                std_val = excel_round(std_basic_da * (bonus_rate if bonus_rate > 0 else 0.0833))
+            elif any(k in c_name_lower for k in ["earned leave", "el"]):
+                staff_el_days = el_days if el_days > 0 else 14.0
+                std_val = excel_round(((std_basic_da / 26.0) * (staff_el_days / 12.0)))
+
+        item["standard_amount"] = std_val
         enriched_earnings.append(item)
     res["earnings"] = enriched_earnings
 
@@ -1104,7 +1249,11 @@ def get_salary_slip_with_details(name):
         enriched_deductions.append(item)
     res["deductions"] = enriched_deductions
 
-    res["base_gross_pay"] = base_gross_total or sum(
+    computed_base_gross = sum(
+        flt(e["standard_amount"]) for e in enriched_earnings
+        if (e.get("component_name") or e.get("salary_component") or "") not in ["Overtime Pay (OT)", "Overtime Allowance", "Attendance Bonus"]
+    )
+    res["base_gross_pay"] = computed_base_gross or base_gross_total or sum(
         flt(e.amount) for e in doc.earnings
         if (e.component_name or e.salary_component or "") not in ["Overtime Pay (OT)", "Overtime Allowance", "Attendance Bonus"]
     )
@@ -1196,8 +1345,11 @@ def get_salary_slip_with_details(name):
             employer_pf = float(round(employer_max_pf))
         else:
             employer_pf = float(round(pf_base_for_employer * pf_rate))
-        pf_admin_charges = float(round(pf_base_for_employer * pf_admin_rate))
-        edli_charges = float(round(pf_base_for_employer * edli_rate))
+        
+        # Statutory EPFO cap on EDLI and Admin Charges (₹15,000 ceiling -> max ₹75.00 each)
+        pf_statutory_base = min(pf_base_for_employer, employer_pf_ceiling) if employer_pf_ceiling > 0 else pf_base_for_employer
+        pf_admin_charges = float(round(pf_statutory_base * pf_admin_rate))
+        edli_charges = float(round(pf_statutory_base * edli_rate))
 
     enable_esi = cint(get_category_setting(settings, "enable_auto_esi", emp_type, default=1))
     esi_no = getattr(doc, "esi_no", None) or (emp.get("esi_no") if emp else None)
@@ -1214,14 +1366,72 @@ def get_salary_slip_with_details(name):
     else:
         employer_esi = float(round(gross_val * esi_rate))
 
-    enable_tea = cint(getattr(settings, "enable_workers_tea_allowance", 1) if getattr(settings, "enable_workers_tea_allowance", None) is not None else 1)
-    tea_rate = flt(getattr(settings, "workers_tea_allowance_per_day", 5.0) if getattr(settings, "workers_tea_allowance_per_day", None) is not None else 5.0) if enable_tea else 0.0
-    tea_expenses = float(round(present_days_val * tea_rate)) if ("worker" in emp_type and enable_tea) else 0.0
-    total_employer_contrib = round(employer_pf + pf_admin_charges + edli_charges + employer_esi + tea_expenses, 2)
+    is_staff = "staff" in (emp_type or "").lower()
+    enable_tea = cint(get_category_setting(settings, "enable_tea_allowance", emp_type, default=1))
+    tea_rate_default = 14.0 if is_staff else 5.0
+    tea_rate_val = get_category_setting(settings, "tea_allowance_per_day", emp_type, default=None)
+    if tea_rate_val is None or tea_rate_val == "":
+        tea_rate = tea_rate_default
+    else:
+        tea_rate = flt(tea_rate_val)
+    tea_expenses = float(round(present_days_val * tea_rate)) if enable_tea else 0.0
 
-    bonus_provision = float(round(pf_base_for_employer * bonus_rate)) if enable_bonus else 0.0
-    el_provision = float(round((pf_base_for_employer / 26.0) * (el_days / 12.0))) if enable_el else 0.0
-    total_monthly_ctc = round(gross_val + total_employer_contrib + bonus_provision + el_provision, 2)
+    enable_lunch = cint(get_category_setting(settings, "enable_lunch_allowance", emp_type, default=1))
+    lunch_rate_val = get_category_setting(settings, "lunch_allowance_per_meal", emp_type, default=None)
+    if lunch_rate_val is None or lunch_rate_val == "":
+        lunch_rate_val = get_category_setting(settings, "lunch_allowance_per_day", emp_type, default=None)
+    lunch_rate = flt(lunch_rate_val) if (lunch_rate_val is not None and lunch_rate_val != "") else 50.0
+
+    canteen_entries = []
+    canteen_meals_count = 0
+    emp_name = getattr(doc, "employee", None) or (emp.get("name") if emp else None)
+    emp_id = getattr(doc, "employee_id", None) or (getattr(emp, "employee_id", None) if emp else None) or emp_name
+    p_start = getattr(doc, "pay_period_start", None)
+    p_end = getattr(doc, "pay_period_end", None)
+
+    if enable_lunch and emp_name and p_start and p_end and (frappe.db.table_exists("Canteen Entry") or frappe.db.exists("DocType", "Canteen Entry")):
+        canteen_entries = frappe.db.sql(
+            """
+            SELECT name, canteen_date, meal_type, meal_count, status, source, remarks
+            FROM `tabCanteen Entry`
+            WHERE (employee = %s OR employee = %s)
+              AND canteen_date BETWEEN %s AND %s
+            ORDER BY canteen_date ASC
+            """,
+            (emp_name, emp_id, p_start, p_end),
+            as_dict=True
+        )
+        canteen_meals_count = sum(flt(e.get("meal_count") or 1) for e in canteen_entries)
+
+    lunch_expenses = float(round(canteen_meals_count * lunch_rate)) if enable_lunch else 0.0
+    if not lunch_expenses and getattr(doc, "lunch_amount", 0):
+        lunch_expenses = flt(doc.lunch_amount)
+
+    # Earned CTC = Gross Earnings + Employer PF + EDLI + Admin + Employer ESI
+    earned_ctc = round(gross_val + employer_pf + pf_admin_charges + edli_charges + employer_esi, 2)
+    total_employer_contrib = round(employer_pf + pf_admin_charges + edli_charges + employer_esi, 2)
+
+    earnings_list = doc.earnings if hasattr(doc, "earnings") else []
+    has_bonus_in_earnings = any(
+        "bonus" in ((getattr(e, "component_name", None) or getattr(e, "salary_component", None) or (e.get("component_name") if isinstance(e, dict) else "") or "").lower())
+        for e in earnings_list
+        if "attendance" not in ((getattr(e, "component_name", None) or getattr(e, "salary_component", None) or (e.get("component_name") if isinstance(e, dict) else "") or "").lower())
+    )
+    has_el_in_earnings = any(
+        any(k in ((getattr(e, "component_name", None) or getattr(e, "salary_component", None) or (e.get("component_name") if isinstance(e, dict) else "") or "").lower()) for k in ["earned leave", "el"])
+        for e in earnings_list
+    )
+
+    if has_bonus_in_earnings or "staff" in emp_type:
+        bonus_provision = 0.0
+    else:
+        bonus_provision = float(round(earned_gross_salary * bonus_rate)) if enable_bonus else 0.0
+
+    if has_el_in_earnings or "staff" in emp_type:
+        el_provision = 0.0
+    else:
+        el_provision = float(round((earned_gross_salary / 26.0) * (el_days / 12.0))) if enable_el else 0.0
+    total_monthly_ctc = round(earned_ctc + tea_expenses + lunch_expenses + bonus_provision + el_provision, 2)
 
     res.update({
         "earned_gross_salary": earned_gross_salary,
@@ -1229,11 +1439,19 @@ def get_salary_slip_with_details(name):
         "pf_admin_charges": pf_admin_charges,
         "edli_charges": edli_charges,
         "employer_esi": employer_esi,
+        "earned_ctc": earned_ctc,
         "tea_expenses": tea_expenses,
+        "lunch_expenses": lunch_expenses,
+        "lunch_count": canteen_meals_count,
+        "canteen_meals_count": canteen_meals_count,
+        "lunch_rate": lunch_rate,
+        "enable_lunch_allowance": enable_lunch,
+        "canteen_entries_details": canteen_entries,
         "total_employer_contribution": total_employer_contrib,
         "bonus_provision": bonus_provision,
         "el_provision": el_provision,
         "total_monthly_ctc": total_monthly_ctc,
+        "total_ctc": total_monthly_ctc,
         "employer_pf_rate": round(pf_rate * 100.0, 2),
         "pf_admin_rate": round(pf_admin_rate * 100.0, 2),
         "edli_rate": round(edli_rate * 100.0, 2),
@@ -1242,6 +1460,8 @@ def get_salary_slip_with_details(name):
         "bonus_provision_rate": round(bonus_rate * 100.0, 2) if enable_bonus else 0.0,
         "enable_el_provision": enable_el,
         "el_provision_days_per_year": el_days if enable_el else 0.0,
+        "has_bonus_in_earnings": has_bonus_in_earnings,
+        "has_el_in_earnings": has_el_in_earnings,
         "enable_workers_tea_allowance": enable_tea,
         "workers_tea_allowance_per_day": round(tea_rate, 2),
     })
