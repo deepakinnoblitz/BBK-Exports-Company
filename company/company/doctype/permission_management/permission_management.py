@@ -53,6 +53,7 @@ class PermissionManagement(Document):
                 ("hr_document_templates", "Document Templates"),
                 ("hr_document_templates", "Document Generation"),
                 ("report_attendance", "Attendance Report"),
+                ("report_canteen", "Canteen Report"),
                 ("report_daily_log", "Daily Log Report"),
                 ("report_task", "Task Report"),
                 ("report_timesheet", "Timesheet Report"),
@@ -92,6 +93,7 @@ class PermissionManagement(Document):
                 ("asset_requests", "My Asset Requests"),
                 ("employee_referrals", "Refer a Friend"),
                 ("report_attendance", "My Attendance Report"),
+                ("report_canteen", "My Canteen Report"),
                 ("report_daily_log", "My Daily Log Report"),
                 ("report_timesheet", "My Timesheet Report")
             ]
