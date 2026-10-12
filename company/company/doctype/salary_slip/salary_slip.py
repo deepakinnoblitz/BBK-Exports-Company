@@ -1052,6 +1052,11 @@ def preview_salary_slip(employee, start_date, end_date):
         "designation": emp.designation,
         "department": emp.department,
         "date_of_joining": emp.date_of_joining,
+        "pf_number": getattr(emp, "pf_number", None) or "",
+        "pf_no": getattr(emp, "pf_number", None) or "",
+        "uan_number": getattr(emp, "uan_number", None) or "",
+        "pf_uan": getattr(emp, "uan_number", None) or getattr(emp, "pf_number", None) or "",
+        "esi_no": getattr(emp, "esi_no", None) or "",
         "email": emp.email,
         "personal_email": emp.personal_email,
         "pay_period_start": start_date,
@@ -1132,6 +1137,7 @@ def preview_salary_slip(employee, start_date, end_date):
     }
 
     res.update({
+        "bank_account": emp.bank_account or "",
         "bank_account_name": "",
         "account_number": "",
         "bank_name": "",
@@ -1143,6 +1149,7 @@ def preview_salary_slip(employee, start_date, end_date):
         try:
             ba = frappe.get_doc("Bank Account", emp.bank_account)
             res.update({
+                "bank_account": emp.bank_account,
                 "bank_account_name": ba.bank_account_name or "",
                 "account_number": ba.account_number or "",
                 "bank_name": ba.bank_name or "",
@@ -1166,38 +1173,38 @@ def get_salary_slip_with_details(name):
     settings = frappe.get_single("HRMS Settings")
     emp_type = (doc.employee_type or res.get("employee_type") or "").lower()
 
-    # Enrich with Employee Details (Bank Account, etc.)
-    if doc.employee:
-        emp = frappe.get_doc("Employee", doc.employee)
+    # Strictly read from Salary Slip document snapshot (no live override from Employee)
+    res.update({
+        "father_husband_name": getattr(doc, "father_husband_name", None) or "",
+        "employee_type": getattr(doc, "employee_type", None) or "",
+        "personal_email": getattr(doc, "personal_email", None) or "",
+        "department": getattr(doc, "department", None) or "",
+        "designation": getattr(doc, "designation", None) or "",
+        "date_of_joining": getattr(doc, "date_of_joining", None) or "",
+        "pf_number": getattr(doc, "pf_no", None) or "",
+        "pf_no": getattr(doc, "pf_no", None) or "",
+        "uan_number": getattr(doc, "uan_number", None) or "",
+        "esi_no": getattr(doc, "esi_no", None) or "",
+        "bank_account_name": "",
+        "account_number": "",
+        "bank_name": "",
+        "branch": "",
+        "ifsc_code": "",
+    })
 
-        res.update({
-            "father_husband_name": emp.father_husband_name,
-            "employee_type": emp.employee_type,
-            "personal_email": emp.personal_email,
-            "phone_number": emp.phone,
-            "date_of_joining": emp.date_of_joining,
-            "bank_account_name": "",
-            "account_number": "",
-            "bank_name": "",
-            "branch": "",
-            "ifsc_code": "",
-        })
-
-        if emp.bank_account:
-            try:
-                ba = frappe.get_doc("Bank Account", emp.bank_account)
-                res.update({
-                    "bank_account_name": ba.bank_account_name or "",
-                    "account_number": ba.account_number or "",
-                    "bank_name": ba.bank_name or "",
-                    "branch": ba.branch or "",
-                    "ifsc_code": ba.ifsc_code or "",
-                })
-            except frappe.DoesNotExistError:
-                frappe.log_error(
-                    frappe.get_traceback(),
-                    "Salary Slip - Invalid Bank Account"
-                )
+    bank_ref = getattr(doc, "bank_account", None)
+    if bank_ref:
+        try:
+            ba = frappe.get_doc("Bank Account", bank_ref)
+            res.update({
+                "bank_account_name": ba.bank_account_name or "",
+                "account_number": ba.account_number or "",
+                "bank_name": ba.bank_name or "",
+                "branch": ba.branch or "",
+                "ifsc_code": ba.ifsc_code or "",
+            })
+        except frappe.DoesNotExistError:
+            pass
 
     emp_earnings_map = {}
     emp_deductions_map = {}
@@ -1759,9 +1766,15 @@ def generate_salary_slips_from_employee(year=None, month=None, employees=None, s
                 "employee_name": data["employee_name"],
                 "father_husband_name": data.get("father_husband_name"),
                 "employee_type": data.get("employee_type"),
+                "department": data.get("department"),
+                "designation": data.get("designation"),
+                "date_of_joining": data.get("date_of_joining"),
                 "email": data.get("email"),
-                "bank_account": data.get("account_number"),
                 "personal_email": data.get("personal_email"),
+                "bank_account": data.get("bank_account"),
+                "pf_no": data.get("pf_no") or data.get("pf_number"),
+                "uan_number": data.get("uan_number"),
+                "esi_no": data.get("esi_no"),
                 "pay_period_start": start_date,
                 "pay_period_end": end_date,
                 "no_of_leave": data["no_of_leave"],

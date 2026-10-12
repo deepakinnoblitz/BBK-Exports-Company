@@ -16,6 +16,7 @@
   "date_of_joining",
   "column_break_jhpx",
   "pf_no",
+  "uan_number",
   "esi_no",
   "bank_account",
   "email",
@@ -174,6 +175,13 @@
    "fieldname": "pf_no",
    "fieldtype": "Data",
    "label": "PF No",
+   "read_only": 1
+  },
+  {
+   "fetch_from": "employee.uan_number",
+   "fieldname": "uan_number",
+   "fieldtype": "Data",
+   "label": "UAN Number",
    "read_only": 1
   },
   {
