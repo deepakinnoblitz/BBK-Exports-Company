@@ -963,9 +963,10 @@ def preview_salary_slip(employee, start_date, end_date):
             employer_pf = float(round(pf_base_for_employer * pf_rate))
         
         # Determine PF Admin & EDLI wage basis dynamically from settings
+        is_ctc_staff = "ctc" in (emp_type or "").lower() and "non" not in (emp_type or "").lower()
         admin_edli_basis = get_category_setting(settings, "pf_admin_edli_basis", emp_type, default=None)
-        if not admin_edli_basis:
-            if "non ctc" in (emp_type or "").lower() or "non-ctc" in (emp_type or "").lower():
+        if is_ctc_staff or not admin_edli_basis:
+            if not is_ctc_staff and ("non ctc" in (emp_type or "").lower() or "non-ctc" in (emp_type or "").lower()):
                 admin_edli_basis = "Percentage of Gross Salary"
             else:
                 admin_edli_basis = "Statutory PF Wage (Capped at Ceiling)"
@@ -977,7 +978,8 @@ def preview_salary_slip(employee, start_date, end_date):
             pf_statutory_base = pf_base_for_employer
         else:
             # Statutory EPFO cap on EDLI and Admin Charges (₹15,000 ceiling -> max ₹75.00 each)
-            pf_statutory_base = min(pf_base_for_employer, employer_pf_ceiling) if employer_pf_ceiling > 0 else pf_base_for_employer
+            admin_cap = employer_pf_ceiling if employer_pf_ceiling > 0 else 15000.0
+            pf_statutory_base = min(pf_base_for_employer, admin_cap)
 
         pf_admin_charges = excel_round(pf_statutory_base * pf_admin_rate)
         edli_charges = excel_round(pf_statutory_base * edli_rate)
@@ -1123,6 +1125,8 @@ def preview_salary_slip(employee, start_date, end_date):
         "pf_admin_rate": round(pf_admin_rate * 100.0, 2),
         "edli_rate": round(edli_rate * 100.0, 2),
         "employer_esi_rate": round(esi_rate * 100.0, 2),
+        "esi_wage_ceiling": esi_ceiling,
+        "employer_pf_wage_ceiling": employer_pf_ceiling,
         "enable_bonus_provision": enable_bonus,
         "bonus_provision_rate": round(bonus_rate * 100.0, 2) if enable_bonus else 0.0,
         "enable_el_provision": enable_el,
@@ -1374,9 +1378,10 @@ def get_salary_slip_with_details(name):
             employer_pf = float(round(pf_base_for_employer * pf_rate))
         
         # Determine PF Admin & EDLI wage basis dynamically from settings
+        is_ctc_staff = "ctc" in (emp_type or "").lower() and "non" not in (emp_type or "").lower()
         admin_edli_basis = get_category_setting(settings, "pf_admin_edli_basis", emp_type, default=None)
-        if not admin_edli_basis:
-            if "non ctc" in (emp_type or "").lower() or "non-ctc" in (emp_type or "").lower():
+        if is_ctc_staff or not admin_edli_basis:
+            if not is_ctc_staff and ("non ctc" in (emp_type or "").lower() or "non-ctc" in (emp_type or "").lower()):
                 admin_edli_basis = "Percentage of Gross Salary"
             else:
                 admin_edli_basis = "Statutory PF Wage (Capped at Ceiling)"
@@ -1388,7 +1393,8 @@ def get_salary_slip_with_details(name):
             pf_statutory_base = pf_base_for_employer
         else:
             # Statutory EPFO cap on EDLI and Admin Charges (₹15,000 ceiling -> max ₹75.00 each)
-            pf_statutory_base = min(pf_base_for_employer, employer_pf_ceiling) if employer_pf_ceiling > 0 else pf_base_for_employer
+            admin_cap = employer_pf_ceiling if employer_pf_ceiling > 0 else 15000.0
+            pf_statutory_base = min(pf_base_for_employer, admin_cap)
 
         pf_admin_charges = excel_round(pf_statutory_base * pf_admin_rate)
         edli_charges = excel_round(pf_statutory_base * edli_rate)
@@ -1525,6 +1531,8 @@ def get_salary_slip_with_details(name):
         "pf_admin_rate": round(pf_admin_rate * 100.0, 2),
         "edli_rate": round(edli_rate * 100.0, 2),
         "employer_esi_rate": round(esi_rate * 100.0, 2),
+        "esi_wage_ceiling": esi_ceiling,
+        "employer_pf_wage_ceiling": employer_pf_ceiling,
         "enable_bonus_provision": enable_bonus,
         "bonus_provision_rate": round(bonus_rate * 100.0, 2) if enable_bonus else 0.0,
         "enable_el_provision": enable_el,
