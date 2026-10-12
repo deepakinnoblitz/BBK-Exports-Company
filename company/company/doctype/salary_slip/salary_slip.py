@@ -1451,12 +1451,14 @@ def get_salary_slip_with_details(name):
         canteen_meals_count = sum(flt(e.get("meal_count") or 1) for e in canteen_entries)
 
     lunch_expenses = float(round(canteen_meals_count * lunch_rate)) if enable_lunch else 0.0
-    if not lunch_expenses and getattr(doc, "lunch_amount", 0):
+    if getattr(doc, "lunch_expenses", None) is not None and flt(doc.lunch_expenses) > 0:
+        lunch_expenses = flt(doc.lunch_expenses)
+        if getattr(doc, "canteen_meals_count", None) is not None and flt(doc.canteen_meals_count) > 0:
+            canteen_meals_count = flt(doc.canteen_meals_count)
+        if getattr(doc, "lunch_rate", None) is not None and flt(doc.lunch_rate) > 0:
+            lunch_rate = flt(doc.lunch_rate)
+    elif not lunch_expenses and getattr(doc, "lunch_amount", 0):
         lunch_expenses = flt(doc.lunch_amount)
-
-    # Earned CTC = Gross Earnings + Employer PF + EDLI + Admin + Employer ESI
-    earned_ctc = round(gross_val + employer_pf + pf_admin_charges + edli_charges + employer_esi, 2)
-    total_employer_contrib = round(employer_pf + pf_admin_charges + edli_charges + employer_esi, 2)
 
     earnings_list = doc.earnings if hasattr(doc, "earnings") else []
     has_bonus_in_earnings = any(
@@ -1478,7 +1480,27 @@ def get_salary_slip_with_details(name):
         el_provision = 0.0
     else:
         el_provision = float(round((earned_gross_salary / 26.0) * (el_days / 12.0))) if enable_el else 0.0
-    total_monthly_ctc = round(earned_ctc + tea_expenses + lunch_expenses + bonus_provision + el_provision, 2)
+
+    # If employer contributions were saved on doc, use the preserved values
+    if getattr(doc, "employer_pf", None) is not None and (flt(doc.employer_pf) > 0 or flt(getattr(doc, "employer_esi", 0)) > 0 or flt(getattr(doc, "earned_ctc", 0)) > 0):
+        employer_pf = flt(doc.employer_pf)
+        pf_admin_charges = flt(getattr(doc, "pf_admin_charges", pf_admin_charges))
+        edli_charges = flt(getattr(doc, "edli_charges", edli_charges))
+        employer_esi = flt(getattr(doc, "employer_esi", employer_esi))
+        total_employer_contrib = flt(getattr(doc, "total_employer_contribution", 0.0)) or round(employer_pf + pf_admin_charges + edli_charges + employer_esi, 2)
+        if getattr(doc, "tea_expenses", None) is not None and flt(doc.tea_expenses) > 0:
+            tea_expenses = flt(doc.tea_expenses)
+        if getattr(doc, "bonus_provision", None) is not None and flt(doc.bonus_provision) > 0:
+            bonus_provision = flt(doc.bonus_provision)
+        if getattr(doc, "el_provision", None) is not None and flt(doc.el_provision) > 0:
+            el_provision = flt(doc.el_provision)
+        earned_ctc = flt(getattr(doc, "earned_ctc", 0.0)) or round(gross_val + total_employer_contrib, 2)
+        total_monthly_ctc = flt(getattr(doc, "total_monthly_ctc", 0.0)) or round(earned_ctc + tea_expenses + lunch_expenses + bonus_provision + el_provision, 2)
+    else:
+        # Earned CTC = Gross Earnings + Employer PF + EDLI + Admin + Employer ESI
+        earned_ctc = round(gross_val + employer_pf + pf_admin_charges + edli_charges + employer_esi, 2)
+        total_employer_contrib = round(employer_pf + pf_admin_charges + edli_charges + employer_esi, 2)
+        total_monthly_ctc = round(earned_ctc + tea_expenses + lunch_expenses + bonus_provision + el_provision, 2)
 
     res.update({
         "earned_gross_salary": earned_gross_salary,
@@ -1834,6 +1856,20 @@ def generate_salary_slips_from_employee(year=None, month=None, employees=None, s
                 "ot_amount": data.get("ot_amount", 0.0),
                 "attendance_bonus": data.get("attendance_bonus", 0.0),
                 "pt_amount": data.get("pt_amount", 0.0),
+                "canteen_deduction": data.get("canteen_deduction", 0.0),
+                "employer_pf": data.get("employer_pf", 0.0),
+                "pf_admin_charges": data.get("pf_admin_charges", 0.0),
+                "edli_charges": data.get("edli_charges", 0.0),
+                "employer_esi": data.get("employer_esi", 0.0),
+                "total_employer_contribution": data.get("total_employer_contrib", 0.0) or data.get("total_employer_contribution", 0.0),
+                "tea_expenses": data.get("tea_expenses", 0.0),
+                "lunch_expenses": data.get("lunch_expenses", 0.0),
+                "canteen_meals_count": data.get("canteen_meals_count", 0.0),
+                "lunch_rate": data.get("lunch_rate", 50.0),
+                "bonus_provision": data.get("bonus_provision", 0.0),
+                "el_provision": data.get("el_provision", 0.0),
+                "earned_ctc": data.get("earned_ctc", 0.0),
+                "total_monthly_ctc": data.get("total_monthly_ctc", 0.0),
                 "gross_pay": data["gross_pay"],
                 "grand_gross_pay": data["grand_gross_pay"],
                 "net_pay": data["net_pay"],
