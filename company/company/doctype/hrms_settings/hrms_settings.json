@@ -129,6 +129,8 @@
   "staff_ctc_employer_pf_max_amount",
   "staff_ctc_pf_admin_rate",
   "staff_ctc_edli_rate",
+  "staff_ctc_pf_admin_edli_basis",
+  "staff_ctc_pf_admin_edli_gross_percent",
   "staff_ctc_employer_esi_rate",
   "staff_ctc_enable_bonus_provision",
   "staff_ctc_bonus_provision_rate",
@@ -153,6 +155,8 @@
   "staff_non_ctc_employer_pf_max_amount",
   "staff_non_ctc_pf_admin_rate",
   "staff_non_ctc_edli_rate",
+  "staff_non_ctc_pf_admin_edli_basis",
+  "staff_non_ctc_pf_admin_edli_gross_percent",
   "staff_non_ctc_employer_esi_rate",
   "staff_non_ctc_enable_bonus_provision",
   "staff_non_ctc_bonus_provision_rate",
@@ -960,6 +964,19 @@
    "default": "0.5"
   },
   {
+   "fieldname": "staff_ctc_pf_admin_edli_basis",
+   "fieldtype": "Select",
+   "label": "Staff CTC PF Admin & EDLI Basis",
+   "options": "Statutory PF Wage (Capped at Ceiling)\nPercentage of Gross Salary\nActual PF Wage (Uncapped)",
+   "default": "Statutory PF Wage (Capped at Ceiling)"
+  },
+  {
+   "fieldname": "staff_ctc_pf_admin_edli_gross_percent",
+   "fieldtype": "Float",
+   "label": "Staff CTC PF Admin & EDLI Gross Basis (%)",
+   "default": "100"
+  },
+  {
    "fieldname": "staff_ctc_employer_esi_rate",
    "fieldtype": "Float",
    "label": "Staff CTC Employer ESI Rate (%)",
@@ -1105,6 +1122,19 @@
    "fieldtype": "Float",
    "label": "Staff Non CTC EDLI Charges Rate (%)",
    "default": "0.5"
+  },
+  {
+   "fieldname": "staff_non_ctc_pf_admin_edli_basis",
+   "fieldtype": "Select",
+   "label": "Staff Non CTC PF Admin & EDLI Basis",
+   "options": "Statutory PF Wage (Capped at Ceiling)\nPercentage of Gross Salary\nActual PF Wage (Uncapped)",
+   "default": "Percentage of Gross Salary"
+  },
+  {
+   "fieldname": "staff_non_ctc_pf_admin_edli_gross_percent",
+   "fieldtype": "Float",
+   "label": "Staff Non CTC PF Admin & EDLI Gross Basis (%)",
+   "default": "90"
   },
   {
    "fieldname": "staff_non_ctc_employer_esi_rate",

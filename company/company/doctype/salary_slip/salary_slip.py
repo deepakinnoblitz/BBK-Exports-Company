@@ -112,7 +112,7 @@ def get_category_setting(settings, fieldname, emp_type="", default=None):
         elif "ctc" in emp_type_clean:
             prefixes = ["staff_ctc_", "staff_"]
         else:
-            prefixes = ["staff_"]
+            prefixes = ["staff_non_ctc_", "staff_ctc_", "staff_"]
     elif "worker" in emp_type_clean:
         prefixes = ["workers_"]
     elif "north indian" in emp_type_clean:
@@ -962,10 +962,25 @@ def preview_salary_slip(employee, start_date, end_date):
         else:
             employer_pf = float(round(pf_base_for_employer * pf_rate))
         
-        # Statutory EPFO cap on EDLI and Admin Charges (₹15,000 ceiling -> max ₹75.00 each)
-        pf_statutory_base = min(pf_base_for_employer, employer_pf_ceiling) if employer_pf_ceiling > 0 else pf_base_for_employer
-        pf_admin_charges = float(round(pf_statutory_base * pf_admin_rate))
-        edli_charges = float(round(pf_statutory_base * edli_rate))
+        # Determine PF Admin & EDLI wage basis dynamically from settings
+        admin_edli_basis = get_category_setting(settings, "pf_admin_edli_basis", emp_type, default=None)
+        if not admin_edli_basis:
+            if "non ctc" in (emp_type or "").lower() or "non-ctc" in (emp_type or "").lower():
+                admin_edli_basis = "Percentage of Gross Salary"
+            else:
+                admin_edli_basis = "Statutory PF Wage (Capped at Ceiling)"
+
+        if admin_edli_basis == "Percentage of Gross Salary":
+            gross_pct = flt(get_category_setting(settings, "pf_admin_edli_gross_percent", emp_type))
+            pf_statutory_base = round(flt(grand_gross_pay) * (gross_pct / 100.0), 2)
+        elif admin_edli_basis == "Actual PF Wage (Uncapped)":
+            pf_statutory_base = pf_base_for_employer
+        else:
+            # Statutory EPFO cap on EDLI and Admin Charges (₹15,000 ceiling -> max ₹75.00 each)
+            pf_statutory_base = min(pf_base_for_employer, employer_pf_ceiling) if employer_pf_ceiling > 0 else pf_base_for_employer
+
+        pf_admin_charges = excel_round(pf_statutory_base * pf_admin_rate)
+        edli_charges = excel_round(pf_statutory_base * edli_rate)
 
     enable_esi = cint(get_category_setting(settings, "enable_auto_esi", emp_type, default=1))
     esi_no = emp.get("esi_no") if hasattr(emp, "get") else getattr(emp, "esi_no", None)
@@ -980,7 +995,12 @@ def preview_salary_slip(employee, start_date, end_date):
     if not enable_esi or (not esi_no and not has_esi_component) or (esi_ceiling > 0 and earned_gross_salary > esi_ceiling and grand_gross_pay > esi_ceiling):
         employer_esi = 0.0
     else:
-        employer_esi = float(round(grand_gross_pay * esi_rate))
+        esi_rounding = get_category_setting(settings, "esi_rounding_method", emp_type, default="Round Up to Next Rupee (ROUNDUP / CEIL)")
+        raw_employer_esi = flt(grand_gross_pay) * esi_rate
+        if "Round Up" in esi_rounding or "ROUNDUP" in esi_rounding or "CEIL" in esi_rounding:
+            employer_esi = float(math.ceil(raw_employer_esi))
+        else:
+            employer_esi = excel_round(raw_employer_esi)
 
     is_staff = "staff" in (emp_type or "").lower()
     enable_tea = cint(get_category_setting(settings, "enable_tea_allowance", emp_type, default=1))
@@ -1353,10 +1373,25 @@ def get_salary_slip_with_details(name):
         else:
             employer_pf = float(round(pf_base_for_employer * pf_rate))
         
-        # Statutory EPFO cap on EDLI and Admin Charges (₹15,000 ceiling -> max ₹75.00 each)
-        pf_statutory_base = min(pf_base_for_employer, employer_pf_ceiling) if employer_pf_ceiling > 0 else pf_base_for_employer
-        pf_admin_charges = float(round(pf_statutory_base * pf_admin_rate))
-        edli_charges = float(round(pf_statutory_base * edli_rate))
+        # Determine PF Admin & EDLI wage basis dynamically from settings
+        admin_edli_basis = get_category_setting(settings, "pf_admin_edli_basis", emp_type, default=None)
+        if not admin_edli_basis:
+            if "non ctc" in (emp_type or "").lower() or "non-ctc" in (emp_type or "").lower():
+                admin_edli_basis = "Percentage of Gross Salary"
+            else:
+                admin_edli_basis = "Statutory PF Wage (Capped at Ceiling)"
+
+        if admin_edli_basis == "Percentage of Gross Salary":
+            gross_pct = flt(get_category_setting(settings, "pf_admin_edli_gross_percent", emp_type))
+            pf_statutory_base = round(flt(gross_val) * (gross_pct / 100.0), 2)
+        elif admin_edli_basis == "Actual PF Wage (Uncapped)":
+            pf_statutory_base = pf_base_for_employer
+        else:
+            # Statutory EPFO cap on EDLI and Admin Charges (₹15,000 ceiling -> max ₹75.00 each)
+            pf_statutory_base = min(pf_base_for_employer, employer_pf_ceiling) if employer_pf_ceiling > 0 else pf_base_for_employer
+
+        pf_admin_charges = excel_round(pf_statutory_base * pf_admin_rate)
+        edli_charges = excel_round(pf_statutory_base * edli_rate)
 
     enable_esi = cint(get_category_setting(settings, "enable_auto_esi", emp_type, default=1))
     esi_no = getattr(doc, "esi_no", None) or (emp.get("esi_no") if emp else None)
@@ -1371,7 +1406,12 @@ def get_salary_slip_with_details(name):
     if not enable_esi or (not esi_no and not has_esi_component) or (esi_ceiling > 0 and earned_gross_salary > esi_ceiling and gross_val > esi_ceiling):
         employer_esi = 0.0
     else:
-        employer_esi = float(round(gross_val * esi_rate))
+        esi_rounding = get_category_setting(settings, "esi_rounding_method", emp_type, default="Round Up to Next Rupee (ROUNDUP / CEIL)")
+        raw_employer_esi = flt(gross_val) * esi_rate
+        if "Round Up" in esi_rounding or "ROUNDUP" in esi_rounding or "CEIL" in esi_rounding:
+            employer_esi = float(math.ceil(raw_employer_esi))
+        else:
+            employer_esi = excel_round(raw_employer_esi)
 
     is_staff = "staff" in (emp_type or "").lower()
     enable_tea = cint(get_category_setting(settings, "enable_tea_allowance", emp_type, default=1))
