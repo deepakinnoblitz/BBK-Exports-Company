@@ -3518,7 +3518,19 @@ def get_salary_slips_with_child_tables(start_date=None, end_date=None, employee=
     if end_date:
         filters["pay_period_end"] = ["<=", end_date]
     if employee and employee != "all":
-        filters["employee"] = employee
+        import json
+        if isinstance(employee, str):
+            try:
+                parsed = json.loads(employee)
+                if isinstance(parsed, list):
+                    employee = parsed
+            except Exception:
+                pass
+        if isinstance(employee, list):
+            if len(employee) > 0:
+                filters["employee"] = ["in", employee]
+        else:
+            filters["employee"] = employee
 
     slips = frappe.get_all("Salary Slip", filters=filters, fields=["name"], order_by="pay_period_start desc")
     
