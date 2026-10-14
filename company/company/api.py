@@ -3661,4 +3661,219 @@ def get_reimbursement_claim_permission_query_conditions(user):
     return ""
 
 
+@frappe.whitelist()
+def bulk_import_employees(rows, update_existing=False):
+    """
+    Bulk import employees along with salary components and details.
+    """
+    if isinstance(rows, str):
+        rows = json.loads(rows)
+
+    if not rows:
+        frappe.throw("No employee rows provided for import")
+
+    if isinstance(update_existing, str):
+        update_existing = update_existing.lower() in ("true", "1", "yes")
+
+    created_count = 0
+    updated_count = 0
+    errors = []
+
+    def _parse_date(date_val):
+        if not date_val:
+            return None
+        if isinstance(date_val, datetime):
+            return date_val.date().strftime("%Y-%m-%d")
+        s = str(date_val).strip()
+        if not s:
+            return None
+        for fmt in ("%Y-%m-%d", "%d-%m-%Y", "%d/%m/%Y", "%Y/%m/%d"):
+            try:
+                base = s.split("T")[0] if "T" in s else s
+                return datetime.strptime(base, fmt).strftime("%Y-%m-%d")
+            except ValueError:
+                pass
+        try:
+            return str(getdate(s))
+        except Exception:
+            return None
+
+    for r_idx, row in enumerate(rows):
+        row_num = r_idx + 1
+        emp_id = str(row.get("employee_id") or "").strip()
+        emp_name = str(row.get("employee_name") or "").strip()
+        email = str(row.get("email") or "").strip()
+
+        if not emp_id:
+            errors.append(f"Row {row_num}: Employee ID is required")
+            continue
+        if not emp_name:
+            errors.append(f"Row {row_num}: Employee Name is required")
+            continue
+        if not email:
+            errors.append(f"Row {row_num}: Email is required")
+            continue
+
+        try:
+            existing_name = frappe.db.get_value("Employee", {"employee_id": emp_id}, "name")
+            if not existing_name and frappe.db.exists("Employee", emp_id):
+                existing_name = emp_id
+
+            if existing_name:
+                if not update_existing:
+                    errors.append(f"Row {row_num}: Employee ID '{emp_id}' already exists")
+                    continue
+                doc = frappe.get_doc("Employee", existing_name)
+                is_new = False
+            else:
+                doc = frappe.new_doc("Employee")
+                doc.employee_id = emp_id
+                is_new = True
+
+            # Core Personal & Employment Details
+            doc.employee_name = emp_name
+            doc.email = email
+            if "father_husband_name" in row and row["father_husband_name"]:
+                doc.father_husband_name = str(row["father_husband_name"]).strip()
+            if "personal_email" in row and row["personal_email"]:
+                doc.personal_email = str(row["personal_email"]).strip()
+            if "phone" in row and row["phone"]:
+                doc.phone = str(row["phone"]).strip()
+            if "office_phone_number" in row and row["office_phone_number"]:
+                doc.office_phone_number = str(row["office_phone_number"]).strip()
+            if "dob" in row and row["dob"]:
+                parsed_dob = _parse_date(row["dob"])
+                if parsed_dob:
+                    doc.dob = parsed_dob
+            if "blood_group" in row and row["blood_group"]:
+                doc.blood_group = str(row["blood_group"]).strip()
+            if "sex" in row and row["sex"]:
+                doc.sex = str(row["sex"]).strip()
+            if "marital_status" in row and row["marital_status"]:
+                doc.marital_status = str(row["marital_status"]).strip()
+            if "qualification" in row and row["qualification"]:
+                doc.qualification = str(row["qualification"]).strip()
+            if "aadhar_number" in row and row["aadhar_number"]:
+                doc.aadhar_number = str(row["aadhar_number"]).strip()
+            if "country" in row and row["country"]:
+                doc.country = str(row["country"]).strip()
+            if "state" in row and row["state"]:
+                doc.state = str(row["state"]).strip()
+            if "city" in row and row["city"]:
+                doc.city = str(row["city"]).strip()
+
+            # Employment details
+            if "department" in row and row["department"]:
+                doc.department = str(row["department"]).strip()
+            if "designation" in row and row["designation"]:
+                doc.designation = str(row["designation"]).strip()
+            if "employee_type" in row and row["employee_type"]:
+                doc.employee_type = str(row["employee_type"]).strip()
+            if "production_type" in row and row["production_type"]:
+                doc.production_type = str(row["production_type"]).strip()
+            if "line_order" in row and row["line_order"]:
+                doc.line_order = str(row["line_order"]).strip()
+            if "shift" in row and row["shift"]:
+                doc.shift = str(row["shift"]).strip()
+            if "bus_travel_route" in row and row["bus_travel_route"]:
+                doc.bus_travel_route = str(row["bus_travel_route"]).strip()
+            if "bus_route_point" in row and row["bus_route_point"]:
+                doc.bus_route_point = str(row["bus_route_point"]).strip()
+            if "date_of_joining" in row and row["date_of_joining"]:
+                parsed_doj = _parse_date(row["date_of_joining"])
+                if parsed_doj:
+                    doc.date_of_joining = parsed_doj
+            if not doc.date_of_joining:
+                doc.date_of_joining = today()
+
+            status_val = str(row.get("status") or "Active").strip()
+            doc.status = "Inactive" if status_val.lower() == "inactive" else "Active"
+
+            if doc.status == "Inactive" and "date_of_leaving" in row and row["date_of_leaving"]:
+                parsed_dol = _parse_date(row["date_of_leaving"])
+                if parsed_dol:
+                    doc.date_of_leaving = parsed_dol
+
+            if "skip_probation" in row:
+                doc.skip_probation = 1 if str(row["skip_probation"]).strip().lower() in ("1", "true", "yes") else 0
+            if "user" in row and row["user"]:
+                doc.user = str(row["user"]).strip()
+
+            # Financial & Bank Details
+            if "bank_account" in row and row["bank_account"]:
+                doc.bank_account = str(row["bank_account"]).strip()
+            if "pf_number" in row and row["pf_number"]:
+                doc.pf_number = str(row["pf_number"]).strip()
+            if "uan_number" in row and row["uan_number"]:
+                doc.uan_number = str(row["uan_number"]).strip()
+            if "esi_no" in row and row["esi_no"]:
+                doc.esi_no = str(row["esi_no"]).strip()
+            if "pan_number" in row and row["pan_number"]:
+                doc.pan_number = str(row["pan_number"]).strip()
+
+            # Salary Components: Earnings & Deductions
+            earnings_input = row.get("earnings") or []
+            deductions_input = row.get("deductions") or []
+
+            doc.set("earnings", [])
+            total_earnings = 0.0
+            for item in earnings_input:
+                c_name = str(item.get("component_name") or item.get("name") or "").strip()
+                amt = flt(item.get("amount", 0))
+                if c_name:
+                    doc.append("earnings", {
+                        "component_name": c_name,
+                        "type": "Earning",
+                        "amount": amt,
+                        "static_amount": amt
+                    })
+                    total_earnings += amt
+
+            doc.set("deductions", [])
+            total_deductions = 0.0
+            for item in deductions_input:
+                c_name = str(item.get("component_name") or item.get("name") or "").strip()
+                amt = flt(item.get("amount", 0))
+                if c_name:
+                    doc.append("deductions", {
+                        "component_name": c_name,
+                        "type": "Deduction",
+                        "amount": amt,
+                        "static_amount": amt
+                    })
+                    total_deductions += amt
+
+            doc.total_earnings = total_earnings
+            doc.total_deductions = total_deductions
+            doc.net_salary = total_earnings - total_deductions
+
+            if flt(row.get("ctc")) > 0:
+                doc.ctc = flt(row.get("ctc"))
+            elif total_earnings > 0:
+                doc.ctc = total_earnings
+
+            doc.flags.ignore_permissions = True
+            doc.save()
+            frappe.db.commit()
+
+            if is_new:
+                created_count += 1
+            else:
+                updated_count += 1
+
+        except Exception as e:
+            frappe.db.rollback()
+            errors.append(f"Row {row_num} ({emp_id or emp_name}): {str(e)}")
+
+    return {
+        "success": len(errors) == 0,
+        "total_records": len(rows),
+        "created_count": created_count,
+        "updated_count": updated_count,
+        "error_count": len(errors),
+        "errors": errors
+    }
+
+
+
 
