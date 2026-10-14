@@ -26,7 +26,13 @@
         "created_by_name",
         "modified_by_name",
         "punches_section",
-        "attendance_punches"
+        "attendance_punches",
+        "transfer_section",
+        "is_transferred",
+        "transfer_type",
+        "transferred_from_date",
+        "transferred_to_date",
+        "attendance_transfer_ref"
     ],
     "fields": [
         {
@@ -170,6 +176,44 @@
             "fieldtype": "Table",
             "label": "Attendance Punches",
             "options": "Attendance Punch"
+        },
+        {
+            "collapsible": 1,
+            "fieldname": "transfer_section",
+            "fieldtype": "Section Break",
+            "label": "Attendance Transfer Details"
+        },
+        {
+            "default": "0",
+            "fieldname": "is_transferred",
+            "fieldtype": "Check",
+            "label": "Is Transferred"
+        },
+        {
+            "depends_on": "eval:doc.is_transferred==1",
+            "fieldname": "transfer_type",
+            "fieldtype": "Select",
+            "label": "Transfer Type",
+            "options": "\nSource (Non-Working)\nTarget (Adjusted Working)"
+        },
+        {
+            "depends_on": "eval:doc.is_transferred==1 && doc.transfer_type==\"Target (Adjusted Working)\"",
+            "fieldname": "transferred_from_date",
+            "fieldtype": "Date",
+            "label": "Transferred From Date"
+        },
+        {
+            "depends_on": "eval:doc.is_transferred==1 && doc.transfer_type==\"Source (Non-Working)\"",
+            "fieldname": "transferred_to_date",
+            "fieldtype": "Date",
+            "label": "Transferred To Date"
+        },
+        {
+            "depends_on": "eval:doc.is_transferred==1",
+            "fieldname": "attendance_transfer_ref",
+            "fieldtype": "Link",
+            "label": "Attendance Transfer Reference",
+            "options": "Attendance Transfer"
         }
     ],
     "grid_page_length": 50,
