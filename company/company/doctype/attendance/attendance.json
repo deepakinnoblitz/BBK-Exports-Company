@@ -23,6 +23,8 @@
         "unofficial_overtime",
         "manual",
         "attendance_source",
+        "created_by_name",
+        "modified_by_name",
         "punches_section",
         "attendance_punches"
     ],
@@ -145,6 +147,18 @@
             "in_list_view": 1,
             "label": "Attendance Source",
             "options": "Biometric\nManual\nImport\nSystem"
+        },
+        {
+            "fieldname": "created_by_name",
+            "fieldtype": "Data",
+            "label": "Created By Name",
+            "read_only": 1
+        },
+        {
+            "fieldname": "modified_by_name",
+            "fieldtype": "Data",
+            "label": "Modified By Name",
+            "read_only": 1
         },
         {
             "fieldname": "punches_section",

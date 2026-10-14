@@ -16,6 +16,7 @@
   "date_of_joining",
   "column_break_jhpx",
   "pf_no",
+  "uan_number",
   "esi_no",
   "bank_account",
   "email",
@@ -36,6 +37,8 @@
   "ot_hours",
   "calc_source",
   "holiday_handling",
+  "working_days_basis",
+  "fixed_working_days",
   "no_of_leave",
   "no_of_paid_leave",
   "no_of_comp_off",
@@ -46,13 +49,35 @@
   "grand_gross_pay",
   "ot_amount",
   "attendance_bonus",
+  "fuel_incentive",
+  "referral_bonus",
   "total_deduction",
   "canteen_deduction",
   "pt_amount",
   "lop",
   "net_pay",
   "grand_net_pay",
-  "amended_from"
+  "amended_from",
+  "section_break_employer_contrib",
+  "employer_pf",
+  "pf_admin_charges",
+  "edli_charges",
+  "employer_esi",
+  "total_employer_contribution",
+  "column_break_ctc_details",
+  "tea_expenses",
+  "lunch_expenses",
+  "canteen_meals_count",
+  "lunch_rate",
+  "bonus_provision",
+  "el_provision",
+  "earned_ctc",
+  "total_monthly_ctc",
+  "employer_pf_rate",
+  "pf_admin_rate",
+  "edli_rate",
+  "employer_esi_rate",
+  "bonus_provision_rate"
  ],
  "fields": [
   {
@@ -174,6 +199,13 @@
    "fieldname": "pf_no",
    "fieldtype": "Data",
    "label": "PF No",
+   "read_only": 1
+  },
+  {
+   "fetch_from": "employee.uan_number",
+   "fieldname": "uan_number",
+   "fieldtype": "Data",
+   "label": "UAN Number",
    "read_only": 1
   },
   {
@@ -364,6 +396,155 @@
    "label": "Bank Account",
    "options": "Bank Account",
    "read_only": 1
+  },
+  {
+   "fieldname": "section_break_employer_contrib",
+   "fieldtype": "Section Break",
+   "label": "Employer Contributions & CTC"
+  },
+  {
+   "fieldname": "employer_pf",
+   "fieldtype": "Currency",
+   "label": "Employer PF",
+   "precision": "2",
+   "read_only": 1
+  },
+  {
+   "fieldname": "pf_admin_charges",
+   "fieldtype": "Currency",
+   "label": "PF Admin Charges",
+   "precision": "2",
+   "read_only": 1
+  },
+  {
+   "fieldname": "edli_charges",
+   "fieldtype": "Currency",
+   "label": "EDLI Charges",
+   "precision": "2",
+   "read_only": 1
+  },
+  {
+   "fieldname": "employer_esi",
+   "fieldtype": "Currency",
+   "label": "Employer ESI",
+   "precision": "2",
+   "read_only": 1
+  },
+  {
+   "fieldname": "total_employer_contribution",
+   "fieldtype": "Currency",
+   "label": "Total Employer Contribution",
+   "precision": "2",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_ctc_details",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "tea_expenses",
+   "fieldtype": "Currency",
+   "label": "Tea Expenses",
+   "precision": "2",
+   "read_only": 1
+  },
+  {
+   "fieldname": "lunch_expenses",
+   "fieldtype": "Currency",
+   "label": "Lunch Expenses",
+   "precision": "2",
+   "read_only": 1
+  },
+  {
+   "fieldname": "canteen_meals_count",
+   "fieldtype": "Float",
+   "label": "Canteen Meals Count",
+   "precision": "1",
+   "read_only": 1
+  },
+  {
+   "fieldname": "lunch_rate",
+   "fieldtype": "Currency",
+   "label": "Lunch Rate",
+   "precision": "2",
+   "read_only": 1
+  },
+  {
+   "fieldname": "bonus_provision",
+   "fieldtype": "Currency",
+   "label": "Bonus Provision",
+   "precision": "2",
+   "read_only": 1
+  },
+  {
+   "fieldname": "el_provision",
+   "fieldtype": "Currency",
+   "label": "EL Provision",
+   "precision": "2",
+   "read_only": 1
+  },
+  {
+   "fieldname": "earned_ctc",
+   "fieldtype": "Currency",
+   "label": "Earned CTC",
+   "precision": "2",
+   "read_only": 1
+  },
+  {
+   "fieldname": "total_monthly_ctc",
+   "fieldtype": "Currency",
+   "label": "Total Monthly CTC",
+   "precision": "2",
+   "read_only": 1
+  },
+  {
+   "fieldname": "employer_pf_rate",
+   "fieldtype": "Float",
+   "label": "Employer PF Rate (%)",
+   "precision": "2",
+   "read_only": 1
+  },
+  {
+   "fieldname": "pf_admin_rate",
+   "fieldtype": "Float",
+   "label": "PF Admin Rate (%)",
+   "precision": "2",
+   "read_only": 1
+  },
+  {
+   "fieldname": "edli_rate",
+   "fieldtype": "Float",
+   "label": "EDLI Rate (%)",
+   "precision": "2",
+   "read_only": 1
+  },
+  {
+   "fieldname": "employer_esi_rate",
+   "fieldtype": "Float",
+   "label": "Employer ESI Rate (%)",
+   "precision": "2",
+   "read_only": 1
+  },
+  {
+   "fieldname": "bonus_provision_rate",
+   "fieldtype": "Float",
+   "label": "Bonus Provision Rate (%)",
+   "precision": "2",
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "fuel_incentive",
+   "fieldtype": "Currency",
+   "label": "Fuel Incentive",
+   "precision": "2"
+  },
+  {
+   "default": "0",
+   "fieldname": "referral_bonus",
+   "fieldtype": "Currency",
+   "label": "Referral Bonus",
+   "precision": "2"
   }
  ],
  "grid_page_length": 50,
@@ -378,6 +559,8 @@
  "owner": "Administrator",
  "permissions": [
   {
+   "amend": 1,
+   "cancel": 1,
    "create": 1,
    "delete": 1,
    "email": 1,
@@ -386,28 +569,26 @@
    "read": 1,
    "report": 1,
    "role": "System Manager",
-   "share": 1,
-   "write": 1,
    "select": 1,
-   "amend": 1,
-   "cancel": 1,
-   "submit": 1
+   "share": 1,
+   "submit": 1,
+   "write": 1
   },
   {
+   "amend": 1,
+   "cancel": 1,
    "create": 1,
+   "delete": 1,
    "email": 1,
    "export": 1,
    "print": 1,
    "read": 1,
-   "delete": 1,
    "report": 1,
    "role": "HR",
-   "share": 1,
-   "write": 1,
    "select": 1,
+   "share": 1,
    "submit": 1,
-   "amend": 1,
-   "cancel": 1
+   "write": 1
   },
   {
    "email": 1,

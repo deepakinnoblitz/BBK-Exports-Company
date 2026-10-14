@@ -1,0 +1,166 @@
+{
+ "actions": [],
+ "allow_rename": 0,
+ "autoname": "format:SAL-HIST-{YYYY}-{#####}",
+ "creation": "2026-10-12 12:00:00.000000",
+ "doctype": "DocType",
+ "engine": "InnoDB",
+ "field_order": [
+  "employee",
+  "employee_name",
+  "previous_ctc",
+  "new_ctc",
+  "previous_net_salary",
+  "new_net_salary",
+  "changed_components",
+  "component_details",
+  "changed_by",
+  "changed_by_name",
+  "changed_at",
+  "reason"
+ ],
+ "fields": [
+  {
+   "fieldname": "employee",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "in_standard_filter": 1,
+   "label": "Employee",
+   "options": "Employee",
+   "reqd": 1
+  },
+  {
+   "fieldname": "employee_name",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Employee Name",
+   "read_only": 1
+  },
+  {
+   "fieldname": "previous_ctc",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "Previous CTC",
+   "precision": "2"
+  },
+  {
+   "fieldname": "new_ctc",
+   "fieldtype": "Currency",
+   "in_list_view": 1,
+   "label": "New CTC",
+   "precision": "2",
+   "reqd": 1
+  },
+  {
+   "fieldname": "previous_net_salary",
+   "fieldtype": "Currency",
+   "label": "Previous Net Salary",
+   "precision": "2"
+  },
+  {
+   "fieldname": "new_net_salary",
+   "fieldtype": "Currency",
+   "label": "New Net Salary",
+   "precision": "2"
+  },
+  {
+   "fieldname": "changed_components",
+   "fieldtype": "Small Text",
+   "in_list_view": 1,
+   "label": "Changed Components"
+  },
+  {
+   "fieldname": "component_details",
+   "fieldtype": "Code",
+   "label": "Component Details",
+   "options": "JSON"
+  },
+  {
+   "fieldname": "changed_by",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Changed By",
+   "options": "User"
+  },
+  {
+   "fieldname": "changed_by_name",
+   "fieldtype": "Data",
+   "label": "Changed By Name"
+  },
+  {
+   "fieldname": "changed_at",
+   "fieldtype": "Datetime",
+   "in_list_view": 1,
+   "label": "Changed At"
+  },
+  {
+   "fieldname": "reason",
+   "fieldtype": "Small Text",
+   "label": "Reason / Revision Notes"
+  }
+ ],
+ "grid_page_length": 50,
+ "index_web_pages_for_search": 1,
+ "links": [],
+ "modified": "2026-10-12 12:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Company",
+ "name": "Employee Salary History",
+ "naming_rule": "Expression",
+ "owner": "Administrator",
+ "permissions": [
+  {
+   "create": 1,
+   "delete": 1,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "System Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 0,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "HR Manager",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 1,
+   "delete": 0,
+   "email": 1,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "HR",
+   "share": 1,
+   "write": 1
+  },
+  {
+   "create": 0,
+   "delete": 0,
+   "email": 0,
+   "export": 1,
+   "print": 1,
+   "read": 1,
+   "report": 1,
+   "role": "Employee",
+   "select": 1,
+   "share": 0,
+   "write": 0
+  }
+ ],
+ "row_format": "Dynamic",
+ "search_fields": "employee,employee_name",
+ "sort_field": "changed_at",
+ "sort_order": "DESC"
+}
