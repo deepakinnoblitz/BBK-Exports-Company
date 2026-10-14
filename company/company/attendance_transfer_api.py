@@ -46,17 +46,6 @@ def get_eligible_transfer_employees(source_date, target_date, department=None, s
     if src_date == tgt_date:
         frappe.throw(_("Source Date and Target Date cannot be the same date."))
 
-    # Validate that source_date is either a Sunday or in a Holiday List
-    is_sunday = (src_date.weekday() == 6)
-    is_holiday = False
-    if not is_sunday:
-        holiday_count = frappe.db.sql("""
-            SELECT COUNT(*) FROM `tabHoliday`
-            WHERE holiday_date = %s
-        """, (src_date,))[0][0]
-        if holiday_count > 0:
-            is_holiday = True
-
     # 1. Fetch all attendance records on source_date where status is Present / Half Day
     # and has NOT been transferred yet.
     conds = ["a.attendance_date = %s", "IFNULL(a.is_transferred, 0) = 0", "a.status IN ('Present', 'Half Day')"]
@@ -92,8 +81,6 @@ def get_eligible_transfer_employees(source_date, target_date, department=None, s
 
     if not source_records:
         return {
-            "is_sunday": is_sunday,
-            "is_holiday": is_holiday,
             "employees": [],
             "message": _("No eligible worked attendance found on the selected source date.")
         }
@@ -146,8 +133,6 @@ def get_eligible_transfer_employees(source_date, target_date, department=None, s
         })
 
     return {
-        "is_sunday": is_sunday,
-        "is_holiday": is_holiday,
         "employees": eligible_candidates
     }
 
@@ -188,7 +173,7 @@ def execute_bulk_attendance_transfer(source_date, target_date, employee_data, re
     transfer_doc.status = "Submitted"
     transfer_doc.total_employees = len(employee_data)
 
-    # Process each employee
+    # Process each employee: Shift attendance date in-place (Single Record transfer)
     for item in employee_data:
         emp_id = item.get("employee")
         src_att_name = item.get("source_attendance")
@@ -198,9 +183,9 @@ def execute_bulk_attendance_transfer(source_date, target_date, employee_data, re
 
         src_att = frappe.get_doc("Attendance", src_att_name)
         if src_att.is_transferred:
-            frappe.throw(_(f"Employee {emp_id}'s attendance on {src_date} has already been transferred."))
+            frappe.throw(_(f"Employee {emp_id}'s attendance has already been transferred."))
 
-        # 1. Target Attendance Record: Update or Create
+        # 1. Target Attendance Record: Check existing record on target date
         existing_tgt_name = frappe.db.get_value("Attendance", {
             "employee": emp_id,
             "attendance_date": tgt_date
@@ -210,57 +195,21 @@ def execute_bulk_attendance_transfer(source_date, target_date, employee_data, re
         if existing_tgt_name:
             tgt_att = frappe.get_doc("Attendance", existing_tgt_name)
             prev_status = tgt_att.status
-            tgt_att.status = "Present"
-            tgt_att.in_time = src_att.in_time
-            tgt_att.out_time = src_att.out_time
-            tgt_att.working_hours_display = src_att.working_hours_display
-            tgt_att.working_hours_decimal = src_att.working_hours_decimal
-            tgt_att.is_transferred = 1
-            tgt_att.transfer_type = "Target (Adjusted Working)"
-            tgt_att.transferred_from_date = src_date
-            tgt_att.attendance_transfer_ref = transfer_doc.name
-            tgt_att.save(ignore_permissions=True)
-            target_att_name = tgt_att.name
-        else:
-            # Create new Attendance record for target date
-            tgt_att = frappe.new_doc("Attendance")
-            tgt_att.employee = emp_id
-            tgt_att.employee_name = item.get("employee_name") or src_att.employee_name
-            tgt_att.attendance_date = tgt_date
-            tgt_att.status = "Present"
-            tgt_att.in_time = src_att.in_time
-            tgt_att.out_time = src_att.out_time
-            tgt_att.working_hours_display = src_att.working_hours_display
-            tgt_att.working_hours_decimal = src_att.working_hours_decimal
-            tgt_att.shift = src_att.shift
-            tgt_att.is_transferred = 1
-            tgt_att.transfer_type = "Target (Adjusted Working)"
-            tgt_att.transferred_from_date = src_date
-            tgt_att.attendance_transfer_ref = transfer_doc.name
-            tgt_att.save(ignore_permissions=True)
-            target_att_name = tgt_att.name
+            if tgt_att.status == "Present" and not tgt_att.is_transferred:
+                frappe.throw(_(f"Employee {emp_id} already worked and is marked Present on {tgt_date}."))
 
-        # Copy child punches to target attendance if available
-        if src_att.attendance_punches:
-            frappe.db.sql("DELETE FROM `tabAttendance Punch` WHERE parent = %s", (target_att_name,))
-            for p in src_att.attendance_punches:
-                punch_row = frappe.new_doc("Attendance Punch")
-                punch_row.parent = target_att_name
-                punch_row.parenttype = "Attendance"
-                punch_row.parentfield = "attendance_punches"
-                punch_row.punch_time = p.punch_time
-                punch_row.punch_type = p.punch_type
-                punch_row.device = p.device
-                punch_row.serial_number = p.serial_number
-                punch_row.biometric_log = p.biometric_log
-                punch_row.source = p.source
-                punch_row.insert(ignore_permissions=True)
+            # Cleanly remove the placeholder attendance (e.g. Absent) on target date
+            # to allow shifting src_att to tgt_date without duplicate key conflict
+            frappe.db.sql("DELETE FROM `tabAttendance Punch` WHERE parent = %s", (existing_tgt_name,))
+            frappe.delete_doc("Attendance", existing_tgt_name, ignore_permissions=True, force=True)
 
-        # 2. Source Attendance: Mark as Transferred
+        # 2. Shift the Source Attendance Record directly to Target Date
+        # No duplicate document is created; the single record is moved in-place with all punches intact.
+        src_att.attendance_date = tgt_date
         src_att.is_transferred = 1
-        src_att.transfer_type = "Source (Non-Working)"
-        src_att.transferred_to_date = tgt_date
-        src_att.attendance_transfer_ref = transfer_doc.name
+        src_att.transfer_type = "Target (Adjusted Working)"
+        src_att.transferred_from_date = src_date
+        src_att.transferred_to_date = None
         src_att.save(ignore_permissions=True)
 
         # 3. Add to Attendance Transfer Item child table
@@ -273,12 +222,20 @@ def execute_bulk_attendance_transfer(source_date, target_date, employee_data, re
             "source_in_time": src_att.in_time,
             "source_out_time": src_att.out_time,
             "source_working_hours": flt(src_att.working_hours_decimal or 0),
-            "target_attendance": target_att_name,
+            "target_attendance": src_att.name,
             "previous_target_status": prev_status,
             "new_target_status": "Present"
         })
 
     transfer_doc.insert(ignore_permissions=True)
+
+    # Now that transfer_doc.name is generated, link all transferred attendance records to it
+    for it in transfer_doc.items:
+        if it.source_attendance:
+            frappe.db.set_value("Attendance", it.source_attendance, "attendance_transfer_ref", transfer_doc.name, update_modified=False)
+        if it.target_attendance and it.target_attendance != it.source_attendance:
+            frappe.db.set_value("Attendance", it.target_attendance, "attendance_transfer_ref", transfer_doc.name, update_modified=False)
+
     frappe.db.commit()
 
     return {
@@ -350,12 +307,30 @@ def get_attendance_transfer_history(page=1, page_size=20, pageSize=None, search=
     }
 
 @frappe.whitelist()
-def get_attendance_transfer_details(transfer_id):
+def get_attendance_transfer_details(transfer_id=None, attendance_id=None):
     """Returns details and all employee items for a specific Attendance Transfer batch."""
-    validate_super_admin()
+    if not is_user_super_admin():
+        if not (frappe.has_permission("Attendance", "read") or frappe.has_permission("Attendance Transfer", "read")):
+            validate_super_admin()
+
+    if not transfer_id and attendance_id:
+        transfer_id = frappe.db.get_value("Attendance", attendance_id, "attendance_transfer_ref")
+        if not transfer_id:
+            transfer_id = frappe.db.get_value(
+                "Attendance Transfer Item",
+                {"source_attendance": attendance_id},
+                "parent"
+            ) or frappe.db.get_value(
+                "Attendance Transfer Item",
+                {"target_attendance": attendance_id},
+                "parent"
+            )
+            if transfer_id:
+                frappe.db.set_value("Attendance", attendance_id, "attendance_transfer_ref", transfer_id, update_modified=False)
+                frappe.db.commit()
 
     if not transfer_id:
-        frappe.throw(_("Transfer ID is required."))
+        frappe.throw(_("Transfer ID or Attendance ID is required."))
 
     doc = frappe.get_doc("Attendance Transfer", transfer_id)
     doc_dict = doc.as_dict()
@@ -386,41 +361,34 @@ def revert_attendance_transfer(transfer_id, revert_reason):
     user_full_name = frappe.db.get_value("User", frappe.session.user, "full_name") or frappe.session.user
 
     for item in transfer_doc.items:
-        # 1. Rollback Target Attendance
-        if item.target_attendance and frappe.db.exists("Attendance", item.target_attendance):
-            tgt_att = frappe.get_doc("Attendance", item.target_attendance)
-            if item.previous_target_status in ["Not Marked", "Missing"]:
-                # If target was originally not marked, delete it or set status to Absent
-                frappe.db.sql("DELETE FROM `tabAttendance Punch` WHERE parent = %s", (tgt_att.name,))
-                tgt_att.delete(ignore_permissions=True)
-            else:
-                # Restore previous status (e.g. Absent)
-                tgt_att.status = item.previous_target_status or "Absent"
-                tgt_att.in_time = None
-                tgt_att.out_time = None
-                tgt_att.working_hours_display = "0:00"
-                tgt_att.working_hours_decimal = 0
-                tgt_att.is_transferred = 0
-                tgt_att.transfer_type = None
-                tgt_att.transferred_from_date = None
-                tgt_att.attendance_transfer_ref = None
-                frappe.db.sql("DELETE FROM `tabAttendance Punch` WHERE parent = %s", (tgt_att.name,))
-                tgt_att.save(ignore_permissions=True)
+        # 1. Restore the worked Attendance record back to Source Date
+        att_name = item.target_attendance or item.source_attendance
+        if att_name and frappe.db.exists("Attendance", att_name):
+            att = frappe.get_doc("Attendance", att_name)
+            att.attendance_date = transfer_doc.source_date
+            att.is_transferred = 0
+            att.transfer_type = None
+            att.transferred_from_date = None
+            att.transferred_to_date = None
+            att.attendance_transfer_ref = None
+            att.save(ignore_permissions=True)
 
-        # 2. Rollback Source Attendance
-        if item.source_attendance and frappe.db.exists("Attendance", item.source_attendance):
-            src_att = frappe.get_doc("Attendance", item.source_attendance)
-            src_att.is_transferred = 0
-            src_att.transfer_type = None
-            src_att.transferred_to_date = None
-            src_att.attendance_transfer_ref = None
-            src_att.save(ignore_permissions=True)
+        # 2. Re-create previous target attendance (e.g. Absent) on target_date if it was marked
+        if item.previous_target_status and item.previous_target_status not in ["Not Marked", "Missing"]:
+            if not frappe.db.exists("Attendance", {"employee": item.employee, "attendance_date": transfer_doc.target_date}):
+                restored_tgt = frappe.new_doc("Attendance")
+                restored_tgt.employee = item.employee
+                restored_tgt.employee_name = item.employee_name
+                restored_tgt.attendance_date = transfer_doc.target_date
+                restored_tgt.status = item.previous_target_status
+                restored_tgt.insert(ignore_permissions=True)
 
     transfer_doc.status = "Reverted"
     transfer_doc.reverted_by = frappe.session.user
     transfer_doc.reverted_by_name = user_full_name
     transfer_doc.revert_datetime = now_datetime()
     transfer_doc.revert_reason = revert_reason.strip()
+    transfer_doc.flags.ignore_links = True
     transfer_doc.save(ignore_permissions=True)
 
     frappe.db.commit()

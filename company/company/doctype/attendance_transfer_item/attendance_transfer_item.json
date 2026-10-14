@@ -55,10 +55,9 @@
   },
   {
    "fieldname": "source_attendance",
-   "fieldtype": "Link",
+   "fieldtype": "Data",
    "in_list_view": 1,
-   "label": "Source Attendance",
-   "options": "Attendance"
+   "label": "Source Attendance"
   },
   {
    "fieldname": "source_in_time",
@@ -80,10 +79,9 @@
   },
   {
    "fieldname": "target_attendance",
-   "fieldtype": "Link",
+   "fieldtype": "Data",
    "in_list_view": 1,
-   "label": "Target Attendance",
-   "options": "Attendance"
+   "label": "Target Attendance"
   },
   {
    "fieldname": "previous_target_status",
