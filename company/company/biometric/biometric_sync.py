@@ -4,7 +4,7 @@
 import hashlib
 from datetime import datetime, timedelta
 import frappe
-from frappe.utils import now_datetime, get_datetime, format_datetime, getdate
+from frappe.utils import now_datetime, get_datetime, format_datetime, getdate, cint
 
 from company.company.biometric.smartoffice_client import SmartOfficeClient
 
@@ -19,6 +19,16 @@ def compute_external_hash(employee_code: str, log_datetime, punch_direction: str
         dt_str = str(log_datetime or "").strip()
     raw_key = f"{str(employee_code).strip()}|{dt_str}|{str(punch_direction).strip().upper()}|{str(serial_number or '').strip()}"
     return hashlib.sha256(raw_key.encode("utf-8")).hexdigest()
+
+
+def get_user_display_name(user_id):
+    """
+    Look up full_name for a given user id.
+    """
+    if not user_id or str(user_id).strip().lower() == "administrator":
+        return "Administrator"
+    full_name = frappe.db.get_value("User", user_id, "full_name")
+    return full_name or user_id
 
 
 def find_employee_by_code(employee_code: str):
@@ -156,8 +166,14 @@ def sync_smartoffice_logs(from_datetime=None, to_datetime=None, sync_type="Manua
 
         frappe.db.commit()
 
+        # Determine sync user: Administrator for auto/scheduled sync, or session user for manual
+        if sync_type in ["Scheduled Interval", "Scheduled Daily Time"]:
+            sync_user = "Administrator"
+        else:
+            sync_user = frappe.session.user or "Administrator"
+
         # Process punches into Attendance records
-        processed_punches = process_punches_for_employee_dates(affected_employee_dates)
+        processed_punches = process_punches_for_employee_dates(affected_employee_dates, sync_user=sync_user)
 
         # Update sync log with success
         sync_log.reload()
@@ -218,12 +234,14 @@ def sync_smartoffice_logs(from_datetime=None, to_datetime=None, sync_type="Manua
         raise e
 
 
-def process_punches_for_employee_dates(employee_date_pairs):
+def process_punches_for_employee_dates(employee_date_pairs, sync_user="Administrator"):
     """
     Process punches for given (employee, date) pairs into Attendance documents.
     Protects manual edits (manual == 1).
+    Attribution: Assigns owner/modified_by according to sync_user.
     """
     total_processed = 0
+    user_display = get_user_display_name(sync_user)
 
     for employee, punch_date in employee_date_pairs:
         # Check if Attendance exists and whether it's marked as manual
@@ -275,11 +293,17 @@ def process_punches_for_employee_dates(employee_date_pairs):
 
         if existing_attendance:
             att_doc = frappe.get_doc("Attendance", existing_attendance.name)
+            att_doc.modified_by = sync_user
+            att_doc.modified_by_name = user_display
         else:
             att_doc = frappe.new_doc("Attendance")
             att_doc.employee = employee
             att_doc.attendance_date = punch_date
             att_doc.status = "Present"  # Default, calculate_working_hours recomputes
+            att_doc.owner = sync_user
+            att_doc.created_by_name = user_display
+            att_doc.modified_by = sync_user
+            att_doc.modified_by_name = user_display
 
         att_doc.in_time = in_time
         att_doc.out_time = out_time
@@ -301,6 +325,11 @@ def process_punches_for_employee_dates(employee_date_pairs):
             })
 
         att_doc.save(ignore_permissions=True)
+        frappe.db.set_value("Attendance", att_doc.name, {
+            "modified_by": sync_user,
+            "modified_by_name": user_display,
+            "created_by_name": att_doc.created_by_name or user_display
+        }, update_modified=False)
 
         # Mark logs as processed
         for l in logs:
@@ -418,19 +447,32 @@ def evaluate_and_run_scheduled_sync():
     if getattr(settings, "sync_mode", "Manual Only") == "Manual Only":
         return
 
+    frappe.set_user("Administrator")
     now = now_datetime()
     sync_mode = settings.sync_mode
 
     if sync_mode == "Interval in Minutes":
-        interval = settings.sync_interval_minutes or 15
+        interval = max(1, cint(getattr(settings, "sync_interval_minutes", 15) or 15))
         if settings.last_successful_sync:
             last_sync = get_datetime(settings.last_successful_sync)
-            diff_minutes = (now - last_sync).total_seconds() / 60
-            if diff_minutes < interval:
+            diff_seconds = (now - last_sync).total_seconds()
+            # Leeway of 5 seconds to prevent minute skips caused by clock jitter
+            min_required_seconds = (interval * 60) - 5
+            if diff_seconds < min_required_seconds:
                 return
 
-        # Trigger interval sync
-        sync_smartoffice_logs(sync_type="Scheduled Interval")
+        # Concurrency lock to prevent overlapping executions
+        lock_key = "smartoffice_biometric_sync_lock"
+        if frappe.cache().get_value(lock_key):
+            frappe.logger("biometric").info("Biometric sync already in progress, skipping overlapping run.")
+            return
+
+        frappe.cache().set_value(lock_key, 1, expires_in_sec=120)
+        try:
+            # Trigger interval sync
+            sync_smartoffice_logs(sync_type="Scheduled Interval")
+        finally:
+            frappe.cache().delete_value(lock_key)
 
     elif sync_mode == "Specific Times Daily":
         times_raw = settings.daily_sync_times or ""
@@ -536,7 +578,8 @@ def reprocess_unmapped_logs():
 
     processed_punches = 0
     if affected_pairs:
-        processed_punches = process_punches_for_employee_dates(affected_pairs)
+        sync_user = frappe.session.user or "Administrator"
+        processed_punches = process_punches_for_employee_dates(affected_pairs, sync_user=sync_user)
         frappe.db.commit()
 
     return {

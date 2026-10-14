@@ -90,6 +90,34 @@
   "north_indian_bonus_provision_rate",
   "north_indian_enable_el_provision",
   "north_indian_el_provision_days_per_year",
+  "drivers_salary_working_days_basis",
+  "drivers_fixed_working_days",
+  "drivers_enable_pt",
+  "drivers_pt_deduction_frequency",
+  "drivers_pt_half_yearly_months",
+  "drivers_pt_slabs",
+  "drivers_enable_auto_pf",
+  "drivers_employee_pf_rate",
+  "drivers_pf_wage_ceiling",
+  "drivers_employee_pf_max_amount",
+  "drivers_pf_wage_basis",
+  "drivers_enable_auto_esi",
+  "drivers_employee_esi_rate",
+  "drivers_esi_wage_ceiling",
+  "drivers_esi_rounding_method",
+  "drivers_ot_rate_multiplier",
+  "drivers_employer_pf_rate",
+  "drivers_employer_pf_wage_ceiling",
+  "drivers_employer_pf_max_amount",
+  "drivers_pf_admin_rate",
+  "drivers_edli_rate",
+  "drivers_employer_esi_rate",
+  "drivers_enable_tea_allowance",
+  "drivers_tea_allowance_per_day",
+  "drivers_enable_bonus_provision",
+  "drivers_bonus_provision_rate",
+  "drivers_enable_el_provision",
+  "drivers_el_provision_days_per_year",
   "notification_tab",
   "leave_notification",
   "salary_slip_notification",
@@ -129,6 +157,8 @@
   "staff_ctc_employer_pf_max_amount",
   "staff_ctc_pf_admin_rate",
   "staff_ctc_edli_rate",
+  "staff_ctc_pf_admin_edli_basis",
+  "staff_ctc_pf_admin_edli_gross_percent",
   "staff_ctc_employer_esi_rate",
   "staff_ctc_enable_bonus_provision",
   "staff_ctc_bonus_provision_rate",
@@ -153,6 +183,8 @@
   "staff_non_ctc_employer_pf_max_amount",
   "staff_non_ctc_pf_admin_rate",
   "staff_non_ctc_edli_rate",
+  "staff_non_ctc_pf_admin_edli_basis",
+  "staff_non_ctc_pf_admin_edli_gross_percent",
   "staff_non_ctc_employer_esi_rate",
   "staff_non_ctc_enable_bonus_provision",
   "staff_non_ctc_bonus_provision_rate",
@@ -960,6 +992,19 @@
    "default": "0.5"
   },
   {
+   "fieldname": "staff_ctc_pf_admin_edli_basis",
+   "fieldtype": "Select",
+   "label": "Staff CTC PF Admin & EDLI Basis",
+   "options": "Statutory PF Wage (Capped at Ceiling)\nPercentage of Gross Salary\nActual PF Wage (Uncapped)",
+   "default": "Statutory PF Wage (Capped at Ceiling)"
+  },
+  {
+   "fieldname": "staff_ctc_pf_admin_edli_gross_percent",
+   "fieldtype": "Float",
+   "label": "Staff CTC PF Admin & EDLI Gross Basis (%)",
+   "default": "100"
+  },
+  {
    "fieldname": "staff_ctc_employer_esi_rate",
    "fieldtype": "Float",
    "label": "Staff CTC Employer ESI Rate (%)",
@@ -1105,6 +1150,19 @@
    "fieldtype": "Float",
    "label": "Staff Non CTC EDLI Charges Rate (%)",
    "default": "0.5"
+  },
+  {
+   "fieldname": "staff_non_ctc_pf_admin_edli_basis",
+   "fieldtype": "Select",
+   "label": "Staff Non CTC PF Admin & EDLI Basis",
+   "options": "Statutory PF Wage (Capped at Ceiling)\nPercentage of Gross Salary\nActual PF Wage (Uncapped)",
+   "default": "Percentage of Gross Salary"
+  },
+  {
+   "fieldname": "staff_non_ctc_pf_admin_edli_gross_percent",
+   "fieldtype": "Float",
+   "label": "Staff Non CTC PF Admin & EDLI Gross Basis (%)",
+   "default": "90"
   },
   {
    "fieldname": "staff_non_ctc_employer_esi_rate",
@@ -1273,6 +1331,178 @@
    "fieldname": "north_indian_lunch_allowance_per_meal",
    "fieldtype": "Currency",
    "label": "North Indian Lunch Allowance (\u20b9/Meal)"
+  },
+  {
+   "fieldname": "drivers_salary_working_days_basis",
+   "fieldtype": "Select",
+   "label": "Drivers Working Days Basis",
+   "default": "Fixed Working Days (e.g. 26)",
+   "options": "Fixed Working Days (e.g. 26)\nStandard Calendar Month Days"
+  },
+  {
+   "fieldname": "drivers_fixed_working_days",
+   "fieldtype": "Float",
+   "label": "Drivers Fixed Working Days",
+   "default": "26"
+  },
+  {
+   "fieldname": "drivers_enable_pt",
+   "fieldtype": "Check",
+   "label": "Drivers Enable PT",
+   "default": "1"
+  },
+  {
+   "fieldname": "drivers_pt_deduction_frequency",
+   "fieldtype": "Select",
+   "label": "Drivers PT Frequency",
+   "default": "Half-Yearly Deduction",
+   "options": "Half-Yearly Deduction\nEvery Month Deduction"
+  },
+  {
+   "fieldname": "drivers_pt_half_yearly_months",
+   "fieldtype": "Select",
+   "label": "Drivers PT Half-Yearly Cycle Months",
+   "default": "April, September",
+   "options": "April, September\nMarch, September\nApril, October"
+  },
+  {
+   "fieldname": "drivers_pt_slabs",
+   "fieldtype": "Long Text",
+   "label": "Drivers PT Slabs",
+   "default": ""
+  },
+  {
+   "fieldname": "drivers_enable_auto_pf",
+   "fieldtype": "Check",
+   "label": "Drivers Enable Auto PF",
+   "default": "1"
+  },
+  {
+   "fieldname": "drivers_employee_pf_rate",
+   "fieldtype": "Float",
+   "label": "Drivers Employee PF Rate (%)",
+   "default": "12"
+  },
+  {
+   "fieldname": "drivers_pf_wage_ceiling",
+   "fieldtype": "Currency",
+   "label": "Drivers PF Statutory Wage Ceiling (\u20b9)",
+   "default": "15000"
+  },
+  {
+   "fieldname": "drivers_employee_pf_max_amount",
+   "fieldtype": "Currency",
+   "label": "Drivers Max Employee PF Deduction (\u20b9)",
+   "default": "1800"
+  },
+  {
+   "fieldname": "drivers_pf_wage_basis",
+   "fieldtype": "Small Text",
+   "label": "Drivers PF Wage Basis Components",
+   "default": "[\"Basic Pay\", \"DA\"]"
+  },
+  {
+   "fieldname": "drivers_enable_auto_esi",
+   "fieldtype": "Check",
+   "label": "Drivers Enable Auto ESI",
+   "default": "1"
+  },
+  {
+   "fieldname": "drivers_employee_esi_rate",
+   "fieldtype": "Float",
+   "label": "Drivers Employee ESI Rate (%)",
+   "default": "0.75"
+  },
+  {
+   "fieldname": "drivers_esi_wage_ceiling",
+   "fieldtype": "Currency",
+   "label": "Drivers ESI Statutory Wage Ceiling (\u20b9)",
+   "default": "21000"
+  },
+  {
+   "fieldname": "drivers_esi_rounding_method",
+   "fieldtype": "Select",
+   "label": "Drivers ESI Rounding Method",
+   "default": "Round Up to Next Rupee (ROUNDUP / CEIL)",
+   "options": "Round Up to Next Rupee (ROUNDUP / CEIL)\nStandard Nearest Rupee (ROUND)"
+  },
+  {
+   "fieldname": "drivers_ot_rate_multiplier",
+   "fieldtype": "Float",
+   "label": "Drivers OT Rate Multiplier",
+   "default": "2.0"
+  },
+  {
+   "fieldname": "drivers_employer_pf_rate",
+   "fieldtype": "Float",
+   "label": "Drivers Employer PF Rate (%)",
+   "default": "12"
+  },
+  {
+   "fieldname": "drivers_employer_pf_wage_ceiling",
+   "fieldtype": "Currency",
+   "label": "Drivers Employer PF Wage Ceiling (\u20b9)",
+   "default": "15000"
+  },
+  {
+   "fieldname": "drivers_employer_pf_max_amount",
+   "fieldtype": "Currency",
+   "label": "Drivers Max Employer PF Contribution (\u20b9)",
+   "default": "1800"
+  },
+  {
+   "fieldname": "drivers_pf_admin_rate",
+   "fieldtype": "Float",
+   "label": "Drivers PF Admin Charges Rate (%)",
+   "default": "0.5"
+  },
+  {
+   "fieldname": "drivers_edli_rate",
+   "fieldtype": "Float",
+   "label": "Drivers EDLI Rate (%)",
+   "default": "0.5"
+  },
+  {
+   "fieldname": "drivers_employer_esi_rate",
+   "fieldtype": "Float",
+   "label": "Drivers Employer ESI Rate (%)",
+   "default": "3.25"
+  },
+  {
+   "fieldname": "drivers_enable_tea_allowance",
+   "fieldtype": "Check",
+   "label": "Drivers Enable Tea Allowance",
+   "default": "1"
+  },
+  {
+   "fieldname": "drivers_tea_allowance_per_day",
+   "fieldtype": "Currency",
+   "label": "Drivers Tea Allowance (\u20b9/Day)",
+   "default": "5"
+  },
+  {
+   "fieldname": "drivers_enable_bonus_provision",
+   "fieldtype": "Check",
+   "label": "Drivers Enable Bonus Provision",
+   "default": "1"
+  },
+  {
+   "fieldname": "drivers_bonus_provision_rate",
+   "fieldtype": "Float",
+   "label": "Drivers Bonus Provision Rate (%)",
+   "default": "8.33"
+  },
+  {
+   "fieldname": "drivers_enable_el_provision",
+   "fieldtype": "Check",
+   "label": "Drivers Enable EL Provision",
+   "default": "1"
+  },
+  {
+   "fieldname": "drivers_el_provision_days_per_year",
+   "fieldtype": "Float",
+   "label": "Drivers EL Provision Days / Year",
+   "default": "15"
   }
  ],
  "issingle": 1,

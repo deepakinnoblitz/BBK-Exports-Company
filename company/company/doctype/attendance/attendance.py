@@ -1,8 +1,29 @@
 from datetime import datetime, timedelta
 import frappe
 from frappe.model.document import Document
-
 class Attendance(Document):
+    def before_insert(self):
+        user = frappe.session.user or "Administrator"
+        if not self.created_by_name:
+            self.created_by_name = self.get_user_display_name(self.owner or user)
+        if not self.modified_by_name:
+            self.modified_by_name = self.get_user_display_name(user)
+
+    def before_save(self):
+        user = frappe.session.user or "Administrator"
+        if not self.created_by_name:
+            self.created_by_name = self.get_user_display_name(self.owner or user)
+        self.modified_by_name = self.get_user_display_name(user)
+
+    @staticmethod
+    def get_user_display_name(user_id):
+        if not user_id:
+            return "Administrator"
+        if user_id.lower() == "administrator":
+            return "Administrator"
+        full_name = frappe.db.get_value("User", user_id, "full_name")
+        return full_name or user_id
+
     def validate(self):
         self.docstatus = 0
         self.check_duplicate_attendance()
@@ -292,20 +313,28 @@ class Attendance(Document):
 
 @frappe.whitelist()
 def save_attendance_record(doc):
+    frappe.only_for(["System Manager", "HR Manager", "HR", "Administrator"])
+
     import json
     if isinstance(doc, str):
         doc = json.loads(doc)
 
     name = doc.get("name")
     punches_data = doc.get("attendance_punches") or []
+    current_user = frappe.session.user or "Administrator"
+    user_display_name = Attendance.get_user_display_name(current_user)
 
-    ignored_fields = ["name", "doctype", "attendance_punches", "creation", "modified", "modified_by", "owner", "docstatus"]
+    ignored_fields = ["name", "doctype", "attendance_punches", "creation", "modified", "modified_by", "owner", "docstatus", "created_by_name", "modified_by_name"]
 
     if name and frappe.db.exists("Attendance", name):
         att_doc = frappe.get_doc("Attendance", name)
         att_doc.update({k: v for k, v in doc.items() if k not in ignored_fields})
         att_doc.docstatus = 0
-        
+        att_doc.manual = 1
+        att_doc.attendance_source = "Manual"
+        att_doc.modified_by = current_user
+        att_doc.modified_by_name = user_display_name
+
         # Cleanly rebuild attendance punches
         att_doc.set("attendance_punches", [])
         for p in punches_data:
@@ -324,6 +353,12 @@ def save_attendance_record(doc):
         att_doc = frappe.get_doc({
             "doctype": "Attendance",
             **{k: v for k, v in doc.items() if k not in ignored_fields},
+            "manual": 1,
+            "attendance_source": "Manual",
+            "owner": current_user,
+            "created_by_name": user_display_name,
+            "modified_by": current_user,
+            "modified_by_name": user_display_name,
             "docstatus": 0
         })
         for p in punches_data:

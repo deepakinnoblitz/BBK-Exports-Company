@@ -3649,4 +3649,112 @@ def get_reimbursement_claim_permission_query_conditions(user):
     return ""
 
 
+@frappe.whitelist()
+def get_bank_details_by_ifsc(ifsc_code):
+    """
+    Look up bank and branch details by IFSC code via Razorpay IFSC public directory.
+    Includes caching for optimal performance.
+    """
+    import re
+    import requests
+
+    if not ifsc_code:
+        return {"success": False, "message": "IFSC code is required"}
+
+    clean_ifsc = str(ifsc_code).strip().upper()
+
+    # Standard IFSC format validation: 4 letters + 0 + 6 alphanumeric characters
+    if not re.match(r"^[A-Z]{4}0[A-Z0-9]{6}$", clean_ifsc):
+        return {"success": False, "message": "Invalid IFSC format. Must be 11 characters (e.g. BARB0AMBATT)"}
+
+    cache_key = f"ifsc_lookup:{clean_ifsc}"
+    cached = frappe.cache().get_value(cache_key)
+    if cached:
+        try:
+            return {"success": True, "data": json.loads(cached) if isinstance(cached, str) else cached}
+        except Exception:
+            pass
+
+    try:
+        url = f"https://ifsc.razorpay.com/{clean_ifsc}"
+        resp = requests.get(url, timeout=5)
+
+        if resp.status_code == 200:
+            raw = resp.json()
+            data = {
+                "bank_name": raw.get("BANK") or "",
+                "branch": raw.get("BRANCH") or "",
+                "city": raw.get("CITY") or "",
+                "state": raw.get("STATE") or "",
+                "address": raw.get("ADDRESS") or "",
+                "micr": raw.get("MICR") or "",
+                "ifsc": clean_ifsc,
+            }
+            # Cache for 30 days
+            frappe.cache().set_value(cache_key, json.dumps(data), expires_in_sec=30 * 86400)
+            return {"success": True, "data": data}
+        elif resp.status_code == 404:
+            return {"success": False, "message": "IFSC code not found"}
+        else:
+            return {"success": False, "message": f"IFSC lookup failed (status {resp.status_code})"}
+    except requests.RequestException as e:
+        frappe.log_error(f"IFSC lookup error for {clean_ifsc}: {str(e)}", "IFSC Lookup Error")
+        return {"success": False, "message": "Could not connect to IFSC directory service"}
+
+
+@frappe.whitelist()
+def get_distinct_banks():
+    """
+    Return distinct bank names currently present in Bank Account doctype
+    merged with all 1,400+ RBI recognized banks in India for auto-complete.
+    """
+    import os
+
+    all_indian_banks = []
+    json_path = os.path.join(os.path.dirname(__file__), "data", "indian_banks.json")
+    if os.path.exists(json_path):
+        try:
+            with open(json_path, "r", encoding="utf-8") as f:
+                all_indian_banks = json.load(f)
+        except Exception:
+            pass
+
+    if not all_indian_banks:
+        all_indian_banks = [
+            "Bank of Baroda", "State Bank of India", "HDFC Bank", "ICICI Bank",
+            "Axis Bank", "Canara Bank", "Indian Bank", "Punjab National Bank",
+            "Union Bank of India", "Bank of India", "Kotak Mahindra Bank",
+            "IndusInd Bank", "Federal Bank", "IDBI Bank", "Central Bank of India",
+            "Indian Overseas Bank", "UCO Bank", "Bank of Maharashtra",
+            "Punjab & Sind Bank", "Yes Bank", "Karur Vysya Bank", "City Union Bank",
+            "Tamilnad Mercantile Bank",
+        ]
+
+    existing_banks = frappe.db.sql_list(
+        """
+        SELECT DISTINCT bank_name
+        FROM `tabBank Account`
+        WHERE bank_name IS NOT NULL AND TRIM(bank_name) != ''
+        ORDER BY bank_name ASC
+        """
+    )
+
+    # Merge and deduplicate case-insensitively
+    seen = set()
+    combined = []
+
+    # Put existing active banks first, then all Indian banks
+    for b in existing_banks + all_indian_banks:
+        b_clean = b.strip()
+        b_key = b_clean.lower()
+        if b_key not in seen and b_clean:
+            seen.add(b_key)
+            combined.append(b_clean)
+
+    combined.sort()
+    return {"banks": combined, "active_banks": existing_banks}
+
+
+
+
 
