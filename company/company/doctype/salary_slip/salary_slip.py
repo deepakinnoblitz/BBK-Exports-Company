@@ -43,6 +43,8 @@ class SalarySlip(Document):
                     print_format = "North Indian Form 25B Pay Slip"
                 elif "worker" in emp_type:
                     print_format = "Worker Form 25B Pay Slip"
+                elif "driver" in emp_type:
+                    print_format = "Driver Form 25B Pay Slip"
                 else:
                     print_format = frappe.get_meta("Salary Slip").default_print_format or "Standard"
 
@@ -117,6 +119,8 @@ def get_category_setting(settings, fieldname, emp_type="", default=None):
         prefixes = ["workers_"]
     elif "north indian" in emp_type_clean:
         prefixes = ["north_indian_"]
+    elif "driver" in emp_type_clean:
+        prefixes = ["drivers_"]
     
     for prefix in prefixes:
         val = getattr(settings, f"{prefix}{fieldname}", None)
@@ -139,6 +143,11 @@ def calculate_overtime_pay(emp, gross_salary, ot_hours, settings):
     
     if "worker" in emp_type:
         multiplier = flt(getattr(settings, "workers_ot_rate_multiplier", 2.0)) or 2.0
+        # Formula: ROUND(Gross Salary / 26 / 8 * OT Hours, 0) * multiplier
+        single_rate_ot = excel_round((flt(gross_salary) / 26.0 / 8.0) * ot_h)
+        return excel_round(single_rate_ot * multiplier)
+    elif "driver" in emp_type:
+        multiplier = flt(getattr(settings, "drivers_ot_rate_multiplier", 2.0)) or 2.0
         # Formula: ROUND(Gross Salary / 26 / 8 * OT Hours, 0) * multiplier
         single_rate_ot = excel_round((flt(gross_salary) / 26.0 / 8.0) * ot_h)
         return excel_round(single_rate_ot * multiplier)
@@ -579,8 +588,13 @@ def preview_salary_slip(employee, start_date, end_date):
         mh_doc = frappe.get_doc("Holiday List", month_holiday_list[0].name)
         month_holiday_dates = [getdate(row.holiday_date) for row in mh_doc.holidays if (bool(getattr(row, "is_holiday", 0)) or not bool(getattr(row, "is_working_day", 1))) and m_start <= getdate(row.holiday_date) <= m_end]
 
-    if working_days_basis == "Fixed Number of Days":
-        month_working_days = fixed_working_days
+    emp_type = (emp.get("employee_type") or "").lower()
+    cat_basis = get_category_setting(settings, "salary_working_days_basis", emp_type)
+    cat_fixed_days = flt(get_category_setting(settings, "fixed_working_days", emp_type))
+    if "driver" in emp_type:
+        month_working_days = cat_fixed_days or 26.0
+    elif working_days_basis == "Fixed Number of Days" or (cat_basis and "Fixed" in cat_basis):
+        month_working_days = cat_fixed_days or fixed_working_days
     else:
         month_working_days = total_month_days
         if holiday_handling == "Exclude from Working Days":
@@ -809,6 +823,34 @@ def preview_salary_slip(employee, start_date, end_date):
             "type": "Earning",
             "standard_amount": 0.0,
             "amount": attendance_bonus
+        })
+
+    # 5.2.1. Drivers Fuel Incentive and Referral Bonus
+    fuel_incentive = 0.0
+    referral_bonus = 0.0
+    for e in emp.earnings:
+        c_low = (e.component_name or e.salary_component or "").lower().strip()
+        if "fuel" in c_low:
+            fuel_incentive = flt(e.amount)
+        elif "referral" in c_low:
+            referral_bonus = flt(e.amount)
+
+    if fuel_incentive > 0 and not any("fuel" in (e.get("component_name") or e.get("salary_component") or "").lower() for e in prorated_earnings):
+        prorated_earnings.append({
+            "component_name": "Fuel Incentive",
+            "salary_component": "Fuel Incentive",
+            "type": "Earning",
+            "standard_amount": fuel_incentive,
+            "amount": fuel_incentive
+        })
+
+    if referral_bonus > 0 and not any("referral" in (e.get("component_name") or e.get("salary_component") or "").lower() for e in prorated_earnings):
+        prorated_earnings.append({
+            "component_name": "Referral Bonus",
+            "salary_component": "Referral Bonus",
+            "type": "Earning",
+            "standard_amount": referral_bonus,
+            "amount": referral_bonus
         })
 
     # 5.3. Calculate Earned Gross Pay (AF6: Earned Gross before dynamic OT/Bonus) & Grand Gross Pay (AK6)
@@ -1104,6 +1146,8 @@ def preview_salary_slip(employee, start_date, end_date):
         "ot_hours": round(total_ot_hours, 2),
         "ot_amount": ot_amount,
         "attendance_bonus": attendance_bonus,
+        "fuel_incentive": fuel_incentive,
+        "referral_bonus": referral_bonus,
         "tea_allowance": 0.0,
         "pt_amount": pt_amount,
         "earnings": prorated_earnings,
@@ -1863,6 +1907,8 @@ def generate_salary_slips_from_employee(year=None, month=None, employees=None, s
                 "ot_hours": data.get("ot_hours", 0.0),
                 "ot_amount": data.get("ot_amount", 0.0),
                 "attendance_bonus": data.get("attendance_bonus", 0.0),
+                "fuel_incentive": data.get("fuel_incentive", 0.0),
+                "referral_bonus": data.get("referral_bonus", 0.0),
                 "pt_amount": data.get("pt_amount", 0.0),
                 "canteen_deduction": data.get("canteen_deduction", 0.0),
                 "employer_pf": data.get("employer_pf", 0.0),

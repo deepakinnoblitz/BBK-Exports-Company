@@ -49,6 +49,8 @@
   "grand_gross_pay",
   "ot_amount",
   "attendance_bonus",
+  "fuel_incentive",
+  "referral_bonus",
   "total_deduction",
   "canteen_deduction",
   "pt_amount",
@@ -529,6 +531,20 @@
    "label": "Bonus Provision Rate (%)",
    "precision": "2",
    "read_only": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "fuel_incentive",
+   "fieldtype": "Currency",
+   "label": "Fuel Incentive",
+   "precision": "2"
+  },
+  {
+   "default": "0",
+   "fieldname": "referral_bonus",
+   "fieldtype": "Currency",
+   "label": "Referral Bonus",
+   "precision": "2"
   }
  ],
  "grid_page_length": 50,

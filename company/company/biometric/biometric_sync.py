@@ -4,7 +4,7 @@
 import hashlib
 from datetime import datetime, timedelta
 import frappe
-from frappe.utils import now_datetime, get_datetime, format_datetime, getdate
+from frappe.utils import now_datetime, get_datetime, format_datetime, getdate, cint
 
 from company.company.biometric.smartoffice_client import SmartOfficeClient
 
@@ -452,15 +452,27 @@ def evaluate_and_run_scheduled_sync():
     sync_mode = settings.sync_mode
 
     if sync_mode == "Interval in Minutes":
-        interval = settings.sync_interval_minutes or 15
+        interval = max(1, cint(getattr(settings, "sync_interval_minutes", 15) or 15))
         if settings.last_successful_sync:
             last_sync = get_datetime(settings.last_successful_sync)
-            diff_minutes = (now - last_sync).total_seconds() / 60
-            if diff_minutes < interval:
+            diff_seconds = (now - last_sync).total_seconds()
+            # Leeway of 5 seconds to prevent minute skips caused by clock jitter
+            min_required_seconds = (interval * 60) - 5
+            if diff_seconds < min_required_seconds:
                 return
 
-        # Trigger interval sync
-        sync_smartoffice_logs(sync_type="Scheduled Interval")
+        # Concurrency lock to prevent overlapping executions
+        lock_key = "smartoffice_biometric_sync_lock"
+        if frappe.cache().get_value(lock_key):
+            frappe.logger("biometric").info("Biometric sync already in progress, skipping overlapping run.")
+            return
+
+        frappe.cache().set_value(lock_key, 1, expires_in_sec=120)
+        try:
+            # Trigger interval sync
+            sync_smartoffice_logs(sync_type="Scheduled Interval")
+        finally:
+            frappe.cache().delete_value(lock_key)
 
     elif sync_mode == "Specific Times Daily":
         times_raw = settings.daily_sync_times or ""
