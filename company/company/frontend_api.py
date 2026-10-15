@@ -4915,6 +4915,119 @@ def get_employee_probation_info(employee, date=None):
         "probation_end_date": probation_end_date,
     }
 
+
+@frappe.whitelist()
+def bulk_update_leave_allocations(allocations, update_data):
+    """
+    Bulk update selected Leave Allocations.
+
+    allocations: list or json string of Leave Allocation document names.
+    update_data: dict or json string specifying fields to update:
+        {
+            "allocated": { "enabled": True, "action": "set"|"add"|"subtract", "value": 1.5 },
+            "taken": { "enabled": True, "action": "set"|"add"|"subtract"|"reset", "value": 0 },
+            "status": { "enabled": True, "value": "Approved" }
+        }
+    """
+    import json
+    from frappe.utils import flt
+
+    if not frappe.has_permission("Leave Allocation", "write"):
+        frappe.throw("You do not have permission to edit Leave Allocations", frappe.PermissionError)
+
+    if isinstance(allocations, str):
+        try:
+            allocations = json.loads(allocations)
+        except Exception:
+            allocations = [a.strip() for a in allocations.split(",") if a.strip()]
+
+    if not allocations or not isinstance(allocations, list):
+        frappe.throw("No leave allocations provided for bulk update")
+
+    if isinstance(update_data, str):
+        try:
+            update_data = json.loads(update_data)
+        except Exception:
+            frappe.throw("Invalid update data format")
+
+    if not update_data or not isinstance(update_data, dict):
+        frappe.throw("No update parameters specified")
+
+    allocated_cfg = update_data.get("allocated") or {}
+    taken_cfg = update_data.get("taken") or {}
+    status_cfg = update_data.get("status") or {}
+
+    alloc_enabled = bool(allocated_cfg.get("enabled"))
+    taken_enabled = bool(taken_cfg.get("enabled"))
+    status_enabled = bool(status_cfg.get("enabled"))
+
+    if not (alloc_enabled or taken_enabled or status_enabled):
+        frappe.throw("Please select at least one field to update")
+
+    # Fetch current records in bulk
+    records = frappe.db.get_all(
+        "Leave Allocation",
+        filters={"name": ["in", allocations]},
+        fields=["name", "total_leaves_allocated", "total_leaves_taken", "status"],
+    )
+
+    if not records:
+        frappe.throw("No matching leave allocation records found")
+
+    updated_count = 0
+    valid_statuses = {"Approved", "Draft", "Cancelled"}
+
+    for rec in records:
+        updates = {}
+
+        if alloc_enabled:
+            action = allocated_cfg.get("action", "set")
+            val = flt(allocated_cfg.get("value", 0))
+            curr = flt(rec.total_leaves_allocated)
+            if action == "set":
+                new_val = max(0.0, val)
+            elif action == "add":
+                new_val = max(0.0, curr + val)
+            elif action == "subtract":
+                new_val = max(0.0, curr - val)
+            else:
+                new_val = curr
+            updates["total_leaves_allocated"] = new_val
+
+        if taken_enabled:
+            action = taken_cfg.get("action", "set")
+            val = flt(taken_cfg.get("value", 0))
+            curr = flt(rec.total_leaves_taken)
+            if action == "reset":
+                new_val = 0.0
+            elif action == "set":
+                new_val = max(0.0, val)
+            elif action == "add":
+                new_val = max(0.0, curr + val)
+            elif action == "subtract":
+                new_val = max(0.0, curr - val)
+            else:
+                new_val = curr
+            updates["total_leaves_taken"] = new_val
+
+        if status_enabled:
+            new_st = status_cfg.get("value")
+            if new_st in valid_statuses:
+                updates["status"] = new_st
+
+        if updates:
+            frappe.db.set_value("Leave Allocation", rec.name, updates, update_modified=True)
+            updated_count += 1
+
+    frappe.db.commit()
+
+    return {
+        "success": True,
+        "updated_count": updated_count,
+        "message": f"Successfully updated {updated_count} leave allocation(s)",
+    }
+
+
 @frappe.whitelist()
 def get_automation_options():
     """
