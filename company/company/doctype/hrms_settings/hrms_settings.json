@@ -212,7 +212,8 @@
   "north_indian_enable_tea_allowance",
   "north_indian_tea_allowance_per_day",
   "north_indian_enable_lunch_allowance",
-  "north_indian_lunch_allowance_per_meal"
+  "north_indian_lunch_allowance_per_meal",
+  "bonus_schemes"
  ],
  "fields": [
   {
@@ -1503,6 +1504,12 @@
    "fieldtype": "Float",
    "label": "Drivers EL Provision Days / Year",
    "default": "15"
+  },
+  {
+   "default": "[]",
+   "fieldname": "bonus_schemes",
+   "fieldtype": "Long Text",
+   "label": "Bonus Schemes Configuration"
   }
  ],
  "issingle": 1,

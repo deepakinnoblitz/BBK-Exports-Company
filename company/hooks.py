@@ -402,7 +402,7 @@ permission_query_conditions = {
 # Ignore links to specified DocTypes when deleting documents
 # -----------------------------------------------------------
 
-# ignore_links_on_delete = ["Communication", "ToDo"]
+ignore_links_on_delete = ["Attendance Transfer Item", "Attendance Transfer"]
 
 # Request Events
 # ----------------

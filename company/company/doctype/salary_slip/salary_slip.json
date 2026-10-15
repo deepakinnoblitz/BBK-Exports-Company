@@ -51,6 +51,8 @@
   "attendance_bonus",
   "fuel_incentive",
   "referral_bonus",
+  "annual_bonus",
+  "leave_encashment_amount",
   "total_deduction",
   "canteen_deduction",
   "pt_amount",
@@ -544,6 +546,20 @@
    "fieldname": "referral_bonus",
    "fieldtype": "Currency",
    "label": "Referral Bonus",
+   "precision": "2"
+  },
+  {
+   "default": "0",
+   "fieldname": "annual_bonus",
+   "fieldtype": "Currency",
+   "label": "Annual / Festival Bonus",
+   "precision": "2"
+  },
+  {
+   "default": "0",
+   "fieldname": "leave_encashment_amount",
+   "fieldtype": "Currency",
+   "label": "Leave Encashment / Payout",
    "precision": "2"
   }
  ],

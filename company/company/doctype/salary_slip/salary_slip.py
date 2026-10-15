@@ -166,6 +166,39 @@ def calculate_attendance_bonus(emp, absent_days, settings):
     return 0.0
 
 
+def get_leaves_taken_in_period(employee_id, leave_type_name, start_date, end_date):
+    """Calculate total approved leave days taken in the given cycle."""
+    try:
+        # 1. Check submitted Leave Applications
+        app_res = frappe.db.sql("""
+            SELECT COALESCE(SUM(total_days), 0)
+            FROM `tabLeave Application`
+            WHERE employee = %s 
+              AND (leave_type = %s OR leave_type IN (SELECT name FROM `tabLeave Type` WHERE leave_type_name = %s))
+              AND docstatus = 1
+              AND from_date >= %s 
+              AND to_date <= %s
+        """, (employee_id, leave_type_name, leave_type_name, start_date, end_date))
+        app_days = flt(app_res[0][0]) if app_res else 0.0
+        if app_days > 0:
+            return app_days
+        
+        # 2. Check Attendance records
+        att_res = frappe.db.sql("""
+            SELECT COALESCE(SUM(CASE WHEN status = 'Half Day' THEN 0.5 ELSE 1.0 END), 0)
+            FROM `tabAttendance`
+            WHERE employee = %s
+              AND (leave_type = %s OR leave_type IN (SELECT name FROM `tabLeave Type` WHERE leave_type_name = %s))
+              AND attendance_date >= %s
+              AND attendance_date <= %s
+              AND status IN ('On Leave', 'Half Day')
+        """, (employee_id, leave_type_name, leave_type_name, start_date, end_date))
+        return flt(att_res[0][0]) if att_res else 0.0
+    except Exception:
+        return 0.0
+
+
+
 def calculate_employee_pf(emp, earned_gross_salary, earned_basic_da, settings, prorated_earnings=None):
     """
     Calculate Employee PF deduction based on HRMS Settings and Excel formula:
@@ -867,6 +900,242 @@ def preview_salary_slip(employee, start_date, end_date):
     if earned_basic_da <= 0:
         earned_basic_da = earned_gross_salary
 
+    # 5.3.1. Dynamic Annual / Festival Bonus Schemes
+    annual_bonus_amt = 0.0
+    bonus_schemes_list = []
+    bonus_schemes_raw = getattr(settings, "bonus_schemes", None)
+    if bonus_schemes_raw:
+        if isinstance(bonus_schemes_raw, list):
+            bonus_schemes_list = bonus_schemes_raw
+        elif isinstance(bonus_schemes_raw, str):
+            try:
+                bonus_schemes_list = json.loads(bonus_schemes_raw)
+            except Exception:
+                bonus_schemes_list = []
+
+    current_month_name = start_date.strftime("%B").lower()
+    emp_type_lower = (emp_type or "").lower().strip()
+
+    for scheme in bonus_schemes_list:
+        is_active = scheme.get("is_active", 1)
+        if not (is_active == 1 or is_active is True or is_active == "1"):
+            continue
+        payout_months = [m.strip().lower() for m in str(scheme.get("payout_month", "")).split(",") if m.strip()]
+        if not payout_months and scheme.get("payout_months"):
+            raw_pm = scheme.get("payout_months")
+            if isinstance(raw_pm, list):
+                payout_months = [str(m).strip().lower() for m in raw_pm if m]
+        if current_month_name not in payout_months:
+            continue
+
+        # Check category match
+        scheme_cats = [c.strip().lower().replace("_", " ") for c in scheme.get("categories", [])]
+        cat_matches = False
+        if not scheme_cats or "all" in scheme_cats or "all categories" in scheme_cats:
+            cat_matches = True
+        elif "driver" in emp_type_lower and any("driver" in c for c in scheme_cats):
+            cat_matches = True
+        elif "north indian" in emp_type_lower and any("north indian" in c for c in scheme_cats):
+            cat_matches = True
+        elif "worker" in emp_type_lower and any("worker" in c and "north" not in c for c in scheme_cats):
+            cat_matches = True
+        elif "staff" in emp_type_lower:
+            if "ctc" in emp_type_lower and "non" not in emp_type_lower and any("ctc" in c and "non" not in c for c in scheme_cats):
+                cat_matches = True
+            elif ("non-ctc" in emp_type_lower or "non ctc" in emp_type_lower) and any("non" in c for c in scheme_cats):
+                cat_matches = True
+            elif any("staff" in c for c in scheme_cats):
+                cat_matches = True
+
+        if not cat_matches:
+            continue
+
+        # Optional Department filter
+        scheme_depts = [d.strip().lower() for d in (scheme.get("departments") or []) if d]
+        if scheme_depts and "all" not in scheme_depts:
+            emp_dept = (getattr(emp, "department", "") or "").strip().lower()
+            if not any(d == emp_dept or d in emp_dept for d in scheme_depts):
+                continue
+
+        # Optional Designation filter
+        scheme_desigs = [d.strip().lower() for d in (scheme.get("designations") or []) if d]
+        if scheme_desigs and "all" not in scheme_desigs:
+            emp_desig = (getattr(emp, "designation", "") or "").strip().lower()
+            if not any(d == emp_desig or d in emp_desig for d in scheme_desigs):
+                continue
+
+        calc_method = scheme.get("calc_method", "Percentage of Selected Components")
+        pct = flt(scheme.get("percentage") or 8.33)
+        ceiling = flt(scheme.get("wage_ceiling") or 0.0)
+
+        if calc_method == "Flat Fixed Amount":
+            b_amount = flt(scheme.get("flat_amount", 0.0))
+        elif calc_method == "Percentage of Gross":
+            base = earned_gross_salary
+            if ceiling > 0:
+                base = min(base, ceiling)
+            b_amount = excel_round(base * (pct / 100.0))
+        else:  # Percentage of Selected Components / Percentage of Basic + DA
+            custom_components = scheme.get("calculation_components") or scheme.get("components")
+            if custom_components and isinstance(custom_components, list) and len(custom_components) > 0:
+                norm_custom = [str(c).strip().lower() for c in custom_components if c]
+                base = sum(
+                    flt(e.get("amount", 0)) for e in prorated_earnings
+                    if (e.get("component_name") or e.get("salary_component") or "").strip().lower() in norm_custom
+                )
+                if base <= 0:
+                    base = sum(
+                        flt(e.get("amount", 0)) for e in prorated_earnings
+                        if any(k in (e.get("component_name") or e.get("salary_component") or "").lower() for k in norm_custom)
+                    )
+            else:
+                base = earned_basic_da
+
+            if base <= 0:
+                base = earned_basic_da or earned_gross_salary
+            if ceiling > 0:
+                base = min(base, ceiling)
+            b_amount = excel_round(base * (pct / 100.0))
+
+        if b_amount > 0:
+            scheme_title = scheme.get("scheme_name") or "Annual Bonus"
+            if not any(scheme_title.lower() in (e.get("component_name") or e.get("salary_component") or "").lower() for e in prorated_earnings):
+                prorated_earnings.append({
+                    "component_name": scheme_title,
+                    "salary_component": scheme_title,
+                    "type": "Earning",
+                    "standard_amount": b_amount,
+                    "amount": b_amount
+                })
+                annual_bonus_amt += b_amount
+
+    # 5.3.2. Automated Leave Encashment / Payout
+    leave_encashment_total = 0.0
+    try:
+        encashable_leave_types = frappe.get_all(
+            "Leave Type",
+            filters={"is_encashable": 1, "status": "Active"},
+            fields=[
+                "name", "leave_type_name", "encashment_cycles", "encashment_payout_months",
+                "encashment_rate_basis", "encashment_component_name"
+            ]
+        )
+    except Exception:
+        encashable_leave_types = []
+
+    month_name_to_num = {
+        "january": 1, "february": 2, "march": 3, "april": 4, "may": 5, "june": 6,
+        "july": 7, "august": 8, "september": 9, "october": 10, "november": 11, "december": 12,
+        "jan": 1, "feb": 2, "mar": 3, "apr": 4, "jun": 6, "jul": 7, "aug": 8, "sep": 9, "oct": 10, "nov": 11, "dec": 12
+    }
+
+    for lt in encashable_leave_types:
+        cycles = []
+        if lt.get("encashment_cycles"):
+            try:
+                raw_cycles = json.loads(lt.encashment_cycles)
+                if isinstance(raw_cycles, list):
+                    cycles = raw_cycles
+            except Exception:
+                cycles = []
+
+        # Fallback for legacy configurations using encashment_payout_months
+        if not cycles:
+            p_months = [m.strip() for m in str(lt.encashment_payout_months or "June, December").split(",") if m.strip()]
+            if len(p_months) >= 2:
+                cycles = [
+                    {"from_month": "January", "to_month": "June", "payout_months": [p_months[0]]},
+                    {"from_month": "July", "to_month": "December", "payout_months": [p_months[1]]}
+                ]
+            elif len(p_months) == 1:
+                cycles = [
+                    {"from_month": "January", "to_month": "December", "payout_months": p_months}
+                ]
+            else:
+                cycles = [
+                    {"from_month": "January", "to_month": "June", "payout_months": ["June"]},
+                    {"from_month": "July", "to_month": "December", "payout_months": ["December"]}
+                ]
+
+        for cycle in cycles:
+            c_payout_months = cycle.get("payout_months") or ([cycle.get("payout_month")] if cycle.get("payout_month") else [])
+            normalized_p_months = [str(m).strip().lower() for m in c_payout_months if m]
+            if current_month_name not in normalized_p_months:
+                continue
+
+            from_m_str = str(cycle.get("from_month") or "January").strip().lower()
+            to_m_str = str(cycle.get("to_month") or "June").strip().lower()
+            start_m = month_name_to_num.get(from_m_str, 1)
+            end_m = month_name_to_num.get(to_m_str, 6)
+
+            slip_year = start_date.year
+            if start_m <= end_m:
+                from_year = slip_year
+                to_year = slip_year
+            else:
+                # Financial year cross (e.g. Apr to Mar)
+                if start_date.month <= end_m:
+                    from_year = slip_year - 1
+                    to_year = slip_year
+                else:
+                    from_year = slip_year
+                    to_year = slip_year + 1
+
+            last_day = monthrange(to_year, end_m)[1]
+            cycle_start = f"{from_year}-{start_m:02d}-01"
+            cycle_end = f"{to_year}-{end_m:02d}-{last_day:02d}"
+
+            # Encashment strictly based on Leave Allocation doctype (No fixed monthly quota)
+            alloc_res = frappe.db.sql("""
+                SELECT COALESCE(SUM(total_leaves_allocated), 0), COALESCE(SUM(total_leaves_taken), 0)
+                FROM `tabLeave Allocation`
+                WHERE employee = %s
+                  AND (leave_type = %s OR leave_type IN (SELECT name FROM `tabLeave Type` WHERE leave_type_name = %s))
+                  AND status = 'Approved'
+                  AND (
+                      (from_date >= %s AND to_date <= %s)
+                      OR (from_date <= %s AND to_date >= %s)
+                  )
+            """, (emp.name, lt.name, lt.leave_type_name or lt.name, cycle_start, cycle_end, cycle_end, cycle_start))
+
+            total_alloc = flt(alloc_res[0][0]) if alloc_res else 0.0
+            alloc_taken = flt(alloc_res[0][1]) if alloc_res else 0.0
+
+            actual_leaves_taken = get_leaves_taken_in_period(emp.name, lt.name, cycle_start, cycle_end)
+            leaves_taken = max(alloc_taken, actual_leaves_taken)
+
+            payable_days = max(0.0, total_alloc - leaves_taken)
+            if payable_days <= 0:
+                continue
+
+            # Rate basis
+            r_basis = (lt.encashment_rate_basis or "Gross / 26").lower()
+            if "basic" in r_basis and "da" in r_basis:
+                daily_rate = flt(earned_basic_da) / 26.0
+            elif "basic" in r_basis:
+                daily_rate = flt(earned_basic_da) / 26.0
+            elif "calendar" in r_basis:
+                daily_rate = flt(gross_pay) / max(1.0, flt(calendar_days))
+            else:
+                daily_rate = flt(gross_pay) / 26.0
+
+            payout_amt = excel_round(payable_days * daily_rate)
+            if payout_amt > 0:
+                c_label = lt.encashment_component_name or f"{lt.leave_type_name or lt.name} Payout"
+                if not any(c_label.lower() in (e.get("component_name") or e.get("salary_component") or "").lower() for e in prorated_earnings):
+                    prorated_earnings.append({
+                        "component_name": c_label,
+                        "salary_component": c_label,
+                        "type": "Earning",
+                        "standard_amount": payout_amt,
+                        "amount": payout_amt
+                    })
+                    leave_encashment_total += payout_amt
+
+    # Recalculate Grand Gross Pay including Bonus & Leave Encashment
+    grand_gross_pay = excel_round(sum(flt(e["amount"]) for e in prorated_earnings))
+
+
     # 5.5. Deductions & Professional Tax, PF, ESI
     pt_amount = calculate_professional_tax(grand_gross_pay, start_date, settings, employee=emp.name, emp_doc=emp)
     emp_pf = calculate_employee_pf(emp, earned_gross_salary, earned_basic_da, settings, prorated_earnings=prorated_earnings)
@@ -1148,6 +1417,8 @@ def preview_salary_slip(employee, start_date, end_date):
         "attendance_bonus": attendance_bonus,
         "fuel_incentive": fuel_incentive,
         "referral_bonus": referral_bonus,
+        "annual_bonus": annual_bonus_amt,
+        "leave_encashment_amount": leave_encashment_total,
         "tea_allowance": 0.0,
         "pt_amount": pt_amount,
         "earnings": prorated_earnings,
@@ -1909,6 +2180,8 @@ def generate_salary_slips_from_employee(year=None, month=None, employees=None, s
                 "attendance_bonus": data.get("attendance_bonus", 0.0),
                 "fuel_incentive": data.get("fuel_incentive", 0.0),
                 "referral_bonus": data.get("referral_bonus", 0.0),
+                "annual_bonus": data.get("annual_bonus", 0.0),
+                "leave_encashment_amount": data.get("leave_encashment_amount", 0.0),
                 "pt_amount": data.get("pt_amount", 0.0),
                 "canteen_deduction": data.get("canteen_deduction", 0.0),
                 "employer_pf": data.get("employer_pf", 0.0),

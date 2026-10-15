@@ -1,0 +1,114 @@
+{
+ "actions": [],
+ "allow_rename": 1,
+ "autoname": "autoincrement",
+ "creation": "2026-10-14 10:00:00.000000",
+ "doctype": "DocType",
+ "editable_grid": 1,
+ "engine": "InnoDB",
+ "field_order": [
+  "employee",
+  "employee_name",
+  "department",
+  "designation",
+  "source_attendance",
+  "source_in_time",
+  "source_out_time",
+  "source_working_hours",
+  "target_attendance",
+  "previous_target_status",
+  "new_target_status"
+ ],
+ "fields": [
+  {
+   "fieldname": "employee",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Employee",
+   "options": "Employee",
+   "reqd": 1
+  },
+  {
+   "fetch_from": "employee.employee_name",
+   "fieldname": "employee_name",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Employee Name",
+   "read_only": 1
+  },
+  {
+   "fetch_from": "employee.department",
+   "fieldname": "department",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Department",
+   "options": "Department",
+   "read_only": 1
+  },
+  {
+   "fetch_from": "employee.designation",
+   "fieldname": "designation",
+   "fieldtype": "Link",
+   "label": "Designation",
+   "options": "Designation",
+   "read_only": 1
+  },
+  {
+   "fieldname": "source_attendance",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Source Attendance"
+  },
+  {
+   "fieldname": "source_in_time",
+   "fieldtype": "Time",
+   "in_list_view": 1,
+   "label": "Source In Time"
+  },
+  {
+   "fieldname": "source_out_time",
+   "fieldtype": "Time",
+   "in_list_view": 1,
+   "label": "Source Out Time"
+  },
+  {
+   "fieldname": "source_working_hours",
+   "fieldtype": "Float",
+   "in_list_view": 1,
+   "label": "Source Working Hours"
+  },
+  {
+   "fieldname": "target_attendance",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Target Attendance"
+  },
+  {
+   "fieldname": "previous_target_status",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "Previous Target Status"
+  },
+  {
+   "default": "Present",
+   "fieldname": "new_target_status",
+   "fieldtype": "Data",
+   "in_list_view": 1,
+   "label": "New Target Status"
+  }
+ ],
+ "grid_page_length": 50,
+ "istable": 1,
+ "links": [],
+ "modified": "2026-10-14 10:00:00.000000",
+ "modified_by": "Administrator",
+ "module": "Company",
+ "name": "Attendance Transfer Item",
+ "naming_rule": "Autoincrement",
+ "owner": "Administrator",
+ "permissions": [],
+ "row_format": "Dynamic",
+ "sort_field": "idx",
+ "sort_order": "ASC",
+ "states": []
+}

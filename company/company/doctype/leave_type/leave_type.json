@@ -19,7 +19,12 @@
   "min_present_days",
   "days_worked_per_leave",
   "count_half_day_as",
-  "include_approved_paid_leaves"
+  "include_approved_paid_leaves",
+  "is_encashable",
+  "encashment_cycles",
+  "encashment_payout_months",
+  "encashment_rate_basis",
+  "encashment_component_name"
  ],
  "fields": [
   {
@@ -113,6 +118,39 @@
    "fieldname": "include_approved_paid_leaves",
    "fieldtype": "Check",
    "label": "Include Approved Paid Leaves in Presence"
+  },
+  {
+   "default": "0",
+   "fieldname": "is_encashable",
+   "fieldtype": "Check",
+   "label": "Is Encashable / Paid Out"
+  },
+  {
+   "depends_on": "eval:doc.is_encashable",
+   "fieldname": "encashment_cycles",
+   "fieldtype": "Long Text",
+   "label": "Encashment Cycles"
+  },
+  {
+   "default": "June, December",
+   "depends_on": "eval:doc.is_encashable",
+   "fieldname": "encashment_payout_months",
+   "fieldtype": "Data",
+   "label": "Payout Month(s)"
+  },
+  {
+   "default": "Gross / 26",
+   "depends_on": "eval:doc.is_encashable",
+   "fieldname": "encashment_rate_basis",
+   "fieldtype": "Select",
+   "label": "Encashment Daily Rate Basis",
+   "options": "Gross / 26\nBasic + DA / 26\nGross / Calendar Days\nBasic / 26"
+  },
+  {
+   "depends_on": "eval:doc.is_encashable",
+   "fieldname": "encashment_component_name",
+   "fieldtype": "Data",
+   "label": "Payout Component Name on Slip"
   }
  ],
  "grid_page_length": 50,
