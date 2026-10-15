@@ -1187,15 +1187,7 @@ def get_hr_dashboard_data():
             AND e.status = 'Active'
         """, (today,))[0][0] or 0
 
-        today_absent = frappe.db.sql("""
-            SELECT COUNT(DISTINCT a.employee)
-            FROM `tabAttendance` a
-            INNER JOIN `tabEmployee` e ON a.employee = e.name
-            WHERE a.attendance_date = %s
-            AND a.status = 'Absent'
-            AND a.docstatus != 2
-            AND e.status = 'Active'
-        """, (today,))[0][0] or 0
+        today_absent = max(0, active_emp_count - today_present)
 
         data["today_present"] = today_present
         data["today_absent"] = today_absent
@@ -5152,3 +5144,217 @@ def get_employee_applied_leave_dates(employee):
             curr += timedelta(days=1)
 
     return sorted(list(applied_dates))
+
+
+@frappe.whitelist()
+def get_workforce_dashboard_analytics(date=None):
+    """
+    Returns aggregated workforce analytics for dashboard:
+    1. Line-wise headcount and attendance
+    2. Department-wise headcount and attendance
+    3. Shift-wise headcount and attendance
+    4. Workers Skill Matrix (Distribution, Line Matrix, Dept Matrix)
+    """
+    from frappe.utils import today, getdate, flt
+    target_date = getdate(date) if date else today()
+
+    # 1. Line-Wise Analytics
+    raw_lines = frappe.db.sql("""
+        SELECT 
+            IFNULL(e.line_order, 'Unassigned') AS line,
+            COUNT(e.name) AS total,
+            COUNT(CASE WHEN a.status IN ('Present', 'Half Day') THEN 1 END) AS present,
+            COUNT(CASE WHEN a.status = 'Absent' THEN 1 END) AS absent
+        FROM `tabEmployee` e
+        LEFT JOIN `tabAttendance` a ON a.employee = e.name AND a.attendance_date = %s AND a.docstatus != 2
+        WHERE e.status = 'Active'
+        GROUP BY e.line_order
+        ORDER BY total DESC
+    """, (target_date,), as_dict=True)
+
+    line_wise = []
+    for row in raw_lines:
+        tot = row["total"] or 0
+        pres = row["present"] or 0
+        absn = max(0, tot - pres)
+        rate = round((pres / tot * 100), 1) if tot > 0 else 0
+        line_wise.append({
+            "line": row["line"],
+            "total": tot,
+            "present": pres,
+            "absent": absn,
+            "attendance_rate": rate
+        })
+
+    # 2. Department-Wise Analytics
+    raw_depts = frappe.db.sql("""
+        SELECT 
+            IFNULL(e.department, 'Unassigned') AS department,
+            COUNT(e.name) AS total,
+            COUNT(CASE WHEN a.status IN ('Present', 'Half Day') THEN 1 END) AS present,
+            COUNT(CASE WHEN a.status = 'Absent' THEN 1 END) AS absent
+        FROM `tabEmployee` e
+        LEFT JOIN `tabAttendance` a ON a.employee = e.name AND a.attendance_date = %s AND a.docstatus != 2
+        WHERE e.status = 'Active'
+        GROUP BY e.department
+        ORDER BY total DESC
+    """, (target_date,), as_dict=True)
+
+    department_wise = []
+    for row in raw_depts:
+        tot = row["total"] or 0
+        pres = row["present"] or 0
+        absn = max(0, tot - pres)
+        rate = round((pres / tot * 100), 1) if tot > 0 else 0
+        department_wise.append({
+            "department": row["department"],
+            "total": tot,
+            "present": pres,
+            "absent": absn,
+            "attendance_rate": rate
+        })
+
+    # 3. Shift-Wise Analytics
+    raw_shifts = frappe.db.sql("""
+        SELECT 
+            IFNULL(e.shift, 'General Shift') AS shift,
+            COUNT(e.name) AS total,
+            COUNT(CASE WHEN a.status IN ('Present', 'Half Day') THEN 1 END) AS present,
+            COUNT(CASE WHEN a.status = 'Absent' THEN 1 END) AS absent
+        FROM `tabEmployee` e
+        LEFT JOIN `tabAttendance` a ON a.employee = e.name AND a.attendance_date = %s AND a.docstatus != 2
+        WHERE e.status = 'Active'
+        GROUP BY e.shift
+        ORDER BY total DESC
+    """, (target_date,), as_dict=True)
+
+    shift_wise = []
+    for row in raw_shifts:
+        tot = row["total"] or 0
+        pres = row["present"] or 0
+        absn = max(0, tot - pres)
+        rate = round((pres / tot * 100), 1) if tot > 0 else 0
+        shift_wise.append({
+            "shift": row["shift"],
+            "total": tot,
+            "present": pres,
+            "absent": absn,
+            "attendance_rate": rate
+        })
+
+    # 4. Workers Skill Matrix
+    SKILL_ORDER = ["Highly Skilled", "Skilled", "Semi Skilled", "Unskilled"]
+
+    # Overall Worker Skill Counts
+    raw_skills = frappe.db.sql("""
+        SELECT 
+            IFNULL(e.skill, 'Unassigned') AS skill,
+            COUNT(e.name) AS count
+        FROM `tabEmployee` e
+        WHERE e.status = 'Active' AND (e.employee_type = 'Workers' OR e.designation = 'Workers')
+        GROUP BY e.skill
+    """, as_dict=True)
+
+    skill_counts = {s: 0 for s in SKILL_ORDER}
+    skill_counts["Unassigned"] = 0
+    total_workers = 0
+
+    for r in raw_skills:
+        s = r["skill"] or "Unassigned"
+        c = r["count"] or 0
+        skill_counts[s] = skill_counts.get(s, 0) + c
+        total_workers += c
+
+    overall_skills = []
+    for s in SKILL_ORDER + (["Unassigned"] if skill_counts.get("Unassigned", 0) > 0 else []):
+        c = skill_counts.get(s, 0)
+        pct = round((c / total_workers * 100), 1) if total_workers > 0 else 0
+        overall_skills.append({
+            "skill": s,
+            "count": c,
+            "percentage": pct
+        })
+
+    # Line-wise Skill Matrix
+    raw_line_skills = frappe.db.sql("""
+        SELECT 
+            IFNULL(e.line_order, 'Unassigned') AS line,
+            IFNULL(e.skill, 'Unassigned') AS skill,
+            COUNT(e.name) AS count
+        FROM `tabEmployee` e
+        WHERE e.status = 'Active' AND (e.employee_type = 'Workers' OR e.designation = 'Workers')
+        GROUP BY e.line_order, e.skill
+        ORDER BY e.line_order, e.skill
+    """, as_dict=True)
+
+    line_matrix_map = {}
+    for r in raw_line_skills:
+        l = r["line"] or "Unassigned"
+        if l not in line_matrix_map:
+            line_matrix_map[l] = {
+                "line": l,
+                "total": 0,
+                "Highly Skilled": 0,
+                "Skilled": 0,
+                "Semi Skilled": 0,
+                "Unskilled": 0,
+                "Unassigned": 0
+            }
+        s = r["skill"] or "Unassigned"
+        cnt = r["count"] or 0
+        line_matrix_map[l][s] = line_matrix_map[l].get(s, 0) + cnt
+        line_matrix_map[l]["total"] += cnt
+
+    line_skill_matrix = sorted(list(line_matrix_map.values()), key=lambda x: x["total"], reverse=True)
+
+    # Department-wise Skill Matrix
+    raw_dept_skills = frappe.db.sql("""
+        SELECT 
+            IFNULL(e.department, 'Unassigned') AS department,
+            IFNULL(e.skill, 'Unassigned') AS skill,
+            COUNT(e.name) AS count
+        FROM `tabEmployee` e
+        WHERE e.status = 'Active' AND (e.employee_type = 'Workers' OR e.designation = 'Workers')
+        GROUP BY e.department, e.skill
+        ORDER BY e.department, e.skill
+    """, as_dict=True)
+
+    dept_matrix_map = {}
+    for r in raw_dept_skills:
+        d = r["department"] or "Unassigned"
+        if d not in dept_matrix_map:
+            dept_matrix_map[d] = {
+                "department": d,
+                "total": 0,
+                "Highly Skilled": 0,
+                "Skilled": 0,
+                "Semi Skilled": 0,
+                "Unskilled": 0,
+                "Unassigned": 0
+            }
+        s = r["skill"] or "Unassigned"
+        cnt = r["count"] or 0
+        dept_matrix_map[d][s] = dept_matrix_map[d].get(s, 0) + cnt
+        dept_matrix_map[d]["total"] += cnt
+
+    dept_skill_matrix = sorted(list(dept_matrix_map.values()), key=lambda x: x["total"], reverse=True)
+
+    return {
+        "date": target_date,
+        "line_wise": line_wise,
+        "department_wise": department_wise,
+        "shift_wise": shift_wise,
+        "skill_matrix": {
+            "total_workers": total_workers,
+            "overall": overall_skills,
+            "line_matrix": line_skill_matrix,
+            "department_matrix": dept_skill_matrix,
+            "summary": {
+                "highly_skilled": skill_counts.get("Highly Skilled", 0),
+                "skilled": skill_counts.get("Skilled", 0),
+                "semi_skilled": skill_counts.get("Semi Skilled", 0),
+                "unskilled": skill_counts.get("Unskilled", 0),
+                "unassigned": skill_counts.get("Unassigned", 0),
+            }
+        }
+    }
