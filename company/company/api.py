@@ -3662,9 +3662,13 @@ def get_reimbursement_claim_permission_query_conditions(user):
 
 
 @frappe.whitelist()
-def bulk_import_employees(rows, update_existing=False):
+def bulk_import_employees(rows, update_existing=False, bank_accounts=None):
     """
     Bulk import employees along with salary components and details.
+    Import order:
+    1. Import bank account details first and ensure Bank Account master records exist.
+    2. Create/resolve necessary master records and mappings (Bank Accounts, Departments, Designations, etc.).
+    3. Import the employee records with mapped relations.
     """
     if isinstance(rows, str):
         rows = json.loads(rows)
@@ -3674,6 +3678,14 @@ def bulk_import_employees(rows, update_existing=False):
 
     if isinstance(update_existing, str):
         update_existing = update_existing.lower() in ("true", "1", "yes")
+
+    if isinstance(bank_accounts, str) and bank_accounts.strip():
+        try:
+            bank_accounts = json.loads(bank_accounts)
+        except Exception:
+            bank_accounts = []
+    elif not bank_accounts or not isinstance(bank_accounts, list):
+        bank_accounts = []
 
     created_count = 0
     updated_count = 0
@@ -3698,6 +3710,86 @@ def bulk_import_employees(rows, update_existing=False):
         except Exception:
             return None
 
+    # =========================================================================
+    # STEP 1: IMPORT & CREATE BANK ACCOUNT DETAILS FIRST
+    # =========================================================================
+    bank_account_by_ref = {}
+    bank_account_by_acct = {}
+    bank_account_by_name = {}
+
+    all_bank_items = list(bank_accounts)
+    for r in rows:
+        if isinstance(r, dict) and r.get("bank_details"):
+            all_bank_items.append(r["bank_details"])
+
+    for b_item in all_bank_items:
+        if not isinstance(b_item, dict):
+            continue
+        ref_no = str(b_item.get("referral_no") or b_item.get("employee_id") or "").strip()
+        acct_no = str(b_item.get("account_number") or "").strip()
+        acct_name = str(b_item.get("bank_account_name") or "").strip()
+        b_name = str(b_item.get("bank_name") or "Bank").strip()
+        branch = str(b_item.get("branch") or "").strip()
+        ifsc = str(b_item.get("ifsc_code") or "").strip()
+        acct_type = str(b_item.get("account_type") or "Salary Account").strip()
+        if acct_type not in ("Savings", "Current", "Salary Account", "Other"):
+            acct_type = "Salary Account"
+
+        if not acct_no:
+            continue
+
+        try:
+            ba_doc_name = frappe.db.get_value("Bank Account", {"account_number": acct_no}, "name")
+            if not ba_doc_name and frappe.db.exists("Bank Account", acct_no):
+                ba_doc_name = acct_no
+
+            if not ba_doc_name:
+                ba = frappe.new_doc("Bank Account")
+                ba.account_number = acct_no
+                target_name = acct_name or f"Salary Account - {acct_no}"
+                if frappe.db.exists("Bank Account", {"bank_account_name": target_name}):
+                    target_name = f"{target_name} ({ref_no or acct_no})"
+                ba.bank_account_name = target_name
+                ba.bank_name = b_name
+                ba.branch = branch
+                ba.ifsc_code = ifsc
+                ba.account_type = acct_type
+                ba.flags.ignore_permissions = True
+                ba.insert()
+                frappe.db.commit()
+                ba_doc_name = ba.name
+            else:
+                try:
+                    ba = frappe.get_doc("Bank Account", ba_doc_name)
+                    modified = False
+                    if b_name and b_name != "Bank" and not ba.bank_name:
+                        ba.bank_name = b_name
+                        modified = True
+                    if branch and not ba.branch:
+                        ba.branch = branch
+                        modified = True
+                    if ifsc and not ba.ifsc_code:
+                        ba.ifsc_code = ifsc
+                        modified = True
+                    if modified:
+                        ba.flags.ignore_permissions = True
+                        ba.save()
+                        frappe.db.commit()
+                except Exception:
+                    pass
+
+            if ref_no:
+                bank_account_by_ref[ref_no.lower()] = ba_doc_name
+            bank_account_by_acct[acct_no.lower()] = ba_doc_name
+            if acct_name:
+                bank_account_by_name[acct_name.lower()] = ba_doc_name
+        except Exception as e:
+            frappe.db.rollback()
+            print("Error creating bank account:", e)
+
+    # =========================================================================
+    # STEP 2 & 3: RESOLVE MASTER RECORDS & IMPORT EMPLOYEES
+    # =========================================================================
     for r_idx, row in enumerate(rows):
         row_num = r_idx + 1
         emp_id = str(row.get("employee_id") or "").strip()
@@ -3745,14 +3837,39 @@ def bulk_import_employees(rows, update_existing=False):
                 parsed_dob = _parse_date(row["dob"])
                 if parsed_dob:
                     doc.dob = parsed_dob
+
+            # Ensure master records exist for links
             if "blood_group" in row and row["blood_group"]:
-                doc.blood_group = str(row["blood_group"]).strip()
+                bg_val = str(row["blood_group"]).strip()
+                if bg_val and not frappe.db.exists("Blood Group", bg_val):
+                    try:
+                        bg_doc = frappe.new_doc("Blood Group")
+                        bg_doc.blood_group = bg_val
+                        bg_doc.flags.ignore_permissions = True
+                        bg_doc.insert()
+                        frappe.db.commit()
+                    except Exception:
+                        pass
+                doc.blood_group = bg_val
+
             if "sex" in row and row["sex"]:
                 doc.sex = str(row["sex"]).strip()
             if "marital_status" in row and row["marital_status"]:
                 doc.marital_status = str(row["marital_status"]).strip()
+
             if "qualification" in row and row["qualification"]:
-                doc.qualification = str(row["qualification"]).strip()
+                q_val = str(row["qualification"]).strip()
+                if q_val and not frappe.db.exists("Qualification", q_val):
+                    try:
+                        q_doc = frappe.new_doc("Qualification")
+                        q_doc.qualification = q_val
+                        q_doc.flags.ignore_permissions = True
+                        q_doc.insert()
+                        frappe.db.commit()
+                    except Exception:
+                        pass
+                doc.qualification = q_val
+
             if "aadhar_number" in row and row["aadhar_number"]:
                 doc.aadhar_number = str(row["aadhar_number"]).strip()
             if "country" in row and row["country"]:
@@ -3762,19 +3879,64 @@ def bulk_import_employees(rows, update_existing=False):
             if "city" in row and row["city"]:
                 doc.city = str(row["city"]).strip()
 
-            # Employment details
+            # Employment details & linked masters
             if "department" in row and row["department"]:
-                doc.department = str(row["department"]).strip()
+                dept_val = str(row["department"]).strip()
+                if dept_val and not frappe.db.exists("Department", dept_val):
+                    try:
+                        d_doc = frappe.new_doc("Department")
+                        d_doc.department_name = dept_val
+                        d_doc.flags.ignore_permissions = True
+                        d_doc.insert()
+                        frappe.db.commit()
+                    except Exception:
+                        pass
+                doc.department = dept_val
+
             if "designation" in row and row["designation"]:
-                doc.designation = str(row["designation"]).strip()
+                desig_val = str(row["designation"]).strip()
+                if desig_val and not frappe.db.exists("Designation", desig_val):
+                    try:
+                        des_doc = frappe.new_doc("Designation")
+                        des_doc.designation_name = desig_val
+                        des_doc.flags.ignore_permissions = True
+                        des_doc.insert()
+                        frappe.db.commit()
+                    except Exception:
+                        pass
+                doc.designation = desig_val
+
             if "employee_type" in row and row["employee_type"]:
-                doc.employee_type = str(row["employee_type"]).strip()
+                et_val = str(row["employee_type"]).strip()
+                if et_val and not frappe.db.exists("Employee Type", et_val):
+                    try:
+                        et_doc = frappe.new_doc("Employee Type")
+                        et_doc.employee_type = et_val
+                        et_doc.flags.ignore_permissions = True
+                        et_doc.insert()
+                        frappe.db.commit()
+                    except Exception:
+                        pass
+                doc.employee_type = et_val
+
             if "production_type" in row and row["production_type"]:
                 doc.production_type = str(row["production_type"]).strip()
             if "line_order" in row and row["line_order"]:
                 doc.line_order = str(row["line_order"]).strip()
+
             if "shift" in row and row["shift"]:
-                doc.shift = str(row["shift"]).strip()
+                sh_val = str(row["shift"]).strip()
+                if sh_val and not frappe.db.exists("Shift", sh_val):
+                    try:
+                        sh_doc = frappe.new_doc("Shift")
+                        sh_doc.shift_name = sh_val
+                        sh_doc.flags.ignore_permissions = True
+                        sh_doc.insert()
+                        frappe.db.commit()
+                    except Exception:
+                        pass
+                doc.shift = sh_val
+
             if "bus_travel_route" in row and row["bus_travel_route"]:
                 doc.bus_travel_route = str(row["bus_travel_route"]).strip()
             if "bus_route_point" in row and row["bus_route_point"]:
@@ -3799,9 +3961,53 @@ def bulk_import_employees(rows, update_existing=False):
             if "user" in row and row["user"]:
                 doc.user = str(row["user"]).strip()
 
-            # Financial & Bank Details
-            if "bank_account" in row and row["bank_account"]:
-                doc.bank_account = str(row["bank_account"]).strip()
+            # Financial & Bank Details Mapping
+            resolved_ba = None
+            emp_b_details = row.get("bank_details") or {}
+            ref_lookup = str(emp_b_details.get("referral_no") or emp_id).strip().lower()
+            emp_acct_no = str(emp_b_details.get("account_number") or row.get("account_number") or "").strip()
+
+            if ref_lookup in bank_account_by_ref:
+                resolved_ba = bank_account_by_ref[ref_lookup]
+            elif emp_acct_no and emp_acct_no.lower() in bank_account_by_acct:
+                resolved_ba = bank_account_by_acct[emp_acct_no.lower()]
+            elif "bank_account" in row and row["bank_account"]:
+                raw_ba = str(row["bank_account"]).strip()
+                if frappe.db.exists("Bank Account", raw_ba):
+                    resolved_ba = raw_ba
+                elif raw_ba.lower() in bank_account_by_acct:
+                    resolved_ba = bank_account_by_acct[raw_ba.lower()]
+                elif raw_ba.lower() in bank_account_by_name:
+                    resolved_ba = bank_account_by_name[raw_ba.lower()]
+                else:
+                    found_by_acct = frappe.db.get_value("Bank Account", {"account_number": raw_ba}, "name")
+                    if found_by_acct:
+                        resolved_ba = found_by_acct
+                    else:
+                        found_by_name = frappe.db.get_value("Bank Account", {"bank_account_name": raw_ba}, "name")
+                        if found_by_name:
+                            resolved_ba = found_by_name
+                        else:
+                            # Create the Bank Account master so Frappe Link validation will NEVER fail!
+                            ba = frappe.new_doc("Bank Account")
+                            gen_acct = emp_acct_no or f"ACC{emp_id}"
+                            if frappe.db.exists("Bank Account", gen_acct):
+                                resolved_ba = gen_acct
+                            else:
+                                ba.account_number = gen_acct
+                                b_title = f"{emp_name} ({emp_id})" if not frappe.db.exists("Bank Account", {"bank_account_name": raw_ba}) else f"{raw_ba} ({emp_id})"
+                                ba.bank_account_name = b_title
+                                ba.bank_name = str(emp_b_details.get("bank_name") or "Bank").strip()
+                                ba.branch = str(emp_b_details.get("branch") or "").strip()
+                                ba.ifsc_code = str(emp_b_details.get("ifsc_code") or "").strip()
+                                ba.account_type = raw_ba if raw_ba in ("Savings", "Current", "Salary Account", "Other") else "Salary Account"
+                                ba.flags.ignore_permissions = True
+                                ba.insert()
+                                frappe.db.commit()
+                                resolved_ba = ba.name
+
+            if resolved_ba:
+                doc.bank_account = resolved_ba
             if "pf_number" in row and row["pf_number"]:
                 doc.pf_number = str(row["pf_number"]).strip()
             if "uan_number" in row and row["uan_number"]:
