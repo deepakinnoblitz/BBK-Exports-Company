@@ -79,7 +79,12 @@
   "pf_admin_rate",
   "edli_rate",
   "employer_esi_rate",
-  "bonus_provision_rate"
+  "bonus_provision_rate",
+  "leave_details",
+  "cl_cycle_period",
+  "cl_allocated",
+  "cl_taken",
+  "cl_balance"
  ],
  "fields": [
   {
@@ -561,6 +566,42 @@
    "fieldtype": "Currency",
    "label": "Leave Encashment / Payout",
    "precision": "2"
+  },
+  {
+   "fieldname": "leave_details",
+   "fieldtype": "Long Text",
+   "label": "Leave Details (JSON)",
+   "read_only": 1
+  },
+  {
+   "fieldname": "cl_cycle_period",
+   "fieldtype": "Data",
+   "label": "CL Cycle Period",
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "cl_allocated",
+   "fieldtype": "Float",
+   "label": "CL Allocated",
+   "precision": "1",
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "cl_taken",
+   "fieldtype": "Float",
+   "label": "CL Taken",
+   "precision": "1",
+   "read_only": 1
+  },
+  {
+   "default": "0",
+   "fieldname": "cl_balance",
+   "fieldtype": "Float",
+   "label": "CL Balance",
+   "precision": "1",
+   "read_only": 1
   }
  ],
  "grid_page_length": 50,

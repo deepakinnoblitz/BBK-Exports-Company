@@ -19,6 +19,19 @@ def excel_round(val):
         return float(round(flt(val)))
 
 class SalarySlip(Document):
+    def validate(self):
+        """Ensure leave_details, cl_cycle_period, cl_allocated, cl_taken, cl_balance are set."""
+        if self.employee and self.pay_period_start and self.pay_period_end:
+            try:
+                res = get_employee_leave_balances(self.employee, self.pay_period_start, self.pay_period_end)
+                self.leave_details = json.dumps(res.get("balances", []))
+                self.cl_cycle_period = res.get("cl_cycle_period") or ""
+                self.cl_allocated = flt(res.get("cl_allocated", 0.0))
+                self.cl_taken = flt(res.get("cl_taken", 0.0))
+                self.cl_balance = flt(res.get("cl_balance", 0.0))
+            except Exception:
+                pass
+
     def on_submit(self):
         """Triggered automatically when a Salary Slip is submitted (approved)."""
         self.send_email_notification()
@@ -197,6 +210,261 @@ def get_leaves_taken_in_period(employee_id, leave_type_name, start_date, end_dat
     except Exception:
         return 0.0
 
+
+def get_employee_leave_balances(employee_id, pay_period_start, pay_period_end):
+    """
+    Calculate active cycle leave balances for an employee based on each Leave Type's encashment cycles.
+    
+    If slip month is a configured payout month for an encashable Leave Type:
+        Resolves to THAT encashed cycle period (e.g. Jan-Jun when slip is in July, Jul-Dec when slip is in January)
+        so that the salary slip displays the exact leave period, allocations, taken, and encashed balance
+        corresponding to the encashment payout.
+    Otherwise:
+        Resolves to the current active ongoing cycle (e.g. 01 Jul - 31 Oct 2026).
+    """
+    start_date = getdate(pay_period_start)
+    end_date = getdate(pay_period_end)
+    slip_year = start_date.year
+    slip_month = start_date.month
+    current_month_name = start_date.strftime("%B").lower()
+
+    month_name_to_num = {
+        "january": 1, "february": 2, "march": 3, "april": 4,
+        "may": 5, "june": 6, "july": 7, "august": 8,
+        "september": 9, "october": 10, "november": 11, "december": 12,
+        "jan": 1, "feb": 2, "mar": 3, "apr": 4, "jun": 6, "jul": 7, "aug": 8, "sep": 9, "oct": 10, "nov": 11, "dec": 12
+    }
+
+    leave_types = frappe.get_all(
+        "Leave Type",
+        filters={"status": ["!=", "Inactive"], "is_encashable": 1},
+        fields=[
+            "name",
+            "leave_type_name",
+            "is_paid",
+            "is_permission",
+            "is_encashable",
+            "encashment_cycles",
+            "encashment_payout_months",
+        ],
+        order_by="creation asc"
+    )
+
+    balances = []
+    cl_cycle_period = ""
+    cl_allocated = 0.0
+    cl_taken = 0.0
+    cl_balance = 0.0
+    is_cl_payout_month = False
+
+    for lt in leave_types:
+        if not cint(lt.is_encashable):
+            continue
+
+        lt_name = lt.leave_type_name or lt.name
+        is_encashable = cint(lt.is_encashable)
+        is_permission = cint(lt.is_permission) or ("permission" in lt_name.lower())
+
+        cycles = []
+        if lt.encashment_cycles:
+            try:
+                cycles = json.loads(lt.encashment_cycles)
+            except Exception:
+                cycles = []
+
+        if not cycles:
+            p_months = [m.strip() for m in (lt.encashment_payout_months or "June, December").split(",") if m.strip()]
+            if len(p_months) >= 2:
+                cycles = [
+                    {"from_month": "January", "to_month": "June", "payout_months": [p_months[0]]},
+                    {"from_month": "July", "to_month": "December", "payout_months": [p_months[1]]}
+                ]
+            elif len(p_months) == 1:
+                cycles = [
+                    {"from_month": "January", "to_month": "December", "payout_months": p_months}
+                ]
+            else:
+                cycles = [
+                    {"from_month": "January", "to_month": "June", "payout_months": ["June"]},
+                    {"from_month": "July", "to_month": "December", "payout_months": ["December"]}
+                ]
+
+        # 1. Check if the current slip month is a configured Payout Month for an encashment cycle
+        is_payout_month = False
+        matched_payout_cycle = None
+
+        for cycle in cycles:
+            c_payout_months = cycle.get("payout_months") or ([cycle.get("payout_month")] if cycle.get("payout_month") else [])
+            normalized_p_months = [str(m).strip().lower() for m in c_payout_months if m]
+            if current_month_name in normalized_p_months:
+                is_payout_month = True
+                matched_payout_cycle = cycle
+                break
+
+        # 2. Compute the Current Active Cycle for this slip month
+        matched_curr_cycle = None
+        for cycle in cycles:
+            f_str = str(cycle.get("from_month") or "January").strip().lower()
+            t_str = str(cycle.get("to_month") or "December").strip().lower()
+            sm = month_name_to_num.get(f_str, 1)
+            em = month_name_to_num.get(t_str, 12)
+
+            if sm <= em:
+                if sm <= slip_month <= em:
+                    matched_curr_cycle = (sm, em, cycle)
+                    break
+            else:
+                if slip_month >= sm or slip_month <= em:
+                    matched_curr_cycle = (sm, em, cycle)
+                    break
+
+        if matched_curr_cycle:
+            sm, em, cycle = matched_curr_cycle
+            f_str = str(cycle.get("from_month") or "January").strip().lower()
+            t_str = str(cycle.get("to_month") or "December").strip().lower()
+            if sm <= em:
+                from_year = slip_year
+                to_year = slip_year
+            else:
+                if slip_month <= em:
+                    from_year = slip_year - 1
+                    to_year = slip_year
+                else:
+                    from_year = slip_year
+                    to_year = slip_year + 1
+
+            cycle_start = getdate(f"{from_year}-{sm:02d}-01")
+            last_day = monthrange(to_year, em)[1]
+            cycle_end = getdate(f"{to_year}-{em:02d}-{last_day:02d}")
+            cycle_label = f"{f_str.capitalize()[:3]} - {t_str.capitalize()[:3]} {to_year}"
+        else:
+            cycle_start = getdate(f"{slip_year}-01-01")
+            cycle_end = getdate(f"{slip_year}-12-31")
+            cycle_label = f"Jan - Dec {slip_year}"
+
+        calc_end = end_date
+        period_label = f"{cycle_start.strftime('%d %b')} - {end_date.strftime('%d %b %Y')}"
+
+        alloc_res = frappe.db.sql("""
+            SELECT COALESCE(SUM(total_leaves_allocated), 0), COALESCE(SUM(total_leaves_taken), 0)
+            FROM `tabLeave Allocation`
+            WHERE employee = %s
+              AND (leave_type = %s OR leave_type IN (SELECT name FROM `tabLeave Type` WHERE leave_type_name = %s))
+              AND status = 'Approved'
+              AND (
+                  (from_date >= %s AND to_date <= %s)
+                  OR (from_date <= %s AND to_date >= %s)
+              )
+        """, (employee_id, lt.name, lt_name, cycle_start, calc_end, calc_end, cycle_start))
+
+        total_alloc = flt(alloc_res[0][0]) if alloc_res else 0.0
+        alloc_taken = flt(alloc_res[0][1]) if alloc_res else 0.0
+
+        actual_taken = get_leaves_taken_in_period(employee_id, lt.name, cycle_start, calc_end)
+        total_taken = max(alloc_taken, actual_taken)
+        balance = max(0.0, total_alloc - total_taken)
+
+        current_item = {
+            "leave_type": lt.name,
+            "leave_type_name": f"{lt_name} (Current Cycle)" if is_payout_month else lt_name,
+            "is_encashable": is_encashable,
+            "is_permission": is_permission,
+            "is_payout_month": False,
+            "cycle_type": "current",
+            "cycle_start_date": cycle_start.strftime("%Y-%m-%d"),
+            "cycle_end_date": cycle_end.strftime("%Y-%m-%d"),
+            "pay_period_end": end_date.strftime("%Y-%m-%d"),
+            "cycle_label": cycle_label,
+            "period_label": period_label,
+            "allocated": total_alloc,
+            "taken": total_taken,
+            "balance": balance,
+            "uom": "Mins" if is_permission else "Days"
+        }
+        balances.append(current_item)
+
+        if "casual" in lt_name.lower():
+            cl_cycle_period = cycle_label
+            cl_allocated = total_alloc
+            cl_taken = total_taken
+            cl_balance = balance
+
+        # 3. If in a payout month, also add the Encashed Cycle card!
+        if is_payout_month and matched_payout_cycle:
+            p_cycle = matched_payout_cycle
+            f_str = str(p_cycle.get("from_month") or "January").strip().lower()
+            t_str = str(p_cycle.get("to_month") or "June").strip().lower()
+            p_sm = month_name_to_num.get(f_str, 1)
+            p_em = month_name_to_num.get(t_str, 6)
+
+            if p_sm <= p_em:
+                if slip_month < p_sm:
+                    p_from_year = slip_year - 1
+                    p_to_year = slip_year - 1
+                else:
+                    p_from_year = slip_year
+                    p_to_year = slip_year
+            else:
+                if slip_month <= p_em:
+                    p_from_year = slip_year - 1
+                    p_to_year = slip_year
+                else:
+                    p_from_year = slip_year
+                    p_to_year = slip_year + 1
+
+            p_last_day = monthrange(p_to_year, p_em)[1]
+            p_cycle_start = getdate(f"{p_from_year}-{p_sm:02d}-01")
+            p_cycle_end = getdate(f"{p_to_year}-{p_em:02d}-{p_last_day:02d}")
+
+            p_alloc_res = frappe.db.sql("""
+                SELECT COALESCE(SUM(total_leaves_allocated), 0), COALESCE(SUM(total_leaves_taken), 0)
+                FROM `tabLeave Allocation`
+                WHERE employee = %s
+                  AND (leave_type = %s OR leave_type IN (SELECT name FROM `tabLeave Type` WHERE leave_type_name = %s))
+                  AND status = 'Approved'
+                  AND (
+                      (from_date >= %s AND to_date <= %s)
+                      OR (from_date <= %s AND to_date >= %s)
+                  )
+            """, (employee_id, lt.name, lt_name, p_cycle_start, p_cycle_end, p_cycle_end, p_cycle_start))
+
+            p_total_alloc = flt(p_alloc_res[0][0]) if p_alloc_res else 0.0
+            p_alloc_taken = flt(p_alloc_res[0][1]) if p_alloc_res else 0.0
+
+            p_actual_taken = get_leaves_taken_in_period(employee_id, lt.name, p_cycle_start, p_cycle_end)
+            p_total_taken = max(p_alloc_taken, p_actual_taken)
+            p_balance = max(0.0, p_total_alloc - p_total_taken)
+
+            encashed_item = {
+                "leave_type": lt.name,
+                "leave_type_name": f"{lt_name} (Encashed Cycle)",
+                "is_encashable": is_encashable,
+                "is_permission": is_permission,
+                "is_payout_month": True,
+                "cycle_type": "encashed",
+                "cycle_start_date": p_cycle_start.strftime("%Y-%m-%d"),
+                "cycle_end_date": p_cycle_end.strftime("%Y-%m-%d"),
+                "pay_period_end": end_date.strftime("%Y-%m-%d"),
+                "cycle_label": f"{f_str.capitalize()[:3]} - {t_str.capitalize()[:3]} {p_to_year}",
+                "period_label": f"{p_cycle_start.strftime('%d %b')} - {p_cycle_end.strftime('%d %b %Y')}",
+                "allocated": p_total_alloc,
+                "taken": p_total_taken,
+                "balance": p_balance,
+                "uom": "Days"
+            }
+            balances.append(encashed_item)
+
+            if "casual" in lt_name.lower():
+                is_cl_payout_month = True
+
+    return {
+        "balances": balances,
+        "cl_cycle_period": cl_cycle_period,
+        "cl_allocated": cl_allocated,
+        "cl_taken": cl_taken,
+        "cl_balance": cl_balance,
+        "is_payout_month": is_cl_payout_month
+    }
 
 
 def calculate_employee_pf(emp, earned_gross_salary, earned_basic_da, settings, prorated_earnings=None):
@@ -1070,8 +1338,12 @@ def preview_salary_slip(employee, start_date, end_date):
 
             slip_year = start_date.year
             if start_m <= end_m:
-                from_year = slip_year
-                to_year = slip_year
+                if start_date.month < start_m:
+                    from_year = slip_year - 1
+                    to_year = slip_year - 1
+                else:
+                    from_year = slip_year
+                    to_year = slip_year
             else:
                 # Financial year cross (e.g. Apr to Mar)
                 if start_date.month <= end_m:
@@ -1497,6 +1769,15 @@ def preview_salary_slip(employee, start_date, end_date):
             })
         except frappe.DoesNotExistError:
             pass
+
+    # Attach dynamic cycle-based leave balances
+    leave_info = get_employee_leave_balances(employee, start_date, end_date)
+    res["leave_balances"] = leave_info["balances"]
+    res["cl_cycle_period"] = leave_info.get("cl_cycle_period", "")
+    res["cl_allocated"] = leave_info["cl_allocated"]
+    res["cl_taken"] = leave_info["cl_taken"]
+    res["cl_balance"] = leave_info["cl_balance"]
+    res["leave_details"] = json.dumps(leave_info["balances"])
 
     return res
 
@@ -2101,6 +2382,32 @@ def get_salary_slip_with_details(name):
     res["holiday_working_days"] = len(working_dates) if holiday_list else (total_days - len(holiday_dates))
     res["actual_present_days"] = present_days
     res["physical_attendance_days"] = physical_attendance_days
+
+    # Attach dynamic or stored leave balances
+    leave_details_raw = getattr(doc, "leave_details", None)
+    leave_balances = []
+    if leave_details_raw:
+        try:
+            leave_balances = json.loads(leave_details_raw)
+        except Exception:
+            leave_balances = []
+
+    if doc.employee and doc.pay_period_start and doc.pay_period_end:
+        leave_info = get_employee_leave_balances(doc.employee, doc.pay_period_start, doc.pay_period_end)
+        leave_balances = leave_info["balances"]
+        res["cl_cycle_period"] = leave_info.get("cl_cycle_period") or getattr(doc, "cl_cycle_period", "")
+        res["cl_allocated"] = leave_info["cl_allocated"]
+        res["cl_taken"] = leave_info["cl_taken"]
+        res["cl_balance"] = leave_info["cl_balance"]
+    else:
+        res["cl_cycle_period"] = getattr(doc, "cl_cycle_period", "")
+        res["cl_allocated"] = flt(getattr(doc, "cl_allocated", 0))
+        res["cl_taken"] = flt(getattr(doc, "cl_taken", 0))
+        res["cl_balance"] = flt(getattr(doc, "cl_balance", 0))
+
+    res["leave_balances"] = leave_balances
+    res["leave_details"] = json.dumps(leave_balances)
+
     return res
 
 
@@ -2205,6 +2512,11 @@ def generate_salary_slips_from_employee(year=None, month=None, employees=None, s
                 "total_working_days": data["total_working_days"],
                 "lop": data["lop"],
                 "lop_days": data["lop_days"],
+                "leave_details": data.get("leave_details") or json.dumps(data.get("leave_balances") or []),
+                "cl_cycle_period": data.get("cl_cycle_period", ""),
+                "cl_allocated": data.get("cl_allocated", 0.0),
+                "cl_taken": data.get("cl_taken", 0.0),
+                "cl_balance": data.get("cl_balance", 0.0),
                 "status": "Draft"
             })
 
