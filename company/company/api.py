@@ -4079,6 +4079,8 @@ def bulk_import_employees(rows, update_existing=False, bank_accounts=None):
         "error_count": len(errors),
         "errors": errors
     }
+
+@frappe.whitelist()
 def get_bank_details_by_ifsc(ifsc_code):
     """
     Look up bank and branch details by IFSC code via Razorpay IFSC public directory.
