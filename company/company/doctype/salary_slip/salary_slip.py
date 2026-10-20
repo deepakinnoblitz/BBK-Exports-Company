@@ -2770,3 +2770,115 @@ def get_wages_reconciliation_statement(current_start_date, current_end_date, pre
         "net_delta": round(curr_net - prev_net, 2),
         "ot_variance": round(curr_ot - prev_ot, 2)
     }
+
+
+@frappe.whitelist()
+def bulk_download_pdf_2in1(names=None, format=None):
+    """
+    Combines salary slips 2-per-page onto standard A4 Portrait sheets (210mm x 297mm).
+    Slip 1: Top half of A4 (A5 Landscape)
+    Slip 2: Bottom half of A4 (A5 Landscape)
+    """
+    import json
+    import io
+    from pypdf import PdfReader, PdfWriter, PageObject, Transformation
+
+    if isinstance(names, str):
+        try:
+            names = json.loads(names)
+        except Exception:
+            names = [s.strip() for s in names.split(",") if s.strip()]
+
+    if not names:
+        frappe.throw(_("Please select at least one Salary Slip to print."))
+
+    slip_pages = []
+    for slip_name in names:
+        doc = frappe.get_doc("Salary Slip", slip_name)
+        
+        print_fmt = format
+        if not print_fmt:
+            emp_type = (doc.employee_type or "").lower()
+            if "north indian" in emp_type:
+                print_fmt = "North Indian Form 25B Pay Slip"
+            elif "driver" in emp_type:
+                print_fmt = "Driver Form 25B Pay Slip"
+            elif "worker" in emp_type:
+                print_fmt = "Worker Form 25B Pay Slip"
+            else:
+                print_fmt = frappe.get_meta("Salary Slip").default_print_format or "Salary Slip"
+
+        pdf_bytes = frappe.get_print("Salary Slip", doc.name, print_format=print_fmt, as_pdf=True)
+        reader = PdfReader(io.BytesIO(pdf_bytes))
+        for p in reader.pages:
+            slip_pages.append(p)
+
+    # Standard A4 portrait dimensions in points (72 points/inch)
+    # 210mm = 595.28 pt, 297mm = 841.89 pt
+    A4_WIDTH = 595.28
+    A4_HEIGHT = 841.89
+    HALF_HEIGHT = A4_HEIGHT / 2.0  # 420.945 pt
+
+    writer = PdfWriter()
+
+    from pypdf.generic import DecodedStreamObject, NameObject
+
+    for i in range(0, len(slip_pages), 2):
+        a4_page = PageObject.create_blank_page(width=A4_WIDTH, height=A4_HEIGHT)
+        
+        # Slip 1 (Top half)
+        page_top = slip_pages[i]
+        w_top = float(page_top.mediabox.width)
+        h_top = float(page_top.mediabox.height)
+        scale_x_top = A4_WIDTH / w_top if w_top else 1.0
+        scale_y_top = HALF_HEIGHT / h_top if h_top else 1.0
+        scale_top = min(scale_x_top, scale_y_top)
+
+        tx_top = (A4_WIDTH - (w_top * scale_top)) / 2.0
+        ty_top = HALF_HEIGHT + (HALF_HEIGHT - (h_top * scale_top)) / 2.0
+        
+        trans_top = (
+            Transformation()
+            .scale(scale_top, scale_top)
+            .translate(tx=tx_top, ty=ty_top)
+        )
+        a4_page.merge_transformed_page(page_top, trans_top)
+
+        # Slip 2 (Bottom half, if exists)
+        if i + 1 < len(slip_pages):
+            page_bottom = slip_pages[i + 1]
+            w_bot = float(page_bottom.mediabox.width)
+            h_bot = float(page_bottom.mediabox.height)
+            scale_x_bot = A4_WIDTH / w_bot if w_bot else 1.0
+            scale_y_bot = HALF_HEIGHT / h_bot if h_bot else 1.0
+            scale_bot = min(scale_x_bot, scale_y_bot)
+
+            tx_bot = (A4_WIDTH - (w_bot * scale_bot)) / 2.0
+            ty_bot = (HALF_HEIGHT - (h_bot * scale_bot)) / 2.0
+            
+            trans_bot = (
+                Transformation()
+                .scale(scale_bot, scale_bot)
+                .translate(tx=tx_bot, ty=ty_bot)
+            )
+            a4_page.merge_transformed_page(page_bottom, trans_bot)
+
+            # Dashed cutting guide between top and bottom slips
+            try:
+                cut_page = PageObject.create_blank_page(width=A4_WIDTH, height=A4_HEIGHT)
+                cut_stream = DecodedStreamObject()
+                cut_stream.set_data(b"q 0.75 G 0.5 w [4 4] 0 d 15 420.95 m 580.28 420.95 l S Q")
+                cut_page[NameObject("/Contents")] = cut_stream
+                a4_page.merge_page(cut_page)
+            except Exception:
+                pass
+
+        writer.add_page(a4_page)
+
+    output_stream = io.BytesIO()
+    writer.write(output_stream)
+    pdf_data = output_stream.getvalue()
+
+    frappe.local.response.filename = "Salary_Slips_2in1_A4.pdf"
+    frappe.local.response.filecontent = pdf_data
+    frappe.local.response.type = "pdf"
