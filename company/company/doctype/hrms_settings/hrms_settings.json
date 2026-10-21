@@ -213,7 +213,18 @@
   "north_indian_tea_allowance_per_day",
   "north_indian_enable_lunch_allowance",
   "north_indian_lunch_allowance_per_meal",
-  "bonus_schemes"
+  "bonus_schemes",
+  "enable_lwf",
+  "lwf_state",
+  "lwf_deduction_month",
+  "lwf_remittance_deadline",
+  "lwf_employee_contribution",
+  "lwf_employer_contribution",
+  "lwf_govt_contribution",
+  "lwf_salary_ceiling",
+  "lwf_deduction_frequency",
+  "lwf_applicable_categories",
+  "lwf_wage_basis"
  ],
  "fields": [
   {
@@ -1510,6 +1521,74 @@
    "fieldname": "bonus_schemes",
    "fieldtype": "Long Text",
    "label": "Bonus Schemes Configuration"
+  },
+  {
+   "default": "1",
+   "fieldname": "enable_lwf",
+   "fieldtype": "Check",
+   "label": "Enable LWF Auto-Calculation"
+  },
+  {
+   "default": "Tamil Nadu",
+   "fieldname": "lwf_state",
+   "fieldtype": "Data",
+   "label": "LWF State / Governing Board"
+  },
+  {
+   "default": "December",
+   "fieldname": "lwf_deduction_month",
+   "fieldtype": "Select",
+   "label": "LWF Deduction Month",
+   "options": "January\nFebruary\nMarch\nApril\nMay\nJune\nJuly\nAugust\nSeptember\nOctober\nNovember\nDecember"
+  },
+  {
+   "default": "31st January",
+   "fieldname": "lwf_remittance_deadline",
+   "fieldtype": "Data",
+   "label": "LWF Remittance Deadline"
+  },
+  {
+   "default": "20.00",
+   "fieldname": "lwf_employee_contribution",
+   "fieldtype": "Currency",
+   "label": "LWF Employee Contribution (\u20b9)"
+  },
+  {
+   "default": "40.00",
+   "fieldname": "lwf_employer_contribution",
+   "fieldtype": "Currency",
+   "label": "LWF Employer Contribution (\u20b9)"
+  },
+  {
+   "default": "20.00",
+   "fieldname": "lwf_govt_contribution",
+   "fieldtype": "Currency",
+   "label": "LWF Government Contribution (\u20b9)"
+  },
+  {
+   "default": "25000.00",
+   "fieldname": "lwf_salary_ceiling",
+   "fieldtype": "Currency",
+   "label": "LWF Salary Ceiling (\u20b9)"
+  },
+  {
+   "default": "Annual (Once per Year)",
+   "fieldname": "lwf_deduction_frequency",
+   "fieldtype": "Select",
+   "label": "LWF Deduction Frequency",
+   "options": "Annual (Once per Year)\nMonthly\nHalf-Yearly"
+  },
+  {
+   "default": "[\"staff_ctc\", \"staff_non_ctc\", \"workers\", \"north_indian\", \"drivers\"]",
+   "fieldname": "lwf_applicable_categories",
+   "fieldtype": "Small Text",
+   "label": "LWF Applicable Categories"
+  },
+  {
+   "default": "[\"Basic Pay\", \"DA\", \"Other Allowance\"]",
+   "fieldname": "lwf_wage_basis",
+   "fieldtype": "Small Text",
+   "label": "LWF Wage Basis Components"
   }
  ],
  "issingle": 1,

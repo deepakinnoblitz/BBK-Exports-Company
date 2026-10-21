@@ -743,6 +743,173 @@ def calculate_professional_tax(gross_salary, pay_period_start, settings, employe
     return current_month_pt
 
 
+def calculate_lwf(emp, gross_salary, pay_period_start, settings, employee_id=None, current_slip_name=None, prorated_earnings=None, net_pay=None):
+    """
+    Calculate Tamil Nadu Labour Welfare Fund (LWF) contributions:
+    - Employee Contribution: ₹20/year (deducted from employee salary)
+    - Employer Contribution: ₹40/year (employer contribution; added to CTC)
+    - Configured via HRMS Settings:
+        - enable_lwf (default 1)
+        - lwf_deduction_month (default "December")
+        - lwf_employee_contribution (default 20.00)
+        - lwf_employer_contribution (default 40.00)
+        - lwf_salary_ceiling (default 25000.00, 0 means no ceiling)
+        - lwf_wage_basis (JSON list of earning components)
+        - lwf_applicable_categories (JSON list of categories)
+    
+    Returns: (employee_lwf, employer_lwf, is_eligible)
+    """
+    def get_setting_val(key, default_val=None):
+        if hasattr(settings, "get"):
+            v = settings.get(key)
+        else:
+            v = getattr(settings, key, None)
+        return v if (v is not None and v != "") else default_val
+
+    enable_lwf = cint(get_setting_val("enable_lwf", 1))
+    if not enable_lwf:
+        return 0.0, 0.0, False
+
+    pay_dt = getdate(pay_period_start)
+    current_month_name = pay_dt.strftime("%B")  # e.g., "December"
+    configured_month = str(get_setting_val("lwf_deduction_month", "December")).strip()
+
+    if current_month_name.lower() != configured_month.lower():
+        return 0.0, 0.0, False
+
+    # Check category applicability
+    emp_type = (emp.get("employee_type") if hasattr(emp, "get") else getattr(emp, "employee_type", "")) or ""
+    emp_type_clean = emp_type.lower().strip()
+    
+    category_key = "workers"
+    if "staff" in emp_type_clean:
+        if "non ctc" in emp_type_clean or "non-ctc" in emp_type_clean:
+            category_key = "staff_non_ctc"
+        else:
+            category_key = "staff_ctc"
+    elif "north indian" in emp_type_clean:
+        category_key = "north_indian"
+    elif "driver" in emp_type_clean:
+        category_key = "drivers"
+
+    applicable_cats_raw = get_setting_val("lwf_applicable_categories", '["staff_ctc", "staff_non_ctc", "workers", "north_indian", "drivers"]')
+    applicable_cats = []
+    if isinstance(applicable_cats_raw, list):
+        applicable_cats = [str(x).strip().lower() for x in applicable_cats_raw]
+    elif isinstance(applicable_cats_raw, str):
+        try:
+            parsed = json.loads(applicable_cats_raw)
+            if isinstance(parsed, list):
+                applicable_cats = [str(x).strip().lower() for x in parsed]
+        except Exception:
+            applicable_cats = ["staff_ctc", "staff_non_ctc", "workers", "north_indian", "drivers"]
+
+    is_all_applicable = (
+        not applicable_cats
+        or "all" in applicable_cats
+        or "all employee types" in applicable_cats
+        or "all categories" in applicable_cats
+    )
+    if not is_all_applicable:
+        matched = False
+        if emp_type_clean in applicable_cats:
+            matched = True
+        elif category_key in applicable_cats:
+            matched = True
+        elif any(cat in emp_type_clean or emp_type_clean in cat for cat in applicable_cats):
+            matched = True
+
+        if not matched:
+            return 0.0, 0.0, False
+
+    # Dynamic wage basis evaluation for salary ceiling check
+    lwf_basis_raw = get_setting_val("lwf_wage_basis")
+    selected_lwf_components = []
+    if lwf_basis_raw:
+        if isinstance(lwf_basis_raw, list):
+            selected_lwf_components = [str(x).strip().lower() for x in lwf_basis_raw if str(x).strip()]
+        elif isinstance(lwf_basis_raw, str):
+            try:
+                parsed = json.loads(lwf_basis_raw)
+                if isinstance(parsed, list):
+                    selected_lwf_components = [str(x).strip().lower() for x in parsed if str(x).strip()]
+            except Exception:
+                selected_lwf_components = []
+
+    eval_wage = flt(gross_salary)
+    is_gross_pay = any(x in ["gross pay", "gross", "gross_pay"] for x in selected_lwf_components)
+    is_net_pay = any(x in ["net pay", "net", "net_pay"] for x in selected_lwf_components)
+    is_all_components = (
+        not selected_lwf_components
+        or "all" in selected_lwf_components
+        or "all components" in selected_lwf_components
+    )
+
+    if is_net_pay:
+        if net_pay is not None:
+            eval_wage = flt(net_pay)
+        else:
+            eval_wage = flt(gross_salary) - sum(
+                flt(d.get("amount") if isinstance(d, dict) else getattr(d, "amount", 0.0))
+                for d in (getattr(emp, "deductions", []) or [])
+            )
+    elif is_gross_pay or is_all_components:
+        eval_wage = flt(gross_salary)
+    elif selected_lwf_components and prorated_earnings:
+        eval_wage = sum(
+            flt(e.get("amount") if isinstance(e, dict) else getattr(e, "amount", 0.0))
+            for e in prorated_earnings
+            if (
+                ((e.get("component_name") or e.get("salary_component") or "") if isinstance(e, dict)
+                 else (getattr(e, "component_name", None) or getattr(e, "salary_component", None) or "")).lower().strip() in selected_lwf_components
+                or any(
+                    sc in ((e.get("component_name") or e.get("salary_component") or "").lower() if isinstance(e, dict)
+                           else (getattr(e, "component_name", None) or getattr(e, "salary_component", None) or "").lower())
+                    for sc in selected_lwf_components
+                )
+            )
+        )
+
+    # Check salary ceiling threshold
+    salary_ceiling = flt(get_setting_val("lwf_salary_ceiling", 25000.0))
+    if salary_ceiling > 0 and eval_wage > salary_ceiling:
+        # Excluded if earnings exceed ceiling
+        return 0.0, 0.0, False
+
+    # Check annual single deduction safeguard: has LWF already been deducted for this employee in the same calendar year?
+    e_id = employee_id or (emp.get("name") if hasattr(emp, "get") else getattr(emp, "name", None))
+    if e_id:
+        cal_year = pay_dt.year
+        year_start = f"{cal_year}-01-01"
+        year_end = f"{cal_year}-12-31"
+
+        try:
+            existing_slips = frappe.db.sql(
+                """
+                SELECT name, employee_lwf FROM `tabSalary Slip`
+                WHERE employee = %s 
+                  AND docstatus < 2
+                  AND pay_period_start >= %s 
+                  AND pay_period_start <= %s
+                  AND name != %s
+                """,
+                (e_id, year_start, year_end, current_slip_name or ""),
+                as_dict=True
+            )
+
+            for s in existing_slips:
+                if flt(s.get("employee_lwf", 0)) > 0:
+                    # Already deducted in this calendar year
+                    return 0.0, 0.0, False
+        except Exception:
+            pass
+
+    emp_contrib = flt(get_setting_val("lwf_employee_contribution", 20.0))
+    empr_contrib = flt(get_setting_val("lwf_employer_contribution", 40.0))
+
+    return emp_contrib, empr_contrib, True
+
+
 @frappe.whitelist()
 def preview_salary_slip(employee, start_date, end_date):
     """
@@ -1408,10 +1575,11 @@ def preview_salary_slip(employee, start_date, end_date):
     grand_gross_pay = excel_round(sum(flt(e["amount"]) for e in prorated_earnings))
 
 
-    # 5.5. Deductions & Professional Tax, PF, ESI
+    # 5.5. Deductions & Professional Tax, PF, ESI, LWF
     pt_amount = calculate_professional_tax(grand_gross_pay, start_date, settings, employee=emp.name, emp_doc=emp)
     emp_pf = calculate_employee_pf(emp, earned_gross_salary, earned_basic_da, settings, prorated_earnings=prorated_earnings)
-    emp_esi = calculate_employee_esi(emp, grand_gross_pay, earned_gross_salary, settings)
+    tentative_net = max(0.0, grand_gross_pay - (flt(pt_amount) + flt(emp_pf or 0) + flt(emp_esi or 0) + sum(flt(d.amount) for d in emp.deductions if not any(k in (d.component_name or d.salary_component or "").lower() for k in ["prof", "pt", "pf", "esi", "lwf"]))))
+    emp_lwf, empr_lwf, is_lwf_eligible = calculate_lwf(emp, grand_gross_pay, start_date, settings, employee_id=emp.name, prorated_earnings=prorated_earnings, net_pay=tentative_net)
 
     prorated_deductions = []
     base_deductions_total = 0.0
@@ -1434,6 +1602,8 @@ def preview_salary_slip(employee, start_date, end_date):
                 item["amount"] = emp_esi
             else:
                 item["amount"] = flt(d.amount)
+        elif any(k in c_lower for k in ["lwf", "labour welfare fund", "welfare fund"]):
+            item["amount"] = emp_lwf
         else:
             item["amount"] = flt(d.amount)
         prorated_deductions.append(item)
@@ -1469,6 +1639,18 @@ def preview_salary_slip(employee, start_date, end_date):
             "type": "Deduction",
             "standard_amount": 0.0,
             "amount": emp_esi
+        })
+
+    # If LWF wasn't in employee structure but emp_lwf > 0, add it
+    has_lwf = any(any(k in (d.get("component_name") or d.get("salary_component") or "").lower() for k in ["lwf", "labour welfare fund", "welfare fund"]) for d in prorated_deductions)
+    if not has_lwf and emp_lwf > 0:
+        prorated_deductions.append({
+            "component_name": "Labour Welfare Fund",
+            "salary_component": "Labour Welfare Fund",
+            "type": "Deduction",
+            "standard_amount": 0.0,
+            "amount": emp_lwf,
+            "is_statutory": 1
         })
 
     # LOP amount for informational and display breakdown purposes
@@ -1622,9 +1804,9 @@ def preview_salary_slip(employee, start_date, end_date):
 
     lunch_expenses = float(round(canteen_meals_count * lunch_rate)) if enable_lunch else 0.0
 
-    # Earned CTC = Gross Earnings + Employer PF + EDLI + Admin + Employer ESI
-    earned_ctc = round(grand_gross_pay + employer_pf + pf_admin_charges + edli_charges + employer_esi, 2)
-    total_employer_contrib = round(employer_pf + pf_admin_charges + edli_charges + employer_esi, 2)
+    # Earned CTC = Gross Earnings + Employer PF + EDLI + Admin + Employer ESI + Employer LWF
+    earned_ctc = round(grand_gross_pay + employer_pf + pf_admin_charges + edli_charges + employer_esi + empr_lwf, 2)
+    total_employer_contrib = round(employer_pf + pf_admin_charges + edli_charges + employer_esi + empr_lwf, 2)
 
     has_bonus_in_earnings = any(
         "bonus" in ((e.get("component_name") or e.get("salary_component") or "").lower())
@@ -1700,6 +1882,9 @@ def preview_salary_slip(employee, start_date, end_date):
         "pf_admin_charges": pf_admin_charges,
         "edli_charges": edli_charges,
         "employer_esi": employer_esi,
+        "employer_lwf": empr_lwf,
+        "employee_lwf": emp_lwf,
+        "lwf_eligible": 1 if is_lwf_eligible else 0,
         "earned_ctc": earned_ctc,
         "tea_expenses": tea_expenses,
         "lunch_expenses": lunch_expenses,
@@ -1989,7 +2174,9 @@ def get_salary_slip_with_details(name):
         pf_admin_charges = flt(getattr(doc, "pf_admin_charges", 0.0))
         edli_charges = flt(getattr(doc, "edli_charges", 0.0))
         employer_esi = flt(getattr(doc, "employer_esi", 0.0))
-        total_employer_contrib = flt(getattr(doc, "total_employer_contribution", 0.0)) or round(employer_pf + pf_admin_charges + edli_charges + employer_esi, 2)
+        employer_lwf = flt(getattr(doc, "employer_lwf", 0.0))
+        employee_lwf = flt(getattr(doc, "employee_lwf", 0.0))
+        total_employer_contrib = flt(getattr(doc, "total_employer_contribution", 0.0)) or round(employer_pf + pf_admin_charges + edli_charges + employer_esi + employer_lwf, 2)
         tea_expenses = flt(getattr(doc, "tea_expenses", 0.0))
         lunch_expenses = flt(getattr(doc, "lunch_expenses", 0.0))
         canteen_meals_count = flt(getattr(doc, "canteen_meals_count", 0.0))
@@ -2137,8 +2324,12 @@ def get_salary_slip_with_details(name):
         else:
             el_provision = float(round((earned_gross_salary / 26.0) * (el_days / 12.0))) if enable_el else 0.0
 
-        earned_ctc = round(gross_val + employer_pf + pf_admin_charges + edli_charges + employer_esi, 2)
-        total_employer_contrib = round(employer_pf + pf_admin_charges + edli_charges + employer_esi, 2)
+        emp_lwf, empr_lwf, is_lwf_eligible = calculate_lwf(emp, grand_gross_val, start_date, settings, employee_id=getattr(doc, "employee", None), current_slip_name=doc.name, prorated_earnings=getattr(doc, "earnings", []), net_pay=getattr(doc, "net_pay", None))
+        employer_lwf = empr_lwf
+        employee_lwf = emp_lwf
+
+        earned_ctc = round(gross_val + employer_pf + pf_admin_charges + edli_charges + employer_esi + employer_lwf, 2)
+        total_employer_contrib = round(employer_pf + pf_admin_charges + edli_charges + employer_esi + employer_lwf, 2)
         total_monthly_ctc = round(earned_ctc + tea_expenses + lunch_expenses + bonus_provision + el_provision, 2)
 
     res.update({
@@ -2147,6 +2338,8 @@ def get_salary_slip_with_details(name):
         "pf_admin_charges": pf_admin_charges,
         "edli_charges": edli_charges,
         "employer_esi": employer_esi,
+        "employer_lwf": employer_lwf,
+        "employee_lwf": employee_lwf,
         "earned_ctc": earned_ctc,
         "tea_expenses": tea_expenses,
         "lunch_expenses": lunch_expenses,
@@ -2532,6 +2725,9 @@ def generate_salary_slips_from_employee(year=None, month=None, employees=None, s
                 "pf_admin_charges": data.get("pf_admin_charges", 0.0),
                 "edli_charges": data.get("edli_charges", 0.0),
                 "employer_esi": data.get("employer_esi", 0.0),
+                "employer_lwf": data.get("employer_lwf", 0.0),
+                "employee_lwf": data.get("employee_lwf", 0.0),
+                "lwf_eligible": data.get("lwf_eligible", 0),
                 "total_employer_contribution": data.get("total_employer_contrib", 0.0) or data.get("total_employer_contribution", 0.0),
                 "tea_expenses": data.get("tea_expenses", 0.0),
                 "lunch_expenses": data.get("lunch_expenses", 0.0),
