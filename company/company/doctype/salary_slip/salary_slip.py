@@ -1578,6 +1578,7 @@ def preview_salary_slip(employee, start_date, end_date):
     # 5.5. Deductions & Professional Tax, PF, ESI, LWF
     pt_amount = calculate_professional_tax(grand_gross_pay, start_date, settings, employee=emp.name, emp_doc=emp)
     emp_pf = calculate_employee_pf(emp, earned_gross_salary, earned_basic_da, settings, prorated_earnings=prorated_earnings)
+    emp_esi = calculate_employee_esi(emp, grand_gross_pay, earned_gross_salary, settings)
     tentative_net = max(0.0, grand_gross_pay - (flt(pt_amount) + flt(emp_pf or 0) + flt(emp_esi or 0) + sum(flt(d.amount) for d in emp.deductions if not any(k in (d.component_name or d.salary_component or "").lower() for k in ["prof", "pt", "pf", "esi", "lwf"]))))
     emp_lwf, empr_lwf, is_lwf_eligible = calculate_lwf(emp, grand_gross_pay, start_date, settings, employee_id=emp.name, prorated_earnings=prorated_earnings, net_pay=tentative_net)
 
