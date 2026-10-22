@@ -2485,6 +2485,7 @@ def get_salary_slip_with_details(name):
     total_absent_days = 0.0
     paid_leave_days = 0.0
     comp_off_days = 0.0
+    total_leave_days = 0.0
     unpaid_leave_days = 0.0
     present_days = 0.0
     physical_attendance_days = 0.0
@@ -2551,6 +2552,7 @@ def get_salary_slip_with_details(name):
             present_days += leave_val
         elif leave_val > 0:
             unpaid_leave_days += leave_val
+            total_leave_days += leave_val
 
         physical_attendance_days += physical_val
         comp_off_days += comp_off_val
@@ -2574,6 +2576,8 @@ def get_salary_slip_with_details(name):
             if absent_val > 0:
                 if leave_calc_source != "Via Direct Allocation":
                     components.append(f"Unpaid Leave ({absent_val})" if absent_val < 1.0 else "Unpaid Leave")
+                    unpaid_leave_days += absent_val
+                    total_leave_days += absent_val
                 else:
                     components.append(f"Absent ({absent_val})" if absent_val < 1.0 else "Absent")
                 total_absent_days += absent_val
@@ -2599,12 +2603,22 @@ def get_salary_slip_with_details(name):
     else:
         lop_days = unpaid_leave_days
 
+    # Preserve saved doc snapshot if present
+    saved_lop_days = getattr(doc, "lop_days", None)
+    if saved_lop_days is not None and saved_lop_days != "" and flt(saved_lop_days) > 0:
+        lop_days = flt(saved_lop_days)
+    elif lop_days == 0 and flt(getattr(doc, "unpaid_leave_days", 0)) > 0:
+        lop_days = flt(doc.unpaid_leave_days)
+    elif lop_days == 0 and flt(getattr(doc, "no_of_leave", 0)) > 0:
+        lop_days = flt(doc.no_of_leave)
+
     res["days_breakdown"] = days_breakdown
     res["leave_calc_source"] = leave_calc_source
     res["absent_days"] = total_absent_days
     res["no_of_paid_leave"] = paid_leave_days
     res["no_of_comp_off"] = comp_off_days
-    res["no_of_leave"] = unpaid_leave_days
+    res["no_of_leave"] = getattr(doc, "no_of_leave", None) if (getattr(doc, "no_of_leave", None) is not None and flt(getattr(doc, "no_of_leave", 0)) > 0) else unpaid_leave_days
+    res["unpaid_leave_days"] = getattr(doc, "unpaid_leave_days", None) if (getattr(doc, "unpaid_leave_days", None) is not None and flt(getattr(doc, "unpaid_leave_days", 0)) > 0) else unpaid_leave_days
     res["lop_days"] = lop_days
     res["holiday_count"] = len(holiday_dates)
     res["non_working_count"] = len(non_working_dates)
