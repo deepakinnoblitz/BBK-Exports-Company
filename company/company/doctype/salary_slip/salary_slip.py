@@ -743,6 +743,173 @@ def calculate_professional_tax(gross_salary, pay_period_start, settings, employe
     return current_month_pt
 
 
+def calculate_lwf(emp, gross_salary, pay_period_start, settings, employee_id=None, current_slip_name=None, prorated_earnings=None, net_pay=None):
+    """
+    Calculate Tamil Nadu Labour Welfare Fund (LWF) contributions:
+    - Employee Contribution: ₹20/year (deducted from employee salary)
+    - Employer Contribution: ₹40/year (employer contribution; added to CTC)
+    - Configured via HRMS Settings:
+        - enable_lwf (default 1)
+        - lwf_deduction_month (default "December")
+        - lwf_employee_contribution (default 20.00)
+        - lwf_employer_contribution (default 40.00)
+        - lwf_salary_ceiling (default 25000.00, 0 means no ceiling)
+        - lwf_wage_basis (JSON list of earning components)
+        - lwf_applicable_categories (JSON list of categories)
+    
+    Returns: (employee_lwf, employer_lwf, is_eligible)
+    """
+    def get_setting_val(key, default_val=None):
+        if hasattr(settings, "get"):
+            v = settings.get(key)
+        else:
+            v = getattr(settings, key, None)
+        return v if (v is not None and v != "") else default_val
+
+    enable_lwf = cint(get_setting_val("enable_lwf", 1))
+    if not enable_lwf:
+        return 0.0, 0.0, False
+
+    pay_dt = getdate(pay_period_start)
+    current_month_name = pay_dt.strftime("%B")  # e.g., "December"
+    configured_month = str(get_setting_val("lwf_deduction_month", "December")).strip()
+
+    if current_month_name.lower() != configured_month.lower():
+        return 0.0, 0.0, False
+
+    # Check category applicability
+    emp_type = (emp.get("employee_type") if hasattr(emp, "get") else getattr(emp, "employee_type", "")) or ""
+    emp_type_clean = emp_type.lower().strip()
+    
+    category_key = "workers"
+    if "staff" in emp_type_clean:
+        if "non ctc" in emp_type_clean or "non-ctc" in emp_type_clean:
+            category_key = "staff_non_ctc"
+        else:
+            category_key = "staff_ctc"
+    elif "north indian" in emp_type_clean:
+        category_key = "north_indian"
+    elif "driver" in emp_type_clean:
+        category_key = "drivers"
+
+    applicable_cats_raw = get_setting_val("lwf_applicable_categories", '["staff_ctc", "staff_non_ctc", "workers", "north_indian", "drivers"]')
+    applicable_cats = []
+    if isinstance(applicable_cats_raw, list):
+        applicable_cats = [str(x).strip().lower() for x in applicable_cats_raw]
+    elif isinstance(applicable_cats_raw, str):
+        try:
+            parsed = json.loads(applicable_cats_raw)
+            if isinstance(parsed, list):
+                applicable_cats = [str(x).strip().lower() for x in parsed]
+        except Exception:
+            applicable_cats = ["staff_ctc", "staff_non_ctc", "workers", "north_indian", "drivers"]
+
+    is_all_applicable = (
+        not applicable_cats
+        or "all" in applicable_cats
+        or "all employee types" in applicable_cats
+        or "all categories" in applicable_cats
+    )
+    if not is_all_applicable:
+        matched = False
+        if emp_type_clean in applicable_cats:
+            matched = True
+        elif category_key in applicable_cats:
+            matched = True
+        elif any(cat in emp_type_clean or emp_type_clean in cat for cat in applicable_cats):
+            matched = True
+
+        if not matched:
+            return 0.0, 0.0, False
+
+    # Dynamic wage basis evaluation for salary ceiling check
+    lwf_basis_raw = get_setting_val("lwf_wage_basis")
+    selected_lwf_components = []
+    if lwf_basis_raw:
+        if isinstance(lwf_basis_raw, list):
+            selected_lwf_components = [str(x).strip().lower() for x in lwf_basis_raw if str(x).strip()]
+        elif isinstance(lwf_basis_raw, str):
+            try:
+                parsed = json.loads(lwf_basis_raw)
+                if isinstance(parsed, list):
+                    selected_lwf_components = [str(x).strip().lower() for x in parsed if str(x).strip()]
+            except Exception:
+                selected_lwf_components = []
+
+    eval_wage = flt(gross_salary)
+    is_gross_pay = any(x in ["gross pay", "gross", "gross_pay"] for x in selected_lwf_components)
+    is_net_pay = any(x in ["net pay", "net", "net_pay"] for x in selected_lwf_components)
+    is_all_components = (
+        not selected_lwf_components
+        or "all" in selected_lwf_components
+        or "all components" in selected_lwf_components
+    )
+
+    if is_net_pay:
+        if net_pay is not None:
+            eval_wage = flt(net_pay)
+        else:
+            eval_wage = flt(gross_salary) - sum(
+                flt(d.get("amount") if isinstance(d, dict) else getattr(d, "amount", 0.0))
+                for d in (getattr(emp, "deductions", []) or [])
+            )
+    elif is_gross_pay or is_all_components:
+        eval_wage = flt(gross_salary)
+    elif selected_lwf_components and prorated_earnings:
+        eval_wage = sum(
+            flt(e.get("amount") if isinstance(e, dict) else getattr(e, "amount", 0.0))
+            for e in prorated_earnings
+            if (
+                ((e.get("component_name") or e.get("salary_component") or "") if isinstance(e, dict)
+                 else (getattr(e, "component_name", None) or getattr(e, "salary_component", None) or "")).lower().strip() in selected_lwf_components
+                or any(
+                    sc in ((e.get("component_name") or e.get("salary_component") or "").lower() if isinstance(e, dict)
+                           else (getattr(e, "component_name", None) or getattr(e, "salary_component", None) or "").lower())
+                    for sc in selected_lwf_components
+                )
+            )
+        )
+
+    # Check salary ceiling threshold
+    salary_ceiling = flt(get_setting_val("lwf_salary_ceiling", 25000.0))
+    if salary_ceiling > 0 and eval_wage > salary_ceiling:
+        # Excluded if earnings exceed ceiling
+        return 0.0, 0.0, False
+
+    # Check annual single deduction safeguard: has LWF already been deducted for this employee in the same calendar year?
+    e_id = employee_id or (emp.get("name") if hasattr(emp, "get") else getattr(emp, "name", None))
+    if e_id:
+        cal_year = pay_dt.year
+        year_start = f"{cal_year}-01-01"
+        year_end = f"{cal_year}-12-31"
+
+        try:
+            existing_slips = frappe.db.sql(
+                """
+                SELECT name, employee_lwf FROM `tabSalary Slip`
+                WHERE employee = %s 
+                  AND docstatus < 2
+                  AND pay_period_start >= %s 
+                  AND pay_period_start <= %s
+                  AND name != %s
+                """,
+                (e_id, year_start, year_end, current_slip_name or ""),
+                as_dict=True
+            )
+
+            for s in existing_slips:
+                if flt(s.get("employee_lwf", 0)) > 0:
+                    # Already deducted in this calendar year
+                    return 0.0, 0.0, False
+        except Exception:
+            pass
+
+    emp_contrib = flt(get_setting_val("lwf_employee_contribution", 20.0))
+    empr_contrib = flt(get_setting_val("lwf_employer_contribution", 40.0))
+
+    return emp_contrib, empr_contrib, True
+
+
 @frappe.whitelist()
 def preview_salary_slip(employee, start_date, end_date):
     """
@@ -1408,10 +1575,11 @@ def preview_salary_slip(employee, start_date, end_date):
     grand_gross_pay = excel_round(sum(flt(e["amount"]) for e in prorated_earnings))
 
 
-    # 5.5. Deductions & Professional Tax, PF, ESI
+    # 5.5. Deductions & Professional Tax, PF, ESI, LWF
     pt_amount = calculate_professional_tax(grand_gross_pay, start_date, settings, employee=emp.name, emp_doc=emp)
     emp_pf = calculate_employee_pf(emp, earned_gross_salary, earned_basic_da, settings, prorated_earnings=prorated_earnings)
-    emp_esi = calculate_employee_esi(emp, grand_gross_pay, earned_gross_salary, settings)
+    tentative_net = max(0.0, grand_gross_pay - (flt(pt_amount) + flt(emp_pf or 0) + flt(emp_esi or 0) + sum(flt(d.amount) for d in emp.deductions if not any(k in (d.component_name or d.salary_component or "").lower() for k in ["prof", "pt", "pf", "esi", "lwf"]))))
+    emp_lwf, empr_lwf, is_lwf_eligible = calculate_lwf(emp, grand_gross_pay, start_date, settings, employee_id=emp.name, prorated_earnings=prorated_earnings, net_pay=tentative_net)
 
     prorated_deductions = []
     base_deductions_total = 0.0
@@ -1434,6 +1602,8 @@ def preview_salary_slip(employee, start_date, end_date):
                 item["amount"] = emp_esi
             else:
                 item["amount"] = flt(d.amount)
+        elif any(k in c_lower for k in ["lwf", "labour welfare fund", "welfare fund"]):
+            item["amount"] = emp_lwf
         else:
             item["amount"] = flt(d.amount)
         prorated_deductions.append(item)
@@ -1469,6 +1639,18 @@ def preview_salary_slip(employee, start_date, end_date):
             "type": "Deduction",
             "standard_amount": 0.0,
             "amount": emp_esi
+        })
+
+    # If LWF wasn't in employee structure but emp_lwf > 0, add it
+    has_lwf = any(any(k in (d.get("component_name") or d.get("salary_component") or "").lower() for k in ["lwf", "labour welfare fund", "welfare fund"]) for d in prorated_deductions)
+    if not has_lwf and emp_lwf > 0:
+        prorated_deductions.append({
+            "component_name": "Labour Welfare Fund",
+            "salary_component": "Labour Welfare Fund",
+            "type": "Deduction",
+            "standard_amount": 0.0,
+            "amount": emp_lwf,
+            "is_statutory": 1
         })
 
     # LOP amount for informational and display breakdown purposes
@@ -1622,9 +1804,9 @@ def preview_salary_slip(employee, start_date, end_date):
 
     lunch_expenses = float(round(canteen_meals_count * lunch_rate)) if enable_lunch else 0.0
 
-    # Earned CTC = Gross Earnings + Employer PF + EDLI + Admin + Employer ESI
-    earned_ctc = round(grand_gross_pay + employer_pf + pf_admin_charges + edli_charges + employer_esi, 2)
-    total_employer_contrib = round(employer_pf + pf_admin_charges + edli_charges + employer_esi, 2)
+    # Earned CTC = Gross Earnings + Employer PF + EDLI + Admin + Employer ESI + Employer LWF
+    earned_ctc = round(grand_gross_pay + employer_pf + pf_admin_charges + edli_charges + employer_esi + empr_lwf, 2)
+    total_employer_contrib = round(employer_pf + pf_admin_charges + edli_charges + employer_esi + empr_lwf, 2)
 
     has_bonus_in_earnings = any(
         "bonus" in ((e.get("component_name") or e.get("salary_component") or "").lower())
@@ -1700,6 +1882,9 @@ def preview_salary_slip(employee, start_date, end_date):
         "pf_admin_charges": pf_admin_charges,
         "edli_charges": edli_charges,
         "employer_esi": employer_esi,
+        "employer_lwf": empr_lwf,
+        "employee_lwf": emp_lwf,
+        "lwf_eligible": 1 if is_lwf_eligible else 0,
         "earned_ctc": earned_ctc,
         "tea_expenses": tea_expenses,
         "lunch_expenses": lunch_expenses,
@@ -1952,115 +2137,13 @@ def get_salary_slip_with_details(name):
     enable_el = cint(get_category_setting(settings, "enable_el_provision", emp_type, default=1))
     el_days = flt(get_category_setting(settings, "el_provision_days_per_year", emp_type, default=15.6)) if enable_el else 0.0
 
-    tea_rate = flt(getattr(settings, "workers_tea_allowance_per_day", 5.0) if getattr(settings, "workers_tea_allowance_per_day", None) is not None else 5.0)
-    enable_pf = cint(get_category_setting(settings, "enable_auto_pf", emp_type, default=1))
-    pf_no = getattr(doc, "pf_number", None) or (emp.get("pf_number") if emp else None)
-    has_pf_component = False
-    if hasattr(doc, "deductions") and doc.deductions:
-        for d in doc.deductions:
-            c_name = (d.component_name or d.salary_component or "").lower() if hasattr(d, "component_name") else (d.get("component_name") or d.get("salary_component") or "").lower()
-            if any(k in c_name for k in ["pf", "provident fund", "epf"]) and "employer" not in c_name and "admin" not in c_name:
-                has_pf_component = True
-                break
-
-    if not enable_pf or (not pf_no and not has_pf_component):
-        employer_pf = 0.0
-        pf_admin_charges = 0.0
-        edli_charges = 0.0
-    else:
-        if employer_pf_ceiling > 0 and pf_base_for_employer >= employer_pf_ceiling:
-            employer_pf = float(round(employer_max_pf))
-        else:
-            employer_pf = float(round(pf_base_for_employer * pf_rate))
-        
-        # Determine PF Admin & EDLI wage basis dynamically from settings
-        is_ctc_staff = "ctc" in (emp_type or "").lower() and "non" not in (emp_type or "").lower()
-        admin_edli_basis = get_category_setting(settings, "pf_admin_edli_basis", emp_type, default=None)
-        if is_ctc_staff or not admin_edli_basis:
-            if not is_ctc_staff and ("non ctc" in (emp_type or "").lower() or "non-ctc" in (emp_type or "").lower()):
-                admin_edli_basis = "Percentage of Gross Salary"
-            else:
-                admin_edli_basis = "Statutory PF Wage (Capped at Ceiling)"
-
-        if admin_edli_basis == "Percentage of Gross Salary":
-            gross_pct = flt(get_category_setting(settings, "pf_admin_edli_gross_percent", emp_type))
-            pf_statutory_base = round(flt(gross_val) * (gross_pct / 100.0), 2)
-        elif admin_edli_basis == "Actual PF Wage (Uncapped)":
-            pf_statutory_base = pf_base_for_employer
-        else:
-            # Statutory EPFO cap on EDLI and Admin Charges (₹15,000 ceiling -> max ₹75.00 each)
-            admin_cap = employer_pf_ceiling if employer_pf_ceiling > 0 else 15000.0
-            pf_statutory_base = min(pf_base_for_employer, admin_cap)
-
-        pf_admin_charges = excel_round(pf_statutory_base * pf_admin_rate)
-        edli_charges = excel_round(pf_statutory_base * edli_rate)
-
-    enable_esi = cint(get_category_setting(settings, "enable_auto_esi", emp_type, default=1))
-    esi_no = getattr(doc, "esi_no", None) or (emp.get("esi_no") if emp else None)
-    has_esi_component = False
-    if hasattr(doc, "deductions") and doc.deductions:
-        for d in doc.deductions:
-            c_name = (d.component_name or d.salary_component or "").lower() if hasattr(d, "component_name") else (d.get("component_name") or d.get("salary_component") or "").lower()
-            if any(k in c_name for k in ["esi", "esic"]) and "employer" not in c_name:
-                has_esi_component = True
-                break
-
-    if not enable_esi or (not esi_no and not has_esi_component) or (esi_ceiling > 0 and earned_gross_salary > esi_ceiling and gross_val > esi_ceiling):
-        employer_esi = 0.0
-    else:
-        esi_rounding = get_category_setting(settings, "esi_rounding_method", emp_type, default="Round Up to Next Rupee (ROUNDUP / CEIL)")
-        raw_employer_esi = flt(gross_val) * esi_rate
-        if "Round Up" in esi_rounding or "ROUNDUP" in esi_rounding or "CEIL" in esi_rounding:
-            employer_esi = float(math.ceil(raw_employer_esi))
-        else:
-            employer_esi = excel_round(raw_employer_esi)
-
     is_staff = "staff" in (emp_type or "").lower()
-    enable_tea = cint(get_category_setting(settings, "enable_tea_allowance", emp_type, default=1))
     tea_rate_default = 14.0 if is_staff else 5.0
     tea_rate_val = get_category_setting(settings, "tea_allowance_per_day", emp_type, default=None)
     if tea_rate_val is None or tea_rate_val == "":
         tea_rate = tea_rate_default
     else:
         tea_rate = flt(tea_rate_val)
-    tea_expenses = float(round(present_days_val * tea_rate)) if enable_tea else 0.0
-
-    enable_lunch = cint(get_category_setting(settings, "enable_lunch_allowance", emp_type, default=1))
-    lunch_rate_val = get_category_setting(settings, "lunch_allowance_per_meal", emp_type, default=None)
-    if lunch_rate_val is None or lunch_rate_val == "":
-        lunch_rate_val = get_category_setting(settings, "lunch_allowance_per_day", emp_type, default=None)
-    lunch_rate = flt(lunch_rate_val) if (lunch_rate_val is not None and lunch_rate_val != "") else 50.0
-
-    canteen_entries = []
-    canteen_meals_count = 0
-    emp_name = getattr(doc, "employee", None) or (emp.get("name") if emp else None)
-    emp_id = getattr(doc, "employee_id", None) or (getattr(emp, "employee_id", None) if emp else None) or emp_name
-    p_start = getattr(doc, "pay_period_start", None)
-    p_end = getattr(doc, "pay_period_end", None)
-
-    if enable_lunch and emp_name and p_start and p_end and (frappe.db.table_exists("Canteen Entry") or frappe.db.exists("DocType", "Canteen Entry")):
-        canteen_entries = frappe.db.sql(
-            """
-            SELECT name, canteen_date, meal_type, meal_count, status, source, remarks
-            FROM `tabCanteen Entry`
-            WHERE (employee = %s OR employee = %s)
-              AND canteen_date BETWEEN %s AND %s
-            ORDER BY canteen_date ASC
-            """,
-            (emp_name, emp_id, p_start, p_end),
-            as_dict=True
-        )
-        canteen_meals_count = sum(flt(e.get("meal_count") or 1) for e in canteen_entries)
-
-    lunch_expenses = float(round(canteen_meals_count * lunch_rate)) if enable_lunch else 0.0
-    if getattr(doc, "lunch_expenses", None) is not None and flt(doc.lunch_expenses) > 0:
-        lunch_expenses = flt(doc.lunch_expenses)
-        if getattr(doc, "canteen_meals_count", None) is not None and flt(doc.canteen_meals_count) > 0:
-            canteen_meals_count = flt(doc.canteen_meals_count)
-        if getattr(doc, "lunch_rate", None) is not None and flt(doc.lunch_rate) > 0:
-            lunch_rate = flt(doc.lunch_rate)
-    elif not lunch_expenses and getattr(doc, "lunch_amount", 0):
-        lunch_expenses = flt(doc.lunch_amount)
 
     earnings_list = doc.earnings if hasattr(doc, "earnings") else []
     has_bonus_in_earnings = any(
@@ -2073,35 +2156,180 @@ def get_salary_slip_with_details(name):
         for e in earnings_list
     )
 
-    if has_bonus_in_earnings or "staff" in emp_type:
-        bonus_provision = 0.0
-    else:
-        bonus_provision = float(round(earned_gross_salary * bonus_rate)) if enable_bonus else 0.0
+    # Check if this document already has preserved CTC / employer contributions / expenses
+    has_saved_ctc = (
+        flt(getattr(doc, "earned_ctc", 0)) > 0
+        or flt(getattr(doc, "total_monthly_ctc", 0)) > 0
+        or flt(getattr(doc, "total_employer_contribution", 0)) > 0
+        or flt(getattr(doc, "employer_pf", 0)) > 0
+        or flt(getattr(doc, "employer_esi", 0)) > 0
+        or flt(getattr(doc, "tea_expenses", 0)) > 0
+        or flt(getattr(doc, "lunch_expenses", 0)) > 0
+        or doc.docstatus >= 1
+    )
 
-    if has_el_in_earnings or "staff" in emp_type:
-        el_provision = 0.0
-    else:
-        el_provision = float(round((earned_gross_salary / 26.0) * (el_days / 12.0))) if enable_el else 0.0
+    if has_saved_ctc:
+        # Strictly preserve the saved document snapshot values
+        employer_pf = flt(getattr(doc, "employer_pf", 0.0))
+        pf_admin_charges = flt(getattr(doc, "pf_admin_charges", 0.0))
+        edli_charges = flt(getattr(doc, "edli_charges", 0.0))
+        employer_esi = flt(getattr(doc, "employer_esi", 0.0))
+        employer_lwf = flt(getattr(doc, "employer_lwf", 0.0))
+        employee_lwf = flt(getattr(doc, "employee_lwf", 0.0))
+        total_employer_contrib = flt(getattr(doc, "total_employer_contribution", 0.0)) or round(employer_pf + pf_admin_charges + edli_charges + employer_esi + employer_lwf, 2)
+        tea_expenses = flt(getattr(doc, "tea_expenses", 0.0))
+        lunch_expenses = flt(getattr(doc, "lunch_expenses", 0.0))
+        canteen_meals_count = flt(getattr(doc, "canteen_meals_count", 0.0))
 
-    # If employer contributions were saved on doc, use the preserved values
-    if getattr(doc, "employer_pf", None) is not None and (flt(doc.employer_pf) > 0 or flt(getattr(doc, "employer_esi", 0)) > 0 or flt(getattr(doc, "earned_ctc", 0)) > 0):
-        employer_pf = flt(doc.employer_pf)
-        pf_admin_charges = flt(getattr(doc, "pf_admin_charges", pf_admin_charges))
-        edli_charges = flt(getattr(doc, "edli_charges", edli_charges))
-        employer_esi = flt(getattr(doc, "employer_esi", employer_esi))
-        total_employer_contrib = flt(getattr(doc, "total_employer_contribution", 0.0)) or round(employer_pf + pf_admin_charges + edli_charges + employer_esi, 2)
-        if getattr(doc, "tea_expenses", None) is not None and flt(doc.tea_expenses) > 0:
-            tea_expenses = flt(doc.tea_expenses)
-        if getattr(doc, "bonus_provision", None) is not None and flt(doc.bonus_provision) > 0:
-            bonus_provision = flt(doc.bonus_provision)
-        if getattr(doc, "el_provision", None) is not None and flt(doc.el_provision) > 0:
-            el_provision = flt(doc.el_provision)
+        if getattr(doc, "lunch_rate", None) is not None and flt(doc.lunch_rate) > 0:
+            lunch_rate = flt(doc.lunch_rate)
+        else:
+            lunch_rate_val = get_category_setting(settings, "lunch_allowance_per_meal", emp_type, default=None)
+            if lunch_rate_val is None or lunch_rate_val == "":
+                lunch_rate_val = get_category_setting(settings, "lunch_allowance_per_day", emp_type, default=None)
+            lunch_rate = flt(lunch_rate_val) if (lunch_rate_val is not None and lunch_rate_val != "") else 50.0
+
+        bonus_provision = flt(getattr(doc, "bonus_provision", 0.0))
+        el_provision = flt(getattr(doc, "el_provision", 0.0))
         earned_ctc = flt(getattr(doc, "earned_ctc", 0.0)) or round(gross_val + total_employer_contrib, 2)
         total_monthly_ctc = flt(getattr(doc, "total_monthly_ctc", 0.0)) or round(earned_ctc + tea_expenses + lunch_expenses + bonus_provision + el_provision, 2)
+
+        enable_tea = 1 if tea_expenses > 0 else cint(get_category_setting(settings, "enable_tea_allowance", emp_type, default=1))
+        enable_lunch = 1 if (lunch_expenses > 0 or canteen_meals_count > 0) else cint(get_category_setting(settings, "enable_lunch_allowance", emp_type, default=1))
+
+        # Query canteen entries history for display purposes only
+        canteen_entries = []
+        emp_name = getattr(doc, "employee", None) or (emp.get("name") if emp else None)
+        emp_id = getattr(doc, "employee_id", None) or (getattr(emp, "employee_id", None) if emp else None) or emp_name
+        p_start = getattr(doc, "pay_period_start", None)
+        p_end = getattr(doc, "pay_period_end", None)
+
+        if (enable_lunch or lunch_expenses > 0 or canteen_meals_count > 0) and emp_name and p_start and p_end and (frappe.db.table_exists("Canteen Entry") or frappe.db.exists("DocType", "Canteen Entry")):
+            canteen_entries = frappe.db.sql(
+                """
+                SELECT name, canteen_date, meal_type, meal_count, status, source, remarks
+                FROM `tabCanteen Entry`
+                WHERE (employee = %s OR employee = %s)
+                  AND canteen_date BETWEEN %s AND %s
+                ORDER BY canteen_date ASC
+                """,
+                (emp_name, emp_id, p_start, p_end),
+                as_dict=True
+            )
+            if canteen_meals_count == 0 and canteen_entries and lunch_expenses > 0:
+                canteen_meals_count = sum(flt(e.get("meal_count") or 1) for e in canteen_entries)
     else:
-        # Earned CTC = Gross Earnings + Employer PF + EDLI + Admin + Employer ESI
-        earned_ctc = round(gross_val + employer_pf + pf_admin_charges + edli_charges + employer_esi, 2)
-        total_employer_contrib = round(employer_pf + pf_admin_charges + edli_charges + employer_esi, 2)
+        # Fallback dynamic calculation for legacy drafts that were saved before CTC implementation
+        enable_pf = cint(get_category_setting(settings, "enable_auto_pf", emp_type, default=1))
+        pf_no = getattr(doc, "pf_number", None) or (emp.get("pf_number") if emp else None)
+        has_pf_component = False
+        if hasattr(doc, "deductions") and doc.deductions:
+            for d in doc.deductions:
+                c_name = (d.component_name or d.salary_component or "").lower() if hasattr(d, "component_name") else (d.get("component_name") or d.get("salary_component") or "").lower()
+                if any(k in c_name for k in ["pf", "provident fund", "epf"]) and "employer" not in c_name and "admin" not in c_name:
+                    has_pf_component = True
+                    break
+
+        if not enable_pf or (not pf_no and not has_pf_component):
+            employer_pf = 0.0
+            pf_admin_charges = 0.0
+            edli_charges = 0.0
+        else:
+            if employer_pf_ceiling > 0 and pf_base_for_employer >= employer_pf_ceiling:
+                employer_pf = float(round(employer_max_pf))
+            else:
+                employer_pf = float(round(pf_base_for_employer * pf_rate))
+            
+            # Determine PF Admin & EDLI wage basis dynamically from settings
+            is_ctc_staff = "ctc" in (emp_type or "").lower() and "non" not in (emp_type or "").lower()
+            admin_edli_basis = get_category_setting(settings, "pf_admin_edli_basis", emp_type, default=None)
+            if is_ctc_staff or not admin_edli_basis:
+                if not is_ctc_staff and ("non ctc" in (emp_type or "").lower() or "non-ctc" in (emp_type or "").lower()):
+                    admin_edli_basis = "Percentage of Gross Salary"
+                else:
+                    admin_edli_basis = "Statutory PF Wage (Capped at Ceiling)"
+
+            if admin_edli_basis == "Percentage of Gross Salary":
+                gross_pct = flt(get_category_setting(settings, "pf_admin_edli_gross_percent", emp_type))
+                pf_statutory_base = round(flt(gross_val) * (gross_pct / 100.0), 2)
+            elif admin_edli_basis == "Actual PF Wage (Uncapped)":
+                pf_statutory_base = pf_base_for_employer
+            else:
+                # Statutory EPFO cap on EDLI and Admin Charges (₹15,000 ceiling -> max ₹75.00 each)
+                admin_cap = employer_pf_ceiling if employer_pf_ceiling > 0 else 15000.0
+                pf_statutory_base = min(pf_base_for_employer, admin_cap)
+
+            pf_admin_charges = excel_round(pf_statutory_base * pf_admin_rate)
+            edli_charges = excel_round(pf_statutory_base * edli_rate)
+
+        enable_esi = cint(get_category_setting(settings, "enable_auto_esi", emp_type, default=1))
+        esi_no = getattr(doc, "esi_no", None) or (emp.get("esi_no") if emp else None)
+        has_esi_component = False
+        if hasattr(doc, "deductions") and doc.deductions:
+            for d in doc.deductions:
+                c_name = (d.component_name or d.salary_component or "").lower() if hasattr(d, "component_name") else (d.get("component_name") or d.get("salary_component") or "").lower()
+                if any(k in c_name for k in ["esi", "esic"]) and "employer" not in c_name:
+                    has_esi_component = True
+                    break
+
+        if not enable_esi or (not esi_no and not has_esi_component) or (esi_ceiling > 0 and earned_gross_salary > esi_ceiling and gross_val > esi_ceiling):
+            employer_esi = 0.0
+        else:
+            esi_rounding = get_category_setting(settings, "esi_rounding_method", emp_type, default="Round Up to Next Rupee (ROUNDUP / CEIL)")
+            raw_employer_esi = flt(gross_val) * esi_rate
+            if "Round Up" in esi_rounding or "ROUNDUP" in esi_rounding or "CEIL" in esi_rounding:
+                employer_esi = float(math.ceil(raw_employer_esi))
+            else:
+                employer_esi = excel_round(raw_employer_esi)
+
+        enable_tea = cint(get_category_setting(settings, "enable_tea_allowance", emp_type, default=1))
+        tea_expenses = float(round(present_days_val * tea_rate)) if enable_tea else 0.0
+
+        enable_lunch = cint(get_category_setting(settings, "enable_lunch_allowance", emp_type, default=1))
+        lunch_rate_val = get_category_setting(settings, "lunch_allowance_per_meal", emp_type, default=None)
+        if lunch_rate_val is None or lunch_rate_val == "":
+            lunch_rate_val = get_category_setting(settings, "lunch_allowance_per_day", emp_type, default=None)
+        lunch_rate = flt(lunch_rate_val) if (lunch_rate_val is not None and lunch_rate_val != "") else 50.0
+
+        canteen_entries = []
+        canteen_meals_count = 0
+        emp_name = getattr(doc, "employee", None) or (emp.get("name") if emp else None)
+        emp_id = getattr(doc, "employee_id", None) or (getattr(emp, "employee_id", None) if emp else None) or emp_name
+        p_start = getattr(doc, "pay_period_start", None)
+        p_end = getattr(doc, "pay_period_end", None)
+
+        if enable_lunch and emp_name and p_start and p_end and (frappe.db.table_exists("Canteen Entry") or frappe.db.exists("DocType", "Canteen Entry")):
+            canteen_entries = frappe.db.sql(
+                """
+                SELECT name, canteen_date, meal_type, meal_count, status, source, remarks
+                FROM `tabCanteen Entry`
+                WHERE (employee = %s OR employee = %s)
+                  AND canteen_date BETWEEN %s AND %s
+                ORDER BY canteen_date ASC
+                """,
+                (emp_name, emp_id, p_start, p_end),
+                as_dict=True
+            )
+            canteen_meals_count = sum(flt(e.get("meal_count") or 1) for e in canteen_entries)
+
+        lunch_expenses = float(round(canteen_meals_count * lunch_rate)) if enable_lunch else 0.0
+
+        if has_bonus_in_earnings or "staff" in emp_type:
+            bonus_provision = 0.0
+        else:
+            bonus_provision = float(round(earned_gross_salary * bonus_rate)) if enable_bonus else 0.0
+
+        if has_el_in_earnings or "staff" in emp_type:
+            el_provision = 0.0
+        else:
+            el_provision = float(round((earned_gross_salary / 26.0) * (el_days / 12.0))) if enable_el else 0.0
+
+        emp_lwf, empr_lwf, is_lwf_eligible = calculate_lwf(emp, grand_gross_val, start_date, settings, employee_id=getattr(doc, "employee", None), current_slip_name=doc.name, prorated_earnings=getattr(doc, "earnings", []), net_pay=getattr(doc, "net_pay", None))
+        employer_lwf = empr_lwf
+        employee_lwf = emp_lwf
+
+        earned_ctc = round(gross_val + employer_pf + pf_admin_charges + edli_charges + employer_esi + employer_lwf, 2)
+        total_employer_contrib = round(employer_pf + pf_admin_charges + edli_charges + employer_esi + employer_lwf, 2)
         total_monthly_ctc = round(earned_ctc + tea_expenses + lunch_expenses + bonus_provision + el_provision, 2)
 
     res.update({
@@ -2110,6 +2338,8 @@ def get_salary_slip_with_details(name):
         "pf_admin_charges": pf_admin_charges,
         "edli_charges": edli_charges,
         "employer_esi": employer_esi,
+        "employer_lwf": employer_lwf,
+        "employee_lwf": employee_lwf,
         "earned_ctc": earned_ctc,
         "tea_expenses": tea_expenses,
         "lunch_expenses": lunch_expenses,
@@ -2495,6 +2725,9 @@ def generate_salary_slips_from_employee(year=None, month=None, employees=None, s
                 "pf_admin_charges": data.get("pf_admin_charges", 0.0),
                 "edli_charges": data.get("edli_charges", 0.0),
                 "employer_esi": data.get("employer_esi", 0.0),
+                "employer_lwf": data.get("employer_lwf", 0.0),
+                "employee_lwf": data.get("employee_lwf", 0.0),
+                "lwf_eligible": data.get("lwf_eligible", 0),
                 "total_employer_contribution": data.get("total_employer_contrib", 0.0) or data.get("total_employer_contribution", 0.0),
                 "tea_expenses": data.get("tea_expenses", 0.0),
                 "lunch_expenses": data.get("lunch_expenses", 0.0),
@@ -2770,3 +3003,115 @@ def get_wages_reconciliation_statement(current_start_date, current_end_date, pre
         "net_delta": round(curr_net - prev_net, 2),
         "ot_variance": round(curr_ot - prev_ot, 2)
     }
+
+
+@frappe.whitelist()
+def bulk_download_pdf_2in1(names=None, format=None):
+    """
+    Combines salary slips 2-per-page onto standard A4 Portrait sheets (210mm x 297mm).
+    Slip 1: Top half of A4 (A5 Landscape)
+    Slip 2: Bottom half of A4 (A5 Landscape)
+    """
+    import json
+    import io
+    from pypdf import PdfReader, PdfWriter, PageObject, Transformation
+
+    if isinstance(names, str):
+        try:
+            names = json.loads(names)
+        except Exception:
+            names = [s.strip() for s in names.split(",") if s.strip()]
+
+    if not names:
+        frappe.throw(_("Please select at least one Salary Slip to print."))
+
+    slip_pages = []
+    for slip_name in names:
+        doc = frappe.get_doc("Salary Slip", slip_name)
+        
+        print_fmt = format
+        if not print_fmt:
+            emp_type = (doc.employee_type or "").lower()
+            if "north indian" in emp_type:
+                print_fmt = "North Indian Form 25B Pay Slip"
+            elif "driver" in emp_type:
+                print_fmt = "Driver Form 25B Pay Slip"
+            elif "worker" in emp_type:
+                print_fmt = "Worker Form 25B Pay Slip"
+            else:
+                print_fmt = frappe.get_meta("Salary Slip").default_print_format or "Salary Slip"
+
+        pdf_bytes = frappe.get_print("Salary Slip", doc.name, print_format=print_fmt, as_pdf=True)
+        reader = PdfReader(io.BytesIO(pdf_bytes))
+        for p in reader.pages:
+            slip_pages.append(p)
+
+    # Standard A4 portrait dimensions in points (72 points/inch)
+    # 210mm = 595.28 pt, 297mm = 841.89 pt
+    A4_WIDTH = 595.28
+    A4_HEIGHT = 841.89
+    HALF_HEIGHT = A4_HEIGHT / 2.0  # 420.945 pt
+
+    writer = PdfWriter()
+
+    from pypdf.generic import DecodedStreamObject, NameObject
+
+    for i in range(0, len(slip_pages), 2):
+        a4_page = PageObject.create_blank_page(width=A4_WIDTH, height=A4_HEIGHT)
+        
+        # Slip 1 (Top half)
+        page_top = slip_pages[i]
+        w_top = float(page_top.mediabox.width)
+        h_top = float(page_top.mediabox.height)
+        scale_x_top = A4_WIDTH / w_top if w_top else 1.0
+        scale_y_top = HALF_HEIGHT / h_top if h_top else 1.0
+        scale_top = min(scale_x_top, scale_y_top)
+
+        tx_top = (A4_WIDTH - (w_top * scale_top)) / 2.0
+        ty_top = HALF_HEIGHT + (HALF_HEIGHT - (h_top * scale_top)) / 2.0
+        
+        trans_top = (
+            Transformation()
+            .scale(scale_top, scale_top)
+            .translate(tx=tx_top, ty=ty_top)
+        )
+        a4_page.merge_transformed_page(page_top, trans_top)
+
+        # Slip 2 (Bottom half, if exists)
+        if i + 1 < len(slip_pages):
+            page_bottom = slip_pages[i + 1]
+            w_bot = float(page_bottom.mediabox.width)
+            h_bot = float(page_bottom.mediabox.height)
+            scale_x_bot = A4_WIDTH / w_bot if w_bot else 1.0
+            scale_y_bot = HALF_HEIGHT / h_bot if h_bot else 1.0
+            scale_bot = min(scale_x_bot, scale_y_bot)
+
+            tx_bot = (A4_WIDTH - (w_bot * scale_bot)) / 2.0
+            ty_bot = (HALF_HEIGHT - (h_bot * scale_bot)) / 2.0
+            
+            trans_bot = (
+                Transformation()
+                .scale(scale_bot, scale_bot)
+                .translate(tx=tx_bot, ty=ty_bot)
+            )
+            a4_page.merge_transformed_page(page_bottom, trans_bot)
+
+            # Dashed cutting guide between top and bottom slips
+            try:
+                cut_page = PageObject.create_blank_page(width=A4_WIDTH, height=A4_HEIGHT)
+                cut_stream = DecodedStreamObject()
+                cut_stream.set_data(b"q 0.75 G 0.5 w [4 4] 0 d 15 420.95 m 580.28 420.95 l S Q")
+                cut_page[NameObject("/Contents")] = cut_stream
+                a4_page.merge_page(cut_page)
+            except Exception:
+                pass
+
+        writer.add_page(a4_page)
+
+    output_stream = io.BytesIO()
+    writer.write(output_stream)
+    pdf_data = output_stream.getvalue()
+
+    frappe.local.response.filename = "Salary_Slips_2in1_A4.pdf"
+    frappe.local.response.filecontent = pdf_data
+    frappe.local.response.type = "pdf"

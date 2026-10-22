@@ -213,7 +213,33 @@
   "north_indian_tea_allowance_per_day",
   "north_indian_enable_lunch_allowance",
   "north_indian_lunch_allowance_per_meal",
-  "bonus_schemes"
+  "bonus_schemes",
+  "enable_lwf",
+  "lwf_state",
+  "lwf_deduction_month",
+  "lwf_remittance_deadline",
+  "lwf_employee_contribution",
+  "lwf_employer_contribution",
+  "lwf_govt_contribution",
+  "lwf_salary_ceiling",
+  "lwf_deduction_frequency",
+  "lwf_applicable_categories",
+  "lwf_wage_basis",
+  "enable_tds",
+  "tds_tan",
+  "tds_pan",
+  "tds_default_regime",
+  "tds_active_financial_year",
+  "tds_deduction_component",
+  "tds_standard_deduction_new",
+  "tds_standard_deduction_old",
+  "tds_rebate_limit_87a_new",
+  "tds_rebate_limit_87a_old",
+  "tds_cess_rate",
+  "tds_new_regime_slabs",
+  "tds_old_regime_slabs",
+  "tds_lock_declarations_date",
+  "tds_applicable_categories"
  ],
  "fields": [
   {
@@ -1510,6 +1536,160 @@
    "fieldname": "bonus_schemes",
    "fieldtype": "Long Text",
    "label": "Bonus Schemes Configuration"
+  },
+  {
+   "default": "1",
+   "fieldname": "enable_lwf",
+   "fieldtype": "Check",
+   "label": "Enable LWF Auto-Calculation"
+  },
+  {
+   "default": "Tamil Nadu",
+   "fieldname": "lwf_state",
+   "fieldtype": "Data",
+   "label": "LWF State / Governing Board"
+  },
+  {
+   "default": "December",
+   "fieldname": "lwf_deduction_month",
+   "fieldtype": "Select",
+   "label": "LWF Deduction Month",
+   "options": "January\nFebruary\nMarch\nApril\nMay\nJune\nJuly\nAugust\nSeptember\nOctober\nNovember\nDecember"
+  },
+  {
+   "default": "31st January",
+   "fieldname": "lwf_remittance_deadline",
+   "fieldtype": "Data",
+   "label": "LWF Remittance Deadline"
+  },
+  {
+   "default": "20.00",
+   "fieldname": "lwf_employee_contribution",
+   "fieldtype": "Currency",
+   "label": "LWF Employee Contribution (\u20b9)"
+  },
+  {
+   "default": "40.00",
+   "fieldname": "lwf_employer_contribution",
+   "fieldtype": "Currency",
+   "label": "LWF Employer Contribution (\u20b9)"
+  },
+  {
+   "default": "20.00",
+   "fieldname": "lwf_govt_contribution",
+   "fieldtype": "Currency",
+   "label": "LWF Government Contribution (\u20b9)"
+  },
+  {
+   "default": "25000.00",
+   "fieldname": "lwf_salary_ceiling",
+   "fieldtype": "Currency",
+   "label": "LWF Salary Ceiling (\u20b9)"
+  },
+  {
+   "default": "Annual (Once per Year)",
+   "fieldname": "lwf_deduction_frequency",
+   "fieldtype": "Select",
+   "label": "LWF Deduction Frequency",
+   "options": "Annual (Once per Year)\nMonthly\nHalf-Yearly"
+  },
+  {
+   "default": "[\"staff_ctc\", \"staff_non_ctc\", \"workers\", \"north_indian\", \"drivers\"]",
+   "fieldname": "lwf_applicable_categories",
+   "fieldtype": "Small Text",
+   "label": "LWF Applicable Categories"
+  },
+  {
+   "default": "[\"Basic Pay\", \"DA\", \"Other Allowance\"]",
+   "fieldname": "lwf_wage_basis",
+   "fieldtype": "Small Text",
+   "label": "LWF Wage Basis Components"
+  },
+  {
+   "default": "1",
+   "fieldname": "enable_tds",
+   "fieldtype": "Check",
+   "label": "Enable Salary TDS Deductions"
+  },
+  {
+   "fieldname": "tds_tan",
+   "fieldtype": "Data",
+   "label": "TAN Number"
+  },
+  {
+   "fieldname": "tds_pan",
+   "fieldtype": "Data",
+   "label": "Company PAN"
+  },
+  {
+   "default": "New Tax Regime u/s 115BAC",
+   "fieldname": "tds_default_regime",
+   "fieldtype": "Select",
+   "label": "Default Tax Regime",
+   "options": "New Tax Regime u/s 115BAC\nOld Tax Regime"
+  },
+  {
+   "default": "2026-2027",
+   "fieldname": "tds_active_financial_year",
+   "fieldtype": "Select",
+   "label": "Active Financial Year",
+   "options": "2026-2027\n2025-2026\n2024-2025"
+  },
+  {
+   "default": "TDS",
+   "fieldname": "tds_deduction_component",
+   "fieldtype": "Data",
+   "label": "TDS Deduction Component"
+  },
+  {
+   "default": "75000",
+   "fieldname": "tds_standard_deduction_new",
+   "fieldtype": "Currency",
+   "label": "Standard Deduction (New Regime)"
+  },
+  {
+   "default": "50000",
+   "fieldname": "tds_standard_deduction_old",
+   "fieldtype": "Currency",
+   "label": "Standard Deduction (Old Regime)"
+  },
+  {
+   "default": "700000",
+   "fieldname": "tds_rebate_limit_87a_new",
+   "fieldtype": "Currency",
+   "label": "Section 87A Rebate Threshold (New Regime)"
+  },
+  {
+   "default": "500000",
+   "fieldname": "tds_rebate_limit_87a_old",
+   "fieldtype": "Currency",
+   "label": "Section 87A Rebate Threshold (Old Regime)"
+  },
+  {
+   "default": "4.0",
+   "fieldname": "tds_cess_rate",
+   "fieldtype": "Float",
+   "label": "Health & Education Cess (%)"
+  },
+  {
+   "fieldname": "tds_new_regime_slabs",
+   "fieldtype": "Long Text",
+   "label": "New Regime Tax Slabs"
+  },
+  {
+   "fieldname": "tds_old_regime_slabs",
+   "fieldtype": "Long Text",
+   "label": "Old Regime Tax Slabs"
+  },
+  {
+   "fieldname": "tds_lock_declarations_date",
+   "fieldtype": "Date",
+   "label": "Lock Declarations Cutoff Date"
+  },
+  {
+   "fieldname": "tds_applicable_categories",
+   "fieldtype": "Small Text",
+   "label": "TDS Applicable Categories / Types"
   }
  ],
  "issingle": 1,
