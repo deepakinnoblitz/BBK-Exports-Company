@@ -250,6 +250,9 @@ def get_employee_leave_balances(employee_id, pay_period_start, pay_period_end):
         order_by="creation asc"
     )
 
+    settings = frappe.get_single("HRMS Settings")
+    leave_calc_source = getattr(settings, "salary_leave_calculation_source", None) or "Via Leave Application"
+
     balances = []
     cl_cycle_period = ""
     cl_allocated = 0.0
@@ -360,8 +363,11 @@ def get_employee_leave_balances(employee_id, pay_period_start, pay_period_end):
         total_alloc = flt(alloc_res[0][0]) if alloc_res else 0.0
         alloc_taken = flt(alloc_res[0][1]) if alloc_res else 0.0
 
-        actual_taken = get_leaves_taken_in_period(employee_id, lt.name, cycle_start, calc_end)
-        total_taken = max(alloc_taken, actual_taken)
+        if leave_calc_source == "Via Direct Allocation":
+            total_taken = alloc_taken
+        else:
+            actual_taken = get_leaves_taken_in_period(employee_id, lt.name, cycle_start, calc_end)
+            total_taken = max(alloc_taken, actual_taken)
         balance = max(0.0, total_alloc - total_taken)
 
         current_item = {
@@ -431,8 +437,11 @@ def get_employee_leave_balances(employee_id, pay_period_start, pay_period_end):
             p_total_alloc = flt(p_alloc_res[0][0]) if p_alloc_res else 0.0
             p_alloc_taken = flt(p_alloc_res[0][1]) if p_alloc_res else 0.0
 
-            p_actual_taken = get_leaves_taken_in_period(employee_id, lt.name, p_cycle_start, p_cycle_end)
-            p_total_taken = max(p_alloc_taken, p_actual_taken)
+            if leave_calc_source == "Via Direct Allocation":
+                p_total_taken = p_alloc_taken
+            else:
+                p_actual_taken = get_leaves_taken_in_period(employee_id, lt.name, p_cycle_start, p_cycle_end)
+                p_total_taken = max(p_alloc_taken, p_actual_taken)
             p_balance = max(0.0, p_total_alloc - p_total_taken)
 
             encashed_item = {
