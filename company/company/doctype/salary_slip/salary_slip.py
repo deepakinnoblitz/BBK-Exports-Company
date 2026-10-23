@@ -2075,7 +2075,10 @@ def get_salary_slip_with_details(name):
 
     # ── Employer Contributions & CTC ──────────────────────────────────────────
     emp_type = (res.get("employee_type") or "").lower()
-    gross_val = flt(doc.grand_gross_pay or doc.gross_pay or 0.0)
+    gross_val = flt(getattr(doc, "grand_gross_pay", None) or getattr(doc, "gross_pay", None) or 0.0)
+    grand_gross_val = gross_val
+    start_date = getdate(getattr(doc, "start_date", None) or getattr(doc, "pay_period_start", None) or getattr(doc, "posting_date", None) or frappe.utils.nowdate())
+    is_lwf_eligible = False
     earned_gross_salary = round(sum(
         flt(e.amount or 0) for e in doc.earnings
         if (e.component_name or e.salary_component or "") not in ["Overtime Pay (OT)", "Overtime Allowance", "Attendance Bonus", "Tea Allowance"]
@@ -2341,6 +2344,8 @@ def get_salary_slip_with_details(name):
         "employer_esi": employer_esi,
         "employer_lwf": employer_lwf,
         "employee_lwf": employee_lwf,
+        "lwf_eligible": 1 if is_lwf_eligible else 0,
+        "is_lwf_eligible": is_lwf_eligible,
         "earned_ctc": earned_ctc,
         "tea_expenses": tea_expenses,
         "lunch_expenses": lunch_expenses,
