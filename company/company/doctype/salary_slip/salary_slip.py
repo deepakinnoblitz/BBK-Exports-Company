@@ -153,19 +153,23 @@ def calculate_overtime_pay(emp, gross_salary, ot_hours, settings):
 
     if "staff" in emp_type:
         return 0.0
+
+    def _get_setting_val(f_name, default):
+        val = getattr(settings, f_name, None) if not isinstance(settings, dict) else settings.get(f_name, None)
+        return flt(val) if (val is not None and val != "") else default
     
     if "worker" in emp_type:
-        multiplier = flt(getattr(settings, "workers_ot_rate_multiplier", 2.0)) or 2.0
+        multiplier = _get_setting_val("workers_ot_rate_multiplier", 2.0)
         # Formula: ROUND(Gross Salary / 26 / 8 * OT Hours, 0) * multiplier
         single_rate_ot = excel_round((flt(gross_salary) / 26.0 / 8.0) * ot_h)
         return excel_round(single_rate_ot * multiplier)
     elif "driver" in emp_type:
-        multiplier = flt(getattr(settings, "drivers_ot_rate_multiplier", 2.0)) or 2.0
+        multiplier = _get_setting_val("drivers_ot_rate_multiplier", 2.0)
         # Formula: ROUND(Gross Salary / 26 / 8 * OT Hours, 0) * multiplier
         single_rate_ot = excel_round((flt(gross_salary) / 26.0 / 8.0) * ot_h)
         return excel_round(single_rate_ot * multiplier)
     elif "north indian" in emp_type:
-        rate = flt(getattr(settings, "north_indian_ot_rate", 100.0)) or 100.0
+        rate = _get_setting_val("north_indian_ot_rate", 100.0)
         # Formula: rate * OT Hours
         return excel_round(rate * ot_h)
     return 0.0
@@ -175,7 +179,8 @@ def calculate_attendance_bonus(emp, absent_days, settings):
     emp_type = (emp.get("employee_type") or "").lower()
     
     if "worker" in emp_type and flt(absent_days) <= 0.0:
-        return flt(getattr(settings, "workers_attendance_bonus", 1500.0)) or 1500.0
+        val = getattr(settings, "workers_attendance_bonus", None) if not isinstance(settings, dict) else settings.get("workers_attendance_bonus", None)
+        return flt(val) if (val is not None and val != "") else 1500.0
     return 0.0
 
 
