@@ -1668,6 +1668,71 @@ def preview_salary_slip(employee, start_date, end_date):
             "is_statutory": 1
         })
 
+    # Employee Tea & Canteen Deductions
+    enable_emp_tea = cint(get_category_setting(settings, "enable_employee_tea_deduction", emp_type, default=0))
+    emp_tea_rate = flt(get_category_setting(settings, "employee_tea_deduction_per_day", emp_type, default=0.0))
+    emp_tea_deduction = float(round(flt(present_days) * emp_tea_rate, 2)) if enable_emp_tea else 0.0
+
+    enable_emp_canteen = cint(get_category_setting(settings, "enable_employee_canteen_deduction", emp_type, default=0))
+    emp_canteen_rate = flt(get_category_setting(settings, "employee_canteen_deduction_per_meal", emp_type, default=0.0))
+
+    # Fetch Canteen entries if canteen deduction or lunch allowance is enabled
+    enable_lunch = cint(get_category_setting(settings, "enable_lunch_allowance", emp_type, default=1))
+    canteen_entries = []
+    canteen_meals_count = 0
+    emp_id_val = getattr(emp, "employee_id", None) or (emp.get("employee_id") if isinstance(emp, dict) else "") or emp.name
+    if (enable_emp_canteen or enable_lunch) and (frappe.db.table_exists("Canteen Entry") or frappe.db.exists("DocType", "Canteen Entry")):
+        canteen_entries = frappe.db.sql(
+            """
+            SELECT name, canteen_date, meal_type, meal_count, status, source, remarks
+            FROM `tabCanteen Entry`
+            WHERE (employee = %s OR employee = %s)
+              AND canteen_date BETWEEN %s AND %s
+            ORDER BY canteen_date ASC
+            """,
+            (emp.name, emp_id_val, start_date, end_date),
+            as_dict=True
+        )
+        canteen_meals_count = sum(flt(e.get("meal_count") or 1) for e in canteen_entries)
+
+    emp_canteen_deduction = float(round(flt(canteen_meals_count) * emp_canteen_rate, 2)) if enable_emp_canteen else 0.0
+
+    # Add Tea Deduction to deductions child table
+    has_tea_ded = False
+    for d in prorated_deductions:
+        c_name = (d.get("component_name") or d.get("salary_component") or "").lower()
+        if "tea" in c_name and ("deduction" in c_name or "expense" in c_name):
+            has_tea_ded = True
+            if enable_emp_tea:
+                d["amount"] = emp_tea_deduction
+            break
+    if not has_tea_ded and emp_tea_deduction > 0:
+        prorated_deductions.append({
+            "component_name": "Tea Deduction",
+            "salary_component": "Tea Deduction",
+            "type": "Deduction",
+            "standard_amount": 0.0,
+            "amount": emp_tea_deduction
+        })
+
+    # Add Canteen Deduction to deductions child table
+    has_canteen_ded = False
+    for d in prorated_deductions:
+        c_name = (d.get("component_name") or d.get("salary_component") or "").lower()
+        if ("canteen" in c_name or "lunch" in c_name or "mess" in c_name) and ("deduction" in c_name or "expense" in c_name):
+            has_canteen_ded = True
+            if enable_emp_canteen:
+                d["amount"] = emp_canteen_deduction
+            break
+    if not has_canteen_ded and emp_canteen_deduction > 0:
+        prorated_deductions.append({
+            "component_name": "Canteen Deduction",
+            "salary_component": "Canteen Deduction",
+            "type": "Deduction",
+            "standard_amount": 0.0,
+            "amount": emp_canteen_deduction
+        })
+
     # LOP amount for informational and display breakdown purposes
     lop_amount = excel_round(gross_pay * (lop_days / month_working_days)) if month_working_days else 0.0
     
@@ -1800,10 +1865,7 @@ def preview_salary_slip(employee, start_date, end_date):
         lunch_rate_val = get_category_setting(settings, "lunch_allowance_per_day", emp_type, default=None)
     lunch_rate = flt(lunch_rate_val) if (lunch_rate_val is not None and lunch_rate_val != "") else 50.0
 
-    canteen_entries = []
-    canteen_meals_count = 0
-    emp_id_val = getattr(emp, "employee_id", None) or (emp.get("employee_id") if isinstance(emp, dict) else "") or emp.name
-    if enable_lunch and (frappe.db.table_exists("Canteen Entry") or frappe.db.exists("DocType", "Canteen Entry")):
+    if not canteen_entries and enable_lunch and (frappe.db.table_exists("Canteen Entry") or frappe.db.exists("DocType", "Canteen Entry")):
         canteen_entries = frappe.db.sql(
             """
             SELECT name, canteen_date, meal_type, meal_count, status, source, remarks
@@ -1890,6 +1952,12 @@ def preview_salary_slip(employee, start_date, end_date):
         "leave_encashment_amount": leave_encashment_total,
         "tea_allowance": 0.0,
         "pt_amount": pt_amount,
+        "tea_deduction": emp_tea_deduction,
+        "canteen_deduction": emp_canteen_deduction,
+        "employee_tea_rate": emp_tea_rate,
+        "employee_canteen_rate": emp_canteen_rate,
+        "enable_employee_tea_deduction": enable_emp_tea,
+        "enable_employee_canteen_deduction": enable_emp_canteen,
         "earnings": prorated_earnings,
         "deductions": prorated_deductions,
         # Employer Contributions & CTC
@@ -2387,6 +2455,10 @@ def get_salary_slip_with_details(name):
         "has_el_in_earnings": has_el_in_earnings,
         "enable_workers_tea_allowance": enable_tea,
         "workers_tea_allowance_per_day": round(tea_rate, 2),
+        "enable_employee_tea_deduction": cint(get_category_setting(settings, "enable_employee_tea_deduction", emp_type, default=0)),
+        "employee_tea_deduction_per_day": flt(get_category_setting(settings, "employee_tea_deduction_per_day", emp_type, default=0.0)),
+        "enable_employee_canteen_deduction": cint(get_category_setting(settings, "enable_employee_canteen_deduction", emp_type, default=0)),
+        "employee_canteen_deduction_per_meal": flt(get_category_setting(settings, "employee_canteen_deduction_per_meal", emp_type, default=0.0)),
     })
 
     # ── Days Breakdown (mirrors preview_salary_slip) ──────────────────────────

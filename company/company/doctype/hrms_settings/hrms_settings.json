@@ -239,7 +239,31 @@
   "tds_new_regime_slabs",
   "tds_old_regime_slabs",
   "tds_lock_declarations_date",
-  "tds_applicable_categories"
+  "tds_applicable_categories",
+  "enable_employee_tea_deduction",
+  "employee_tea_deduction_per_day",
+  "enable_employee_canteen_deduction",
+  "employee_canteen_deduction_per_meal",
+  "staff_ctc_enable_employee_tea_deduction",
+  "staff_ctc_employee_tea_deduction_per_day",
+  "staff_ctc_enable_employee_canteen_deduction",
+  "staff_ctc_employee_canteen_deduction_per_meal",
+  "staff_non_ctc_enable_employee_tea_deduction",
+  "staff_non_ctc_employee_tea_deduction_per_day",
+  "staff_non_ctc_enable_employee_canteen_deduction",
+  "staff_non_ctc_employee_canteen_deduction_per_meal",
+  "workers_enable_employee_tea_deduction",
+  "workers_employee_tea_deduction_per_day",
+  "workers_enable_employee_canteen_deduction",
+  "workers_employee_canteen_deduction_per_meal",
+  "north_indian_enable_employee_tea_deduction",
+  "north_indian_employee_tea_deduction_per_day",
+  "north_indian_enable_employee_canteen_deduction",
+  "north_indian_employee_canteen_deduction_per_meal",
+  "drivers_enable_employee_tea_deduction",
+  "drivers_employee_tea_deduction_per_day",
+  "drivers_enable_employee_canteen_deduction",
+  "drivers_employee_canteen_deduction_per_meal"
  ],
  "fields": [
   {
@@ -1690,6 +1714,150 @@
    "fieldname": "tds_applicable_categories",
    "fieldtype": "Small Text",
    "label": "TDS Applicable Categories / Types"
+  },
+  {
+   "fieldname": "enable_employee_tea_deduction",
+   "fieldtype": "Check",
+   "label": "Enable Employee Tea Deduction",
+   "default": "0"
+  },
+  {
+   "fieldname": "employee_tea_deduction_per_day",
+   "fieldtype": "Currency",
+   "label": "Employee Tea Deduction (\u20b9/Day)",
+   "default": "0"
+  },
+  {
+   "fieldname": "enable_employee_canteen_deduction",
+   "fieldtype": "Check",
+   "label": "Enable Employee Canteen Deduction",
+   "default": "0"
+  },
+  {
+   "fieldname": "employee_canteen_deduction_per_meal",
+   "fieldtype": "Currency",
+   "label": "Employee Canteen Deduction (\u20b9/Meal)",
+   "default": "0"
+  },
+  {
+   "fieldname": "staff_ctc_enable_employee_tea_deduction",
+   "fieldtype": "Check",
+   "label": "Staff CTC Enable Employee Tea Deduction",
+   "default": "0"
+  },
+  {
+   "fieldname": "staff_ctc_employee_tea_deduction_per_day",
+   "fieldtype": "Currency",
+   "label": "Staff CTC Employee Tea Deduction (\u20b9/Day)",
+   "default": "0"
+  },
+  {
+   "fieldname": "staff_ctc_enable_employee_canteen_deduction",
+   "fieldtype": "Check",
+   "label": "Staff CTC Enable Employee Canteen Deduction",
+   "default": "0"
+  },
+  {
+   "fieldname": "staff_ctc_employee_canteen_deduction_per_meal",
+   "fieldtype": "Currency",
+   "label": "Staff CTC Employee Canteen Deduction (\u20b9/Meal)",
+   "default": "0"
+  },
+  {
+   "fieldname": "staff_non_ctc_enable_employee_tea_deduction",
+   "fieldtype": "Check",
+   "label": "Staff Non-CTC Enable Employee Tea Deduction",
+   "default": "0"
+  },
+  {
+   "fieldname": "staff_non_ctc_employee_tea_deduction_per_day",
+   "fieldtype": "Currency",
+   "label": "Staff Non-CTC Employee Tea Deduction (\u20b9/Day)",
+   "default": "0"
+  },
+  {
+   "fieldname": "staff_non_ctc_enable_employee_canteen_deduction",
+   "fieldtype": "Check",
+   "label": "Staff Non-CTC Enable Employee Canteen Deduction",
+   "default": "0"
+  },
+  {
+   "fieldname": "staff_non_ctc_employee_canteen_deduction_per_meal",
+   "fieldtype": "Currency",
+   "label": "Staff Non-CTC Employee Canteen Deduction (\u20b9/Meal)",
+   "default": "0"
+  },
+  {
+   "fieldname": "workers_enable_employee_tea_deduction",
+   "fieldtype": "Check",
+   "label": "Workers Enable Employee Tea Deduction",
+   "default": "0"
+  },
+  {
+   "fieldname": "workers_employee_tea_deduction_per_day",
+   "fieldtype": "Currency",
+   "label": "Workers Employee Tea Deduction (\u20b9/Day)",
+   "default": "0"
+  },
+  {
+   "fieldname": "workers_enable_employee_canteen_deduction",
+   "fieldtype": "Check",
+   "label": "Workers Enable Employee Canteen Deduction",
+   "default": "0"
+  },
+  {
+   "fieldname": "workers_employee_canteen_deduction_per_meal",
+   "fieldtype": "Currency",
+   "label": "Workers Employee Canteen Deduction (\u20b9/Meal)",
+   "default": "0"
+  },
+  {
+   "fieldname": "north_indian_enable_employee_tea_deduction",
+   "fieldtype": "Check",
+   "label": "North Indian Enable Employee Tea Deduction",
+   "default": "0"
+  },
+  {
+   "fieldname": "north_indian_employee_tea_deduction_per_day",
+   "fieldtype": "Currency",
+   "label": "North Indian Employee Tea Deduction (\u20b9/Day)",
+   "default": "0"
+  },
+  {
+   "fieldname": "north_indian_enable_employee_canteen_deduction",
+   "fieldtype": "Check",
+   "label": "North Indian Enable Employee Canteen Deduction",
+   "default": "0"
+  },
+  {
+   "fieldname": "north_indian_employee_canteen_deduction_per_meal",
+   "fieldtype": "Currency",
+   "label": "North Indian Employee Canteen Deduction (\u20b9/Meal)",
+   "default": "0"
+  },
+  {
+   "fieldname": "drivers_enable_employee_tea_deduction",
+   "fieldtype": "Check",
+   "label": "Drivers Enable Employee Tea Deduction",
+   "default": "0"
+  },
+  {
+   "fieldname": "drivers_employee_tea_deduction_per_day",
+   "fieldtype": "Currency",
+   "label": "Drivers Employee Tea Deduction (\u20b9/Day)",
+   "default": "0"
+  },
+  {
+   "fieldname": "drivers_enable_employee_canteen_deduction",
+   "fieldtype": "Check",
+   "label": "Drivers Enable Employee Canteen Deduction",
+   "default": "0"
+  },
+  {
+   "fieldname": "drivers_employee_canteen_deduction_per_meal",
+   "fieldtype": "Currency",
+   "label": "Drivers Employee Canteen Deduction (\u20b9/Meal)",
+   "default": "0"
   }
  ],
  "issingle": 1,
