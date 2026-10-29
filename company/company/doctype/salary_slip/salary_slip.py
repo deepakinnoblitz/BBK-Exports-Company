@@ -920,8 +920,109 @@ def calculate_lwf(emp, gross_salary, pay_period_start, settings, employee_id=Non
 
     emp_contrib = flt(get_setting_val("lwf_employee_contribution", 20.0))
     empr_contrib = flt(get_setting_val("lwf_employer_contribution", 40.0))
-
     return emp_contrib, empr_contrib, True
+
+
+def evaluate_custom_salary_rules(rules_raw, comp_type, emp, emp_type, start_date, end_date, present_days, total_ot_hours, grand_gross_pay, earned_basic_da, canteen_meals_count, prorated_earnings=None):
+    """
+    Evaluate custom salary component rules configured in HRMS Settings.
+    comp_type: 'Earning' or 'Deduction'
+    Returns list of dicts to append to prorated_earnings or prorated_deductions.
+    """
+    if not rules_raw:
+        return []
+    
+    rules = []
+    if isinstance(rules_raw, list):
+        rules = rules_raw
+    elif isinstance(rules_raw, str):
+        try:
+            rules = json.loads(rules_raw)
+        except Exception:
+            return []
+            
+    if not isinstance(rules, list):
+        return []
+
+    emp_id = getattr(emp, "employee_id", None) or (emp.get("employee_id") if isinstance(emp, dict) else "") or (emp.name if hasattr(emp, "name") else "")
+    emp_name = getattr(emp, "name", None) or (emp.get("name") if isinstance(emp, dict) else "")
+    emp_type_clean = (emp_type or "").lower().strip()
+    
+    # Pay period YYYY-MM
+    p_month_start = str(start_date)[:7] if start_date else ""
+    p_month_end = str(end_date)[:7] if end_date else ""
+
+    results = []
+    for r in rules:
+        if not r or not isinstance(r, dict):
+            continue
+        if r.get("type") != comp_type:
+            continue
+        enabled_val = r.get("enabled")
+        if not (enabled_val is True or enabled_val == 1 or str(enabled_val).lower() == "true" or enabled_val == "1"):
+            continue
+
+        # Check Timing / Month
+        app_mode = r.get("applicability", "always_active")
+        app_month = (r.get("applicable_month") or "").strip()
+        if app_mode == "specific_month" and app_month:
+            if app_month not in [p_month_start, p_month_end]:
+                continue
+
+        # Check Target Assignees
+        target_type = r.get("target_type", "all")
+        if target_type == "assignees":
+            assigned_ids = [str(x).strip().lower() for x in (r.get("target_employee_ids") or []) if str(x).strip()]
+            if emp_id.lower() not in assigned_ids and emp_name.lower() not in assigned_ids:
+                continue
+        elif target_type == "categories":
+            assigned_cats = [str(x).strip().lower() for x in (r.get("target_categories") or []) if str(x).strip()]
+            if not any(c in emp_type_clean for c in assigned_cats):
+                continue
+
+        # Calculate Amount
+        calc_mode = r.get("calculation_mode", "fixed")
+        rate_val = flt(r.get("amount", 0.0))
+        computed_amt = 0.0
+        remarks = ""
+
+        if calc_mode == "fixed":
+            computed_amt = rate_val
+            remarks = "Fixed Amount"
+        elif calc_mode == "per_day":
+            computed_amt = round(flt(present_days) * rate_val, 2)
+            remarks = f"{present_days} Days @ ₹{rate_val}/day"
+        elif calc_mode == "per_ot_hour":
+            computed_amt = round(flt(total_ot_hours) * rate_val, 2)
+            remarks = f"{round(flt(total_ot_hours), 2)} OT Hrs @ ₹{rate_val}/hr"
+        elif calc_mode == "percent_gross":
+            computed_amt = round(flt(grand_gross_pay) * (rate_val / 100.0), 2)
+            remarks = f"{rate_val}% of Gross Pay"
+        elif calc_mode == "percent_component":
+            target_comps = [str(c).strip().lower() for c in (r.get("selected_components") or []) if str(c).strip()]
+            base_amt = 0.0
+            if prorated_earnings:
+                for e in prorated_earnings:
+                    c_name = ((e.get("component_name") or e.get("salary_component") or "").lower() if isinstance(e, dict)
+                              else (getattr(e, "component_name", None) or getattr(e, "salary_component", None) or "").lower())
+                    if any(tc == c_name or tc in c_name for tc in target_comps):
+                        base_amt += flt(e.get("amount", 0.0) if isinstance(e, dict) else getattr(e, "amount", 0.0))
+            computed_amt = round(base_amt * (rate_val / 100.0), 2)
+            c_label = ", ".join(r.get("selected_components") or ["Selected Components"])
+            remarks = f"{rate_val}% of ({c_label})"
+
+        if computed_amt > 0:
+            c_name = r.get("name") or f"Custom {comp_type}"
+            results.append({
+                "component_name": c_name,
+                "salary_component": c_name,
+                "type": comp_type,
+                "standard_amount": 0.0,
+                "amount": computed_amt,
+                "remarks": remarks
+            })
+
+    return results
 
 
 @frappe.whitelist()
@@ -1585,7 +1686,36 @@ def preview_salary_slip(employee, start_date, end_date):
                     })
                     leave_encashment_total += payout_amt
 
-    # Recalculate Grand Gross Pay including Bonus & Leave Encashment
+    canteen_entries = []
+    canteen_meals_count = 0
+    emp_id_val = getattr(emp, "employee_id", None) or (emp.get("employee_id") if isinstance(emp, dict) else "") or emp.name
+    enable_lunch = cint(get_category_setting(settings, "enable_lunch_allowance", emp_type, default=1))
+    enable_emp_canteen = cint(get_category_setting(settings, "enable_employee_canteen_deduction", emp_type, default=0))
+    if (enable_emp_canteen or enable_lunch or getattr(settings, "custom_salary_component_rules", None)) and (frappe.db.table_exists("Canteen Entry") or frappe.db.exists("DocType", "Canteen Entry")):
+        canteen_entries = frappe.db.sql(
+            """
+            SELECT name, canteen_date, meal_type, meal_count, status, source, remarks
+            FROM `tabCanteen Entry`
+            WHERE (employee = %s OR employee = %s)
+              AND canteen_date BETWEEN %s AND %s
+            ORDER BY canteen_date ASC
+            """,
+            (emp.name, emp_id_val, start_date, end_date),
+            as_dict=True
+        )
+        canteen_meals_count = sum(flt(e.get("meal_count") or 1) for e in canteen_entries)
+
+    # Custom Earning Rules (e.g. Festival Bonus, Production Incentive, Daily Allowance)
+    custom_earnings = evaluate_custom_salary_rules(
+        getattr(settings, "custom_salary_component_rules", None),
+        "Earning", emp, emp_type, start_date, end_date,
+        present_days, total_ot_hours, gross_pay, earned_basic_da, canteen_meals_count,
+        prorated_earnings=prorated_earnings
+    )
+    for ce in custom_earnings:
+        prorated_earnings.append(ce)
+
+    # Recalculate Grand Gross Pay including Bonus, Leave Encashment & Custom Earnings
     grand_gross_pay = excel_round(sum(flt(e["amount"]) for e in prorated_earnings))
 
 
@@ -1678,10 +1808,7 @@ def preview_salary_slip(employee, start_date, end_date):
 
     # Fetch Canteen entries if canteen deduction or lunch allowance is enabled
     enable_lunch = cint(get_category_setting(settings, "enable_lunch_allowance", emp_type, default=1))
-    canteen_entries = []
-    canteen_meals_count = 0
-    emp_id_val = getattr(emp, "employee_id", None) or (emp.get("employee_id") if isinstance(emp, dict) else "") or emp.name
-    if (enable_emp_canteen or enable_lunch) and (frappe.db.table_exists("Canteen Entry") or frappe.db.exists("DocType", "Canteen Entry")):
+    if not canteen_entries and (enable_emp_canteen or enable_lunch) and (frappe.db.table_exists("Canteen Entry") or frappe.db.exists("DocType", "Canteen Entry")):
         canteen_entries = frappe.db.sql(
             """
             SELECT name, canteen_date, meal_type, meal_count, status, source, remarks
@@ -1732,6 +1859,16 @@ def preview_salary_slip(employee, start_date, end_date):
             "standard_amount": 0.0,
             "amount": emp_canteen_deduction
         })
+
+    # Custom Deduction Rules (e.g. Uniform Deduction, Safety Shoes, Tool Recovery)
+    custom_deductions = evaluate_custom_salary_rules(
+        getattr(settings, "custom_salary_component_rules", None),
+        "Deduction", emp, emp_type, start_date, end_date,
+        present_days, total_ot_hours, grand_gross_pay, earned_basic_da, canteen_meals_count,
+        prorated_earnings=prorated_earnings
+    )
+    for cd in custom_deductions:
+        prorated_deductions.append(cd)
 
     # LOP amount for informational and display breakdown purposes
     lop_amount = excel_round(gross_pay * (lop_days / month_working_days)) if month_working_days else 0.0

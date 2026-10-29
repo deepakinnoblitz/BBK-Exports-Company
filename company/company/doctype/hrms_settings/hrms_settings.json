@@ -263,7 +263,8 @@
   "drivers_enable_employee_tea_deduction",
   "drivers_employee_tea_deduction_per_day",
   "drivers_enable_employee_canteen_deduction",
-  "drivers_employee_canteen_deduction_per_meal"
+  "drivers_employee_canteen_deduction_per_meal",
+  "custom_salary_component_rules"
  ],
  "fields": [
   {
@@ -1858,6 +1859,11 @@
    "fieldtype": "Currency",
    "label": "Drivers Employee Canteen Deduction (\u20b9/Meal)",
    "default": "0"
+  },
+  {
+   "fieldname": "custom_salary_component_rules",
+   "fieldtype": "Long Text",
+   "label": "Custom Salary Component Rules"
   }
  ],
  "issingle": 1,
