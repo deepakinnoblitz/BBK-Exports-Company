@@ -287,7 +287,7 @@ def get_daily_attendance_summary(date, load_all=0):
 			"Employee",
 			fields=[
 				"name", "employee_name", "department", "designation",
-				"employee_type", "employee_category", "line_order",
+				"employee_type", "line_order",
 				"production_type", "date_of_joining", "date_of_leaving"
 			],
 			filters={"status": "Active"},
@@ -336,7 +336,7 @@ def get_daily_attendance_summary(date, load_all=0):
 			out_t = format_time_val(att.out_time) if att else ""
 			is_present = bool(raw_status in ["Present", "Half Day", "Work From Home"] or in_t)
 
-			emp_type_cat = f"{emp.employee_type or ''} {emp.employee_category or ''}".lower()
+			emp_type_cat = f"{emp.employee_type or ''} {getattr(emp, 'employee_category', '') or ''}".lower()
 			dept_str = (emp.department or "").lower()
 			desig_str = (emp.designation or "").lower()
 			line_str = (emp.line_order or "").lower()
@@ -674,7 +674,7 @@ def get_daily_attendance_by_department(date, department):
 			"Employee",
 			fields=[
 				"name", "employee_name", "department", "designation",
-				"employee_type", "employee_category", "line_order",
+				"employee_type", "line_order",
 				"production_type", "date_of_joining", "date_of_leaving"
 			],
 			filters={"status": "Active", "department": department},
@@ -707,7 +707,7 @@ def get_daily_attendance_by_department(date, department):
 			out_t = format_time_val(att.out_time) if att else ""
 			is_present = bool(raw_status in ["Present", "Half Day", "Work From Home"] or in_t)
 
-			emp_type_cat = f"{emp.employee_type or ''} {emp.employee_category or ''}".lower()
+			emp_type_cat = f"{emp.employee_type or ''} {getattr(emp, 'employee_category', '') or ''}".lower()
 			dept_str = (emp.department or "").lower()
 			desig_str = (emp.designation or "").lower()
 

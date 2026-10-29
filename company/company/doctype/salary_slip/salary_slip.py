@@ -1247,31 +1247,13 @@ def preview_salary_slip(employee, start_date, end_date):
         # Skip legacy auto-calculated dynamic components from employee structure
         if c_name in ["Overtime Pay (OT)", "Overtime Allowance", "Attendance Bonus"]:
             continue
+        std_val = flt(e.amount)
+        if std_val <= 0:
+            continue
         item = e.as_dict()
-        c_name_lower = c_name.lower().strip()
-
-        if c_name_lower in ["bonus", "bonus provision"]:
-            if flt(e.amount) > 0:
-                std_bonus = flt(e.amount)
-            else:
-                std_bonus = excel_round(std_basic_da * (bonus_rate if bonus_rate > 0 else 0.0833))
-            item["standard_amount"] = std_bonus
-            item["amount"] = excel_round(std_bonus * period_factor)
-            base_gross_total += std_bonus
-        elif any(k in c_name_lower for k in ["earned leave", "el"]):
-            if flt(e.amount) > 0:
-                std_el = flt(e.amount)
-            else:
-                staff_el_days = el_days if el_days > 0 else 14.0
-                std_el = excel_round(((std_basic_da / 26.0) * (staff_el_days / 12.0)))
-            item["standard_amount"] = std_el
-            item["amount"] = excel_round(std_el * period_factor)
-            base_gross_total += std_el
-        else:
-            item["standard_amount"] = flt(e.amount)
-            item["amount"] = excel_round(flt(e.amount) * period_factor)
-            base_gross_total += flt(e.amount)
-
+        item["standard_amount"] = std_val
+        item["amount"] = excel_round(std_val * period_factor)
+        base_gross_total += std_val
         prorated_earnings.append(item)
 
     if base_gross_total > 0:
@@ -1621,6 +1603,10 @@ def preview_salary_slip(employee, start_date, end_date):
             item["amount"] = emp_lwf
         else:
             item["amount"] = flt(d.amount)
+
+        if flt(item.get("amount", 0)) <= 0 and flt(item.get("standard_amount", 0)) <= 0:
+            continue
+
         prorated_deductions.append(item)
 
     # If Prof.Tax wasn't in employee structure but pt_amount > 0, add it
@@ -2054,15 +2040,10 @@ def get_salary_slip_with_details(name):
     for e in doc.earnings:
         item = e.as_dict()
         c_name = e.component_name or e.salary_component or ""
-        c_name_lower = c_name.lower().strip()
         std_val = emp_earnings_map.get(c_name, 0.0)
 
-        if std_val <= 0 and std_basic_da > 0:
-            if c_name_lower in ["bonus", "bonus provision"]:
-                std_val = excel_round(std_basic_da * (bonus_rate if bonus_rate > 0 else 0.0833))
-            elif any(k in c_name_lower for k in ["earned leave", "el"]):
-                staff_el_days = el_days if el_days > 0 else 14.0
-                std_val = excel_round(((std_basic_da / 26.0) * (staff_el_days / 12.0)))
+        if flt(e.amount) <= 0 and std_val <= 0:
+            continue
 
         item["standard_amount"] = std_val
         enriched_earnings.append(item)
@@ -2072,7 +2053,12 @@ def get_salary_slip_with_details(name):
     for d in doc.deductions:
         item = d.as_dict()
         c_name = d.component_name or d.salary_component or ""
-        item["standard_amount"] = emp_deductions_map.get(c_name, 0.0)
+        std_val = emp_deductions_map.get(c_name, 0.0)
+
+        if flt(d.amount) <= 0 and std_val <= 0:
+            continue
+
+        item["standard_amount"] = std_val
         enriched_deductions.append(item)
     res["deductions"] = enriched_deductions
 
@@ -2708,13 +2694,18 @@ def generate_salary_slips_from_employee(year=None, month=None, employees=None, s
         try:
             data = preview_salary_slip(emp_id, start_date, end_date)
 
-            if frappe.db.exists("Salary Slip", {
+            existing_slip = frappe.db.get_value("Salary Slip", {
                 "employee": emp_id,
                 "pay_period_start": start_date,
                 "pay_period_end": end_date
-            }):
-                skipped_count += 1
-                continue
+            }, ["name", "docstatus"], as_dict=True)
+
+            if existing_slip:
+                if existing_slip.docstatus == 0:
+                    frappe.delete_doc("Salary Slip", existing_slip.name, force=1)
+                else:
+                    skipped_count += 1
+                    continue
 
             slip = frappe.get_doc({
                 "doctype": "Salary Slip",
@@ -2788,10 +2779,12 @@ def generate_salary_slips_from_employee(year=None, month=None, employees=None, s
             })
 
             for e in data.get("earnings", []):
-                slip.append("earnings", e)
+                if flt(e.get("amount", 0)) > 0 or flt(e.get("standard_amount", 0)) > 0:
+                    slip.append("earnings", e)
 
             for d in data.get("deductions", []):
-                slip.append("deductions", d)
+                if flt(d.get("amount", 0)) > 0:
+                    slip.append("deductions", d)
 
             slip.insert(ignore_permissions=True)
             created_count += 1
