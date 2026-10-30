@@ -368,6 +368,7 @@ def get_daily_attendance_summary(date, load_all=0):
 				"attendance_name": att.name if att else None,
 				"employee": emp.name,
 				"employee_name": emp.employee_name,
+				"employee_type": emp.employee_type or "Unassigned",
 				"department": emp.department or "General",
 				"designation": emp.designation or ("Staff" if is_staff else "Worker"),
 				"in_time": in_t,
@@ -456,6 +457,30 @@ def get_daily_attendance_summary(date, load_all=0):
 				})
 			return rows
 
+		# Dynamic Employee Type Head Count groups
+		emp_type_map = {}
+		for e in processed_emps:
+			etype = (e.get("employee_type") or "").strip() or "Unassigned"
+			emp_type_map.setdefault(etype, []).append(e)
+
+		sorted_etypes = sorted(emp_type_map.keys(), key=lambda t: (-len(emp_type_map[t]), t))
+		employee_types = []
+		for etype in sorted_etypes:
+			type_emps = emp_type_map[etype]
+			type_st = calc_stats(type_emps)
+			depts = build_dynamic_headcount_groups(type_emps, "department", "designation")
+			desigs = build_dynamic_headcount_groups(type_emps, "designation", "department")
+			employee_types.append({
+				"employee_type": etype,
+				"category": etype,
+				"manpower": type_st["str"],
+				"present": type_st["pre"],
+				"absent": type_st["abs"],
+				"absent_pct": type_st["abs_pct"],
+				"departments": depts,
+				"designations": desigs
+			})
+
 		staff_departments = build_dynamic_headcount_groups(staff_emps, "department", "designation")
 		staff_designations = build_dynamic_headcount_groups(staff_emps, "designation", "department")
 
@@ -490,6 +515,7 @@ def get_daily_attendance_summary(date, load_all=0):
 		}
 
 		head_count = {
+			"employee_types": employee_types,
 			"staff": staff_departments,
 			"staff_departments": staff_departments,
 			"staff_designations": staff_designations,
@@ -737,6 +763,7 @@ def get_daily_attendance_by_department(date, department):
 				"attendance_name": att.name if att else None,
 				"employee": emp.name,
 				"employee_name": emp.employee_name,
+				"employee_type": emp.employee_type or "Unassigned",
 				"department": emp.department or "General",
 				"designation": emp.designation or ("Staff" if is_staff else "Worker"),
 				"in_time": in_t,
