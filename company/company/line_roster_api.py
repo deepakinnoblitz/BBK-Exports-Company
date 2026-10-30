@@ -169,7 +169,13 @@ def record_roster_history(roster_id, employee, employee_name, effective_from, ef
 		history.effective_to = effective_to or effective_from
 		history.previous_line = previous_line
 		history.new_line = new_line
-		history.source = (source or "MANUAL").upper()
+
+		s_str = (source or "MANUAL").strip()
+		if s_str.lower() in ("line change", "default line change", "line_change", "default_line_change"):
+			history.source = "DEFAULT_LINE_CHANGE"
+		else:
+			history.source = s_str.upper()
+
 		history.changed_by = changed_by or frappe.session.user
 		history.changed_at = now_datetime()
 		history.reason = reason or "Roster assignment changed"
@@ -201,7 +207,7 @@ def check_roster_conflict(employee, effective_from, effective_to=None, exclude_n
 		  AND (
 			(effective_to IS NOT NULL AND effective_from <= %(eff_to)s AND effective_to >= %(eff_from)s)
 			OR
-			(effective_to IS NULL AND effective_from >= %(eff_from)s AND effective_from <= %(eff_to)s)
+			(effective_to IS NULL AND effective_from <= %(eff_to)s)
 		  )
 	"""
 	return frappe.db.sql(query, {
@@ -221,7 +227,9 @@ def create_roster_assignment(data):
 	employee = data.get("employee")
 	line_order = data.get("line_order") or data.get("line")
 	effective_from = data.get("effective_from")
-	effective_to = data.get("effective_to") or effective_from
+	effective_to = data.get("effective_to")
+	if not effective_to and data.get("assignment_type") != "Line Change":
+		effective_to = effective_from
 	assignment_type = data.get("assignment_type", "Manual")
 	reason = data.get("reason", "")
 	status = data.get("status", "Active")
@@ -229,13 +237,13 @@ def create_roster_assignment(data):
 	if not employee or not line_order or not effective_from:
 		frappe.throw("Employee, Line Order, and Effective From are required.")
 
-	# If assignment type is Override, cancel conflicting active records first
-	if assignment_type == "Override":
+	# If assignment type is Override or Line Change, cancel conflicting active records first
+	if assignment_type in ("Override", "Line Change"):
 		conflicts = check_roster_conflict(employee, effective_from, effective_to)
 		for c in conflicts:
 			frappe.db.set_value("Employee Line Roster", c.name, {
 				"status": "Cancelled",
-				"reason": f"Overridden by new assignment for {line_order} ({effective_from} to {effective_to})"
+				"reason": f"Overridden by new assignment for {line_order} ({effective_from} to {effective_to or 'ongoing'})"
 			})
 			record_roster_history(
 				roster_id=c.name,
@@ -246,8 +254,8 @@ def create_roster_assignment(data):
 				previous_line=c.line_order,
 				new_line=None,
 				changed_by=frappe.session.user,
-				reason="Overridden by new line assignment",
-				source="OVERRIDE"
+				reason=f"Overridden by {assignment_type}",
+				source="OVERRIDE" if assignment_type == "Override" else "DEFAULT LINE CHANGE"
 			)
 
 	doc = frappe.new_doc("Employee Line Roster")
@@ -681,8 +689,8 @@ def get_monthly_roster(month=None, year=None, department=None, employee=None, se
 			assigned_roster = None
 			for r in r_list:
 				r_from = getdate(r.effective_from)
-				r_to = getdate(r.effective_to) if r.effective_to else r_from
-				if r_from <= d_obj <= r_to:
+				r_to = getdate(r.effective_to) if r.effective_to else None
+				if r_from <= d_obj and (r_to is None or d_obj <= r_to):
 					assigned_roster = r
 
 			if assigned_roster:
@@ -964,6 +972,16 @@ def generate_rotation_assignments(rotation_name=None, employees=None, start_date
 @frappe.whitelist()
 def get_roster_history(roster_id=None, employee=None):
 	"""Returns audit history records for line roster assignments."""
+	if roster_id and employee:
+		return frappe.db.sql("""
+			SELECT name, roster_id, employee, employee_name, effective_from, effective_to,
+			       previous_line, new_line, source, changed_by, changed_at, reason, creation
+			FROM `tabEmployee Line Roster History`
+			WHERE roster_id = %(roster_id)s OR employee = %(employee)s
+			ORDER BY changed_at desc, creation desc
+			LIMIT 100
+		""", {"roster_id": roster_id, "employee": employee}, as_dict=True)
+
 	filters = {}
 	if roster_id:
 		filters["roster_id"] = roster_id

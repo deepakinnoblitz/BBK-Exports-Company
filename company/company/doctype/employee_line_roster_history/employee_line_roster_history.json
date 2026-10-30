@@ -70,7 +70,7 @@
    "fieldtype": "Select",
    "in_list_view": 1,
    "label": "Source",
-   "options": "MANUAL\nBULK\nROTATION\nOVERRIDE\nLINE_CHANGE"
+   "options": "MANUAL\nBULK\nROTATION\nOVERRIDE\nLINE_CHANGE\nDEFAULT LINE CHANGE"
   },
   {
    "fieldname": "changed_by",
