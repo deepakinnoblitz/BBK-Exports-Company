@@ -70,7 +70,7 @@
    "fieldtype": "Select",
    "in_list_view": 1,
    "label": "Source",
-   "options": "MANUAL\nBULK\nROTATION\nOVERRIDE\nSHIFT_CHANGE"
+   "options": "MANUAL\nBULK\nROTATION\nOVERRIDE\nSHIFT_CHANGE\nDEFAULT_SHIFT_CHANGE\nDefault Shift Change\nDEFAULT SHIFT CHANGE\nShift Change"
   },
   {
    "fieldname": "changed_by",
