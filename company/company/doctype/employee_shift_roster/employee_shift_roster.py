@@ -47,7 +47,7 @@ class EmployeeShiftRoster(Document):
 			  AND (
 				(effective_to IS NOT NULL AND effective_from <= %(eff_to)s AND effective_to >= %(eff_from)s)
 				OR
-				(effective_to IS NULL AND effective_from >= %(eff_from)s AND effective_from <= %(eff_to)s)
+				(effective_to IS NULL AND effective_from <= %(eff_to)s)
 			  )
 		"""
 		conflicts = frappe.db.sql(overlap_query, {
@@ -57,63 +57,67 @@ class EmployeeShiftRoster(Document):
 			"eff_to": eff_to
 		}, as_dict=1)
 
-		if conflicts and self.assignment_type != "Override":
+		if conflicts and self.assignment_type not in ("Override", "Shift Change"):
 			conflict_list = ", ".join([f"{c.name} (Shift: {c.shift}, {c.effective_from} to {c.effective_to or c.effective_from})" for c in conflicts])
 			frappe.throw(
-				f"Shift conflict detected for Employee {self.employee_name or self.employee}. Overlaps with: {conflict_list}. Use Override assignment type if you want to replace existing assignments."
+				f"Shift conflict detected for Employee {self.employee_name or self.employee}. Overlaps with: {conflict_list}. Use Override or Shift Change assignment type if you want to replace existing assignments."
 			)
+
+	def after_insert(self):
+		from company.company.shift_roster_api import record_roster_history
+
+		default_shift = frappe.db.get_value("Employee", self.employee, "shift")
+		source_type = "DEFAULT_SHIFT_CHANGE" if self.assignment_type == "Shift Change" else (self.assignment_type or "MANUAL")
+		record_roster_history(
+			roster_id=self.name,
+			employee=self.employee,
+			employee_name=self.employee_name,
+			effective_from=self.effective_from,
+			effective_to=self.effective_to or self.effective_from,
+			previous_shift=default_shift,
+			new_shift=self.shift if self.status == "Active" else None,
+			changed_by=frappe.session.user,
+			reason=self.reason or ("Shift changed from default" if self.assignment_type == "Shift Change" else "Shift roster assignment created"),
+			source=source_type
+		)
 
 	def on_update(self):
 		doc_before_save = self.get_doc_before_save()
-		is_new_doc = doc_before_save is None
+		if not doc_before_save:
+			return
 
 		from company.company.shift_roster_api import record_roster_history
 
-		if is_new_doc:
-			# For new assignments, fetch employee's default shift (or applicable shift before this doc)
-			default_shift = frappe.db.get_value("Employee", self.employee, "shift")
-			record_roster_history(
-				roster_id=self.name,
-				employee=self.employee,
-				employee_name=self.employee_name,
-				effective_from=self.effective_from,
-				effective_to=self.effective_to or self.effective_from,
-				previous_shift=default_shift,
-				new_shift=self.shift if self.status == "Active" else None,
-				changed_by=frappe.session.user,
-				reason=self.reason or "Roster assignment updated",
-				source=self.assignment_type or "MANUAL"
-			)
-		else:
-			status_changed = self.status != doc_before_save.status
-			shift_changed = self.shift != doc_before_save.shift
+		status_changed = self.status != doc_before_save.status
+		shift_changed = self.shift != doc_before_save.shift
 
-			if status_changed or shift_changed:
-				if self.status == "Cancelled":
-					cancel_reason = self.reason if (self.reason and self.reason not in ("Assignment cancelled", "Roster assignment updated", "Roster assignment updated")) else "Cancelled by user"
-					record_roster_history(
-						roster_id=self.name,
-						employee=self.employee,
-						employee_name=self.employee_name,
-						effective_from=self.effective_from,
-						effective_to=self.effective_to or self.effective_from,
-						previous_shift=doc_before_save.shift or self.shift,
-						new_shift=None,
-						changed_by=frappe.session.user,
-						reason=cancel_reason,
-						source=self.assignment_type or "MANUAL"
-					)
-				else:
-					update_reason = self.reason if (self.reason and self.reason not in ("Roster assignment updated", "Assignment cancelled", "Cancelled by user")) else "Roster assignment updated"
-					record_roster_history(
-						roster_id=self.name,
-						employee=self.employee,
-						employee_name=self.employee_name,
-						effective_from=self.effective_from,
-						effective_to=self.effective_to or self.effective_from,
-						previous_shift=doc_before_save.shift,
-						new_shift=self.shift,
-						changed_by=frappe.session.user,
-						reason=update_reason,
-						source=self.assignment_type or "MANUAL"
-					)
+		if status_changed or shift_changed:
+			source_type = "DEFAULT_SHIFT_CHANGE" if self.assignment_type == "Shift Change" else (self.assignment_type or "MANUAL")
+			if self.status == "Cancelled":
+				cancel_reason = self.reason if (self.reason and self.reason not in ("Assignment cancelled", "Roster assignment updated")) else "Cancelled by user"
+				record_roster_history(
+					roster_id=self.name,
+					employee=self.employee,
+					employee_name=self.employee_name,
+					effective_from=self.effective_from,
+					effective_to=self.effective_to or self.effective_from,
+					previous_shift=doc_before_save.shift or self.shift,
+					new_shift=None,
+					changed_by=frappe.session.user,
+					reason=cancel_reason,
+					source=source_type
+				)
+			else:
+				update_reason = self.reason if (self.reason and self.reason not in ("Roster assignment updated", "Assignment cancelled", "Cancelled by user")) else "Roster assignment updated"
+				record_roster_history(
+					roster_id=self.name,
+					employee=self.employee,
+					employee_name=self.employee_name,
+					effective_from=self.effective_from,
+					effective_to=self.effective_to or self.effective_from,
+					previous_shift=doc_before_save.shift,
+					new_shift=self.shift,
+					changed_by=frappe.session.user,
+					reason=update_reason,
+					source=source_type
+				)

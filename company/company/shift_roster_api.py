@@ -175,7 +175,13 @@ def record_roster_history(roster_id, employee, employee_name, effective_from, ef
 		hist.changed_by = changed_by or frappe.session.user
 		hist.changed_at = now_datetime()
 		hist.reason = reason or "Shift assignment updated"
-		hist.source = (source or "MANUAL").upper()
+
+		s_str = (source or "MANUAL").strip()
+		if s_str.lower() in ("shift change", "default shift change", "shift_change", "default_shift_change"):
+			hist.source = "DEFAULT_SHIFT_CHANGE"
+		else:
+			hist.source = s_str.upper()
+
 		hist.insert(ignore_permissions=True)
 		frappe.db.commit()
 	except Exception as e:
@@ -193,7 +199,7 @@ def check_roster_conflict(employee, effective_from, effective_to=None, exclude_n
 		return []
 
 	eff_from = effective_from
-	eff_to = effective_to or effective_from
+	eff_to = effective_to or '9999-12-31' if not effective_to else effective_to
 
 	query = """
 		SELECT name, shift, shift_name, effective_from, effective_to, assignment_type
@@ -204,7 +210,7 @@ def check_roster_conflict(employee, effective_from, effective_to=None, exclude_n
 		  AND (
 			(effective_to IS NOT NULL AND effective_from <= %(eff_to)s AND effective_to >= %(eff_from)s)
 			OR
-			(effective_to IS NULL AND effective_from >= %(eff_from)s AND effective_from <= %(eff_to)s)
+			(effective_to IS NULL AND effective_from <= %(eff_to)s)
 		  )
 	"""
 	return frappe.db.sql(query, {
@@ -224,7 +230,9 @@ def create_roster_assignment(data):
 	employee = data.get("employee")
 	shift = data.get("shift")
 	effective_from = data.get("effective_from")
-	effective_to = data.get("effective_to") or effective_from
+	effective_to = data.get("effective_to")
+	if not effective_to and data.get("assignment_type") != "Shift Change":
+		effective_to = effective_from
 	assignment_type = data.get("assignment_type", "Manual")
 	reason = data.get("reason", "")
 	status = data.get("status", "Active")
@@ -232,13 +240,13 @@ def create_roster_assignment(data):
 	if not employee or not shift or not effective_from:
 		frappe.throw("Employee, Shift, and Effective From are required.")
 
-	# If assignment type is Override, cancel conflicting active records first
-	if assignment_type == "Override":
+	# If assignment type is Override or Shift Change, cancel conflicting active records first
+	if assignment_type in ("Override", "Shift Change"):
 		conflicts = check_roster_conflict(employee, effective_from, effective_to)
 		for c in conflicts:
 			frappe.db.set_value("Employee Shift Roster", c.name, {
 				"status": "Cancelled",
-				"reason": f"Overridden by new assignment for {shift} ({effective_from} to {effective_to})"
+				"reason": f"Overridden by new assignment for {shift} ({effective_from} to {effective_to or 'ongoing'})"
 			})
 			record_roster_history(
 				roster_id=c.name,
@@ -249,8 +257,8 @@ def create_roster_assignment(data):
 				previous_shift=c.shift,
 				new_shift=None,
 				changed_by=frappe.session.user,
-				reason="Overridden by new shift assignment",
-				source="OVERRIDE"
+				reason=f"Overridden by {assignment_type}",
+				source="OVERRIDE" if assignment_type == "Override" else "DEFAULT_SHIFT_CHANGE"
 			)
 
 	doc = frappe.new_doc("Employee Shift Roster")
@@ -310,6 +318,7 @@ def delete_or_cancel_roster_assignment(name, reason=None, delete_permanently=Fal
 	doc = frappe.get_doc("Employee Shift Roster", name)
 
 	if is_delete:
+		source_type = "DEFAULT_SHIFT_CHANGE" if doc.assignment_type == "Shift Change" else "MANUAL"
 		record_roster_history(
 			roster_id=doc.name,
 			employee=doc.employee,
@@ -320,7 +329,7 @@ def delete_or_cancel_roster_assignment(name, reason=None, delete_permanently=Fal
 			new_shift=None,
 			changed_by=frappe.session.user,
 			reason=reason or "Deleted permanently",
-			source="MANUAL"
+			source=source_type
 		)
 		doc.delete()
 	else:
@@ -690,8 +699,8 @@ def get_monthly_roster(month=None, year=None, department=None, employee=None, se
 			assigned_roster = None
 			for r in r_list:
 				r_from = getdate(r.effective_from)
-				r_to = getdate(r.effective_to) if r.effective_to else r_from
-				if r_from <= d_obj <= r_to:
+				r_to = getdate(r.effective_to) if r.effective_to else None
+				if (r_to is None and d_obj >= r_from) or (r_to is not None and r_from <= d_obj <= r_to):
 					assigned_roster = r
 
 			if assigned_roster:
@@ -987,6 +996,16 @@ def generate_rotation_assignments(rotation_name=None, employees=None, start_date
 @frappe.whitelist()
 def get_roster_history(roster_id=None, employee=None):
 	"""Returns audit history records for shift roster assignments."""
+	if roster_id and employee:
+		return frappe.db.sql("""
+			SELECT name, roster_id, employee, employee_name, effective_from, effective_to,
+			       previous_shift, new_shift, source, changed_by, changed_at, reason, creation
+			FROM `tabEmployee Shift Roster History`
+			WHERE roster_id = %(roster_id)s OR employee = %(employee)s
+			ORDER BY changed_at desc, creation desc
+			LIMIT 100
+		""", {"roster_id": roster_id, "employee": employee}, as_dict=True)
+
 	filters = {}
 	if roster_id:
 		filters["roster_id"] = roster_id

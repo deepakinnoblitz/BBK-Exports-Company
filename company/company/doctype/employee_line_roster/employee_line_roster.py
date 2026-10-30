@@ -47,7 +47,7 @@ class EmployeeLineRoster(Document):
 			  AND (
 				(effective_to IS NOT NULL AND effective_from <= %(eff_to)s AND effective_to >= %(eff_from)s)
 				OR
-				(effective_to IS NULL AND effective_from >= %(eff_from)s AND effective_from <= %(eff_to)s)
+				(effective_to IS NULL AND effective_from <= %(eff_to)s)
 			  )
 		"""
 		conflicts = frappe.db.sql(overlap_query, {
@@ -57,62 +57,67 @@ class EmployeeLineRoster(Document):
 			"eff_to": eff_to
 		}, as_dict=1)
 
-		if conflicts and self.assignment_type != "Override":
+		if conflicts and self.assignment_type not in ("Override", "Line Change"):
 			conflict_list = ", ".join([f"{c.name} (Line: {c.line_order}, {c.effective_from} to {c.effective_to or c.effective_from})" for c in conflicts])
 			frappe.throw(
-				f"Line conflict detected for Employee {self.employee_name or self.employee}. Overlaps with: {conflict_list}. Use Override assignment type if you want to replace existing assignments."
+				f"Line conflict detected for Employee {self.employee_name or self.employee}. Overlaps with: {conflict_list}. Use Override or Line Change assignment type if you want to replace existing assignments."
 			)
+
+	def after_insert(self):
+		from company.company.line_roster_api import record_roster_history
+
+		default_line = frappe.db.get_value("Employee", self.employee, "line_order")
+		source_type = "DEFAULT LINE CHANGE" if self.assignment_type == "Line Change" else (self.assignment_type or "MANUAL")
+		record_roster_history(
+			roster_id=self.name,
+			employee=self.employee,
+			employee_name=self.employee_name,
+			effective_from=self.effective_from,
+			effective_to=self.effective_to or self.effective_from,
+			previous_line=default_line,
+			new_line=self.line_order if self.status == "Active" else None,
+			changed_by=frappe.session.user,
+			reason=self.reason or ("Line changed from default" if self.assignment_type == "Line Change" else "Line roster assignment created"),
+			source=source_type
+		)
 
 	def on_update(self):
 		doc_before_save = self.get_doc_before_save()
-		is_new_doc = doc_before_save is None
+		if not doc_before_save:
+			return
 
 		from company.company.line_roster_api import record_roster_history
 
-		if is_new_doc:
-			default_line = frappe.db.get_value("Employee", self.employee, "line_order")
-			record_roster_history(
-				roster_id=self.name,
-				employee=self.employee,
-				employee_name=self.employee_name,
-				effective_from=self.effective_from,
-				effective_to=self.effective_to or self.effective_from,
-				previous_line=default_line,
-				new_line=self.line_order if self.status == "Active" else None,
-				changed_by=frappe.session.user,
-				reason=self.reason or "Line roster assignment updated",
-				source=self.assignment_type or "MANUAL"
-			)
-		else:
-			status_changed = self.status != doc_before_save.status
-			line_changed = self.line_order != doc_before_save.line_order
+		status_changed = self.status != doc_before_save.status
+		line_changed = self.line_order != doc_before_save.line_order
 
-			if status_changed or line_changed:
-				if self.status == "Cancelled":
-					cancel_reason = self.reason if (self.reason and self.reason not in ("Assignment cancelled", "Line roster assignment updated")) else "Cancelled by user"
-					record_roster_history(
-						roster_id=self.name,
-						employee=self.employee,
-						employee_name=self.employee_name,
-						effective_from=self.effective_from,
-						effective_to=self.effective_to or self.effective_from,
-						previous_line=doc_before_save.line_order or self.line_order,
-						new_line=None,
-						changed_by=frappe.session.user,
-						reason=cancel_reason,
-						source=self.assignment_type or "MANUAL"
-					)
-				else:
-					update_reason = self.reason if (self.reason and self.reason not in ("Line roster assignment updated", "Assignment cancelled", "Cancelled by user")) else "Line roster assignment updated"
-					record_roster_history(
-						roster_id=self.name,
-						employee=self.employee,
-						employee_name=self.employee_name,
-						effective_from=self.effective_from,
-						effective_to=self.effective_to or self.effective_from,
-						previous_line=doc_before_save.line_order,
-						new_line=self.line_order,
-						changed_by=frappe.session.user,
-						reason=update_reason,
-						source=self.assignment_type or "MANUAL"
-					)
+		if status_changed or line_changed:
+			source_type = "DEFAULT LINE CHANGE" if self.assignment_type == "Line Change" else (self.assignment_type or "MANUAL")
+			if self.status == "Cancelled":
+				cancel_reason = self.reason if (self.reason and self.reason not in ("Assignment cancelled", "Line roster assignment updated")) else "Cancelled by user"
+				record_roster_history(
+					roster_id=self.name,
+					employee=self.employee,
+					employee_name=self.employee_name,
+					effective_from=self.effective_from,
+					effective_to=self.effective_to or self.effective_from,
+					previous_line=doc_before_save.line_order or self.line_order,
+					new_line=None,
+					changed_by=frappe.session.user,
+					reason=cancel_reason,
+					source=source_type
+				)
+			else:
+				update_reason = self.reason if (self.reason and self.reason not in ("Line roster assignment updated", "Assignment cancelled", "Cancelled by user")) else "Line roster assignment updated"
+				record_roster_history(
+					roster_id=self.name,
+					employee=self.employee,
+					employee_name=self.employee_name,
+					effective_from=self.effective_from,
+					effective_to=self.effective_to or self.effective_from,
+					previous_line=doc_before_save.line_order,
+					new_line=self.line_order,
+					changed_by=frappe.session.user,
+					reason=update_reason,
+					source=source_type
+				)
