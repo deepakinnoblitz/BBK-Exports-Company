@@ -214,6 +214,10 @@
   "north_indian_enable_lunch_allowance",
   "north_indian_lunch_allowance_per_meal",
   "bonus_schemes",
+  "other_overtime_rules",
+  "other_pt_rules",
+  "other_statutory_rules",
+  "other_employer_statutory_rules",
   "enable_lwf",
   "lwf_state",
   "lwf_deduction_month",
@@ -1561,6 +1565,30 @@
    "fieldname": "bonus_schemes",
    "fieldtype": "Long Text",
    "label": "Bonus Schemes Configuration"
+  },
+  {
+   "default": "[]",
+   "fieldname": "other_overtime_rules",
+   "fieldtype": "Long Text",
+   "label": "Company Other Overtime Rules"
+  },
+  {
+   "default": "[]",
+   "fieldname": "other_pt_rules",
+   "fieldtype": "Long Text",
+   "label": "Other Employee Professional Tax Rules"
+  },
+  {
+   "default": "[]",
+   "fieldname": "other_statutory_rules",
+   "fieldtype": "Long Text",
+   "label": "Other Employee Statutory and Deduction Rules"
+  },
+  {
+   "default": "[]",
+   "fieldname": "other_employer_statutory_rules",
+   "fieldtype": "Long Text",
+   "label": "Other Employee Employer Statutory and CTC Rules"
   },
   {
    "default": "1",

@@ -144,31 +144,92 @@ def get_category_setting(settings, fieldname, emp_type="", default=None):
     return val if (val is not None and val != "") else default
 
 
-def calculate_overtime_pay(emp, gross_salary, ot_hours, settings):
+def get_matched_other_statutory_rule(settings, emp_type):
+    if not emp_type or not settings:
+        return None
+    emp_type_lower = emp_type.strip().lower()
+    raw_rules = getattr(settings, "other_statutory_rules", None) if not isinstance(settings, dict) else settings.get("other_statutory_rules", None)
+    if not raw_rules:
+        return None
+    rules = frappe.parse_json(raw_rules) if isinstance(raw_rules, str) else raw_rules
+    if isinstance(rules, list):
+        return next(
+            (r for r in rules if (r.get("employee_type") or "").strip().lower() == emp_type_lower),
+            None
+        )
+    return None
+
+
+def get_matched_other_employer_statutory_rule(settings, emp_type):
+    if not emp_type or not settings:
+        return None
+    emp_type_lower = emp_type.strip().lower()
+    raw_rules = getattr(settings, "other_employer_statutory_rules", None) if not isinstance(settings, dict) else settings.get("other_employer_statutory_rules", None)
+    if not raw_rules:
+        return None
+    rules = frappe.parse_json(raw_rules) if isinstance(raw_rules, str) else raw_rules
+    if isinstance(rules, list):
+        return next(
+            (r for r in rules if (r.get("employee_type") or "").strip().lower() == emp_type_lower),
+            None
+        )
+    return None
+
+
+def calculate_overtime_pay(emp, gross_salary, ot_hours, settings, basic_salary=None):
     ot_h = round(flt(ot_hours), 2)
     if ot_h <= 0:
         return 0.0
     
-    emp_type = (emp.get("employee_type") or "").lower()
+    emp_type = (emp.get("employee_type") or "").strip()
+    emp_type_lower = emp_type.lower()
 
-    if "staff" in emp_type:
+    # 1. First Priority: Check Company Other Overtime Settings
+    raw_other_rules = getattr(settings, "other_overtime_rules", None) if not isinstance(settings, dict) else settings.get("other_overtime_rules", None)
+    if raw_other_rules:
+        rules = frappe.parse_json(raw_other_rules) if isinstance(raw_other_rules, str) else raw_other_rules
+        if isinstance(rules, list):
+            matched_rule = next(
+                (r for r in rules if (r.get("employee_type") or "").strip().lower() == emp_type_lower),
+                None
+            )
+            if matched_rule:
+                is_enabled = matched_rule.get("enabled", 1)
+                if is_enabled in [0, "0", False]:
+                    return 0.0
+
+                calc_type = (matched_rule.get("calculation_type") or "gross").lower()
+                if calc_type == "fixed":
+                    rate = flt(matched_rule.get("fixed_rate", 0.0))
+                    return excel_round(rate * ot_h)
+
+                days_basis = flt(matched_rule.get("working_days_basis") or 26.0) or 26.0
+                shift_hours = flt(matched_rule.get("shift_hours") or 8.0) or 8.0
+                multiplier = flt(matched_rule.get("multiplier") or 2.0) or 2.0
+
+                # Formula: (Gross Salary / Days / Shift Hours) * Multiplier * OT Hours
+                single_rate_ot = excel_round((flt(gross_salary) / days_basis / shift_hours) * ot_h)
+                return excel_round(single_rate_ot * multiplier)
+
+    # 2. Second Priority: Existing Default / Fallback Functionality
+    if "staff" in emp_type_lower:
         return 0.0
 
     def _get_setting_val(f_name, default):
         val = getattr(settings, f_name, None) if not isinstance(settings, dict) else settings.get(f_name, None)
         return flt(val) if (val is not None and val != "") else default
     
-    if "worker" in emp_type:
+    if "worker" in emp_type_lower:
         multiplier = _get_setting_val("workers_ot_rate_multiplier", 2.0)
         # Formula: ROUND(Gross Salary / 26 / 8 * OT Hours, 0) * multiplier
         single_rate_ot = excel_round((flt(gross_salary) / 26.0 / 8.0) * ot_h)
         return excel_round(single_rate_ot * multiplier)
-    elif "driver" in emp_type:
+    elif "driver" in emp_type_lower:
         multiplier = _get_setting_val("drivers_ot_rate_multiplier", 2.0)
         # Formula: ROUND(Gross Salary / 26 / 8 * OT Hours, 0) * multiplier
         single_rate_ot = excel_round((flt(gross_salary) / 26.0 / 8.0) * ot_h)
         return excel_round(single_rate_ot * multiplier)
-    elif "north indian" in emp_type:
+    elif "north indian" in emp_type_lower:
         rate = _get_setting_val("north_indian_ot_rate", 100.0)
         # Formula: rate * OT Hours
         return excel_round(rate * ot_h)
@@ -176,9 +237,29 @@ def calculate_overtime_pay(emp, gross_salary, ot_hours, settings):
 
 
 def calculate_attendance_bonus(emp, absent_days, settings):
-    emp_type = (emp.get("employee_type") or "").lower()
-    
-    if "worker" in emp_type and flt(absent_days) <= 0.0:
+    if flt(absent_days) > 0.0:
+        return 0.0
+
+    emp_type = (emp.get("employee_type") or "").strip()
+    emp_type_lower = emp_type.lower()
+
+    # 1. Check if Company Other Overtime Settings has an attendance bonus configured for this employee type
+    raw_other_rules = getattr(settings, "other_overtime_rules", None) if not isinstance(settings, dict) else settings.get("other_overtime_rules", None)
+    if raw_other_rules:
+        rules = frappe.parse_json(raw_other_rules) if isinstance(raw_other_rules, str) else raw_other_rules
+        if isinstance(rules, list):
+            matched_rule = next(
+                (r for r in rules if (r.get("employee_type") or "").strip().lower() == emp_type_lower),
+                None
+            )
+            if matched_rule:
+                is_enabled = matched_rule.get("enabled", 1)
+                bonus = flt(matched_rule.get("attendance_bonus", 0.0))
+                if is_enabled not in [0, "0", False] and bonus > 0:
+                    return bonus
+
+    # 2. Existing Default / Fallback: Workers Attendance Bonus
+    if "worker" in emp_type_lower:
         val = getattr(settings, "workers_attendance_bonus", None) if not isinstance(settings, dict) else settings.get("workers_attendance_bonus", None)
         return flt(val) if (val is not None and val != "") else 1500.0
     return 0.0
@@ -490,39 +571,40 @@ def calculate_employee_pf(emp, earned_gross_salary, earned_basic_da, settings, p
     Supports dynamic selected salary components for wage basis and ceiling cap settings.
     """
     emp_type = (emp.get("employee_type") if hasattr(emp, "get") else getattr(emp, "employee_type", "")) or ""
-    enable_pf = cint(get_category_setting(settings, "enable_auto_pf", emp_type, default=1))
+    matched_rule = get_matched_other_statutory_rule(settings, emp_type)
+    if matched_rule:
+        rule_enabled = matched_rule.get("enabled", 1)
+        if rule_enabled in [0, "0", False]:
+            return None
+        enable_pf = cint(matched_rule.get("enable_auto_pf", 1))
+    else:
+        enable_pf = cint(get_category_setting(settings, "enable_auto_pf", emp_type, default=1))
+
     if not enable_pf:
         return None
-
-    pf_no = emp.get("pf_number") if hasattr(emp, "get") else getattr(emp, "pf_number", None)
-    has_pf_component = False
-    if hasattr(emp, "deductions"):
-        for d in emp.deductions:
-            c_name = (d.component_name or d.salary_component or "").lower() if hasattr(d, "component_name") else (d.get("component_name") or d.get("salary_component") or "").lower()
-            if any(k in c_name for k in ["pf", "provident fund", "epf"]) and "employer" not in c_name and "admin" not in c_name:
-                has_pf_component = True
-                break
-
-    # If employee has no PF number and PF is not in their deduction structure, return 0
-    if not pf_no and not has_pf_component:
-        return 0.0
 
     emp_type_clean = emp_type.lower().strip()
     is_staff_ctc = "staff" in emp_type_clean and "ctc" in emp_type_clean and "non" not in emp_type_clean
 
-    pf_rate = flt(get_category_setting(settings, "employee_pf_rate", emp_type, default=12.0)) / 100.0
-    
-    # Check if ceiling applies from settings or default for staff ctc
-    apply_ceiling_setting = get_category_setting(settings, "apply_pf_ceiling", emp_type, default=None)
-    if apply_ceiling_setting is not None and apply_ceiling_setting != "":
-        apply_ceiling = cint(apply_ceiling_setting)
+    if matched_rule:
+        pf_rate = flt(matched_rule.get("employee_pf_rate", 12.0)) / 100.0
+        apply_ceiling = cint(matched_rule.get("apply_pf_ceiling", 1))
+        pf_ceiling = flt(matched_rule.get("pf_wage_ceiling", 15000.0 if apply_ceiling else 0.0))
+        max_pf_amount = flt(matched_rule.get("employee_pf_max_amount", pf_ceiling * pf_rate if pf_ceiling > 0 else 1800.0))
+        pf_basis_raw = matched_rule.get("pf_wage_basis")
     else:
-        # Default: Staff - CTC has no ceiling (0), all other categories have ceiling enabled (1)
-        apply_ceiling = 0 if is_staff_ctc else 1
+        pf_rate = flt(get_category_setting(settings, "employee_pf_rate", emp_type, default=12.0)) / 100.0
+        # Check if ceiling applies from settings or default for staff ctc
+        apply_ceiling_setting = get_category_setting(settings, "apply_pf_ceiling", emp_type, default=None)
+        if apply_ceiling_setting is not None and apply_ceiling_setting != "":
+            apply_ceiling = cint(apply_ceiling_setting)
+        else:
+            # Default: Staff - CTC has no ceiling (0), all other categories have ceiling enabled (1)
+            apply_ceiling = 0 if is_staff_ctc else 1
 
-    pf_ceiling = flt(get_category_setting(settings, "pf_wage_ceiling", emp_type, default=15000.0 if apply_ceiling else 0.0))
-    max_pf_amount = flt(get_category_setting(settings, "employee_pf_max_amount", emp_type, default=(pf_ceiling * pf_rate if pf_ceiling > 0 else 1800.0)))
-    pf_basis_raw = get_category_setting(settings, "pf_wage_basis", emp_type)
+        pf_ceiling = flt(get_category_setting(settings, "pf_wage_ceiling", emp_type, default=15000.0 if apply_ceiling else 0.0))
+        max_pf_amount = flt(get_category_setting(settings, "employee_pf_max_amount", emp_type, default=(pf_ceiling * pf_rate if pf_ceiling > 0 else 1800.0)))
+        pf_basis_raw = get_category_setting(settings, "pf_wage_basis", emp_type)
 
     # Dynamic selected components parsing
     selected_components = []
@@ -560,7 +642,7 @@ def calculate_employee_pf(emp, earned_gross_salary, earned_basic_da, settings, p
     elif pf_basis_raw == "Earned Basic + DA":
         base_wage = flt(earned_basic_da)
     else:
-        base_wage = flt(earned_basic_da) if (is_staff_ctc or "staff" in emp_type_clean) else flt(earned_gross_salary)
+        base_wage = flt(earned_basic_da) if (is_staff_ctc or "staff" in emp_type_clean or matched_rule) else flt(earned_gross_salary)
 
     if apply_ceiling and pf_ceiling > 0 and base_wage >= pf_ceiling:
         return float(round(max_pf_amount))
@@ -576,36 +658,42 @@ def calculate_employee_esi(emp, grand_gross_pay, earned_gross_salary, settings):
     Returns rounded deduction amount or None if auto calculation is disabled.
     """
     emp_type = (emp.get("employee_type") if hasattr(emp, "get") else getattr(emp, "employee_type", "")) or ""
-    enable_esi = cint(get_category_setting(settings, "enable_auto_esi", emp_type, default=1))
+    matched_rule = get_matched_other_statutory_rule(settings, emp_type)
+    if matched_rule:
+        rule_enabled = matched_rule.get("enabled", 1)
+        if rule_enabled in [0, "0", False]:
+            return None
+        enable_esi = cint(matched_rule.get("enable_auto_esi", 1))
+    else:
+        enable_esi = cint(get_category_setting(settings, "enable_auto_esi", emp_type, default=1))
+
     if not enable_esi:
         return None
 
-    esi_no = emp.get("esi_no") if hasattr(emp, "get") else getattr(emp, "esi_no", None)
-    has_esi_component = False
     custom_esi_amount = None
     if hasattr(emp, "deductions") and emp.deductions:
         for d in emp.deductions:
             c_name = (d.component_name or d.salary_component or "").lower() if hasattr(d, "component_name") else (d.get("component_name") or d.get("salary_component") or "").lower()
             if any(k in c_name for k in ["esi", "esic"]) and "employer" not in c_name:
-                has_esi_component = True
                 amt = flt(d.amount if hasattr(d, "amount") else d.get("amount", 0.0))
                 if amt > 0:
                     custom_esi_amount = amt
                 break
 
-    # If employee has no ESI number and ESI is not in their deduction structure, return 0
-    if not esi_no and not has_esi_component:
-        return 0.0
+    if matched_rule:
+        esi_ceiling = flt(matched_rule.get("esi_wage_ceiling", 21000.0))
+        esi_rate = flt(matched_rule.get("employee_esi_rate", 0.75)) / 100.0
+        rounding_method = "Round Up to Next Rupee (ROUNDUP / CEIL)"
+    else:
+        esi_ceiling = flt(get_category_setting(settings, "esi_wage_ceiling", emp_type, default=21000.0))
+        esi_rate = flt(get_category_setting(settings, "employee_esi_rate", emp_type, default=0.75)) / 100.0
+        rounding_method = get_category_setting(settings, "esi_rounding_method", emp_type, default="Round Up to Next Rupee (ROUNDUP / CEIL)")
 
-    esi_ceiling = flt(get_category_setting(settings, "esi_wage_ceiling", emp_type, default=21000.0))
     std_earnings = flt(emp.get("total_earnings") or 0.0) if hasattr(emp, "get") else flt(getattr(emp, "total_earnings", 0.0))
     
     # Statutory gross wage eligibility check (Gross <= ₹21,000)
     if esi_ceiling > 0 and earned_gross_salary > esi_ceiling and std_earnings > esi_ceiling:
         return float(custom_esi_amount) if custom_esi_amount is not None else 0.0
-
-    esi_rate = flt(get_category_setting(settings, "employee_esi_rate", emp_type, default=0.75)) / 100.0
-    rounding_method = get_category_setting(settings, "esi_rounding_method", emp_type, default="Round Up to Next Rupee (ROUNDUP / CEIL)")
 
     raw_esi = flt(grand_gross_pay) * esi_rate
     if "Round Up" in rounding_method or "ROUNDUP" in rounding_method or "CEIL" in rounding_method:
@@ -619,15 +707,36 @@ def calculate_professional_tax(gross_salary, pay_period_start, settings, employe
     if not emp_type and employee:
         emp_type = frappe.db.get_value("Employee", employee, "employee_type") or ""
 
-    enable_pt = cint(get_category_setting(settings, "enable_pt", emp_type, default=1))
-    if not enable_pt:
-        return 0.0
+    emp_type_lower = emp_type.strip().lower()
+
+    # 1. First Priority: Check Other Employee PT Rules
+    raw_other_rules = getattr(settings, "other_pt_rules", None) if not isinstance(settings, dict) else settings.get("other_pt_rules", None)
+    matched_other_rule = None
+    if raw_other_rules:
+        rules = frappe.parse_json(raw_other_rules) if isinstance(raw_other_rules, str) else raw_other_rules
+        if isinstance(rules, list):
+            matched_other_rule = next(
+                (r for r in rules if (r.get("employee_type") or "").strip().lower() == emp_type_lower),
+                None
+            )
+
+    if matched_other_rule:
+        is_enabled = matched_other_rule.get("enabled", 1)
+        if is_enabled in [0, "0", False]:
+            return None
+        configured_slabs = matched_other_rule.get("pt_slabs")
+        frequency = matched_other_rule.get("pt_deduction_frequency") or "Half-Yearly Deduction"
+    else:
+        enable_pt = cint(get_category_setting(settings, "enable_pt", emp_type, default=1))
+        if not enable_pt:
+            return None
+        configured_slabs = get_category_setting(settings, "pt_slabs", emp_type)
+        frequency = get_category_setting(settings, "pt_deduction_frequency", emp_type, default="Half-Yearly (Sep & Feb)")
 
     pay_period_start = getdate(pay_period_start)
     gross = flt(gross_salary)
 
-    # 1. Load dynamic slabs from settings if available
-    configured_slabs = get_category_setting(settings, "pt_slabs", emp_type)
+    # Load dynamic slabs from settings if available
     slabs_list = []
     if configured_slabs:
         if isinstance(configured_slabs, str):
@@ -659,7 +768,6 @@ def calculate_professional_tax(gross_salary, pay_period_start, settings, employe
                         break
         return slab_amount
 
-    frequency = get_category_setting(settings, "pt_deduction_frequency", emp_type, default="Half-Yearly (Sep & Feb)")
     if frequency == "Every Month Deduction":
         return get_slab_tax(gross)
 
@@ -1361,14 +1469,8 @@ def preview_salary_slip(employee, start_date, end_date):
         gross_pay = base_gross_total
 
     # 5.1. Overtime Pay Calculation
-    emp_type = (emp.get("employee_type") or "").lower()
-    is_staff = "staff" in emp_type
     total_ot_hours = round(total_ot_hours, 2)
-
-    if is_staff:
-        ot_amount = 0.0
-    else:
-        ot_amount = calculate_overtime_pay(emp, gross_pay, total_ot_hours, settings)
+    ot_amount = calculate_overtime_pay(emp, gross_pay, total_ot_hours, settings, basic_salary=std_basic_da)
 
     if ot_amount > 0:
         prorated_earnings.append({
@@ -1718,7 +1820,7 @@ def preview_salary_slip(employee, start_date, end_date):
         c_lower = c_name.lower()
         if c_name in ["Prof.Tax", "Professional Tax", "PT"]:
             # Override PT amount according to slab and cycle
-            item["amount"] = pt_amount
+            item["amount"] = pt_amount if pt_amount is not None else 0.0
         elif any(k in c_lower for k in ["pf", "provident fund", "epf"]) and "employer" not in c_lower and "admin" not in c_lower:
             if emp_pf is not None:
                 item["amount"] = emp_pf
@@ -1734,14 +1836,22 @@ def preview_salary_slip(employee, start_date, end_date):
         else:
             item["amount"] = flt(d.amount)
 
-        if flt(item.get("amount", 0)) <= 0 and flt(item.get("standard_amount", 0)) <= 0:
+        is_statutory_active = False
+        if c_name in ["Prof.Tax", "Professional Tax", "PT"] and pt_amount is not None:
+            is_statutory_active = True
+        elif any(k in c_lower for k in ["pf", "provident fund", "epf"]) and "employer" not in c_lower and "admin" not in c_lower and emp_pf is not None:
+            is_statutory_active = True
+        elif any(k in c_lower for k in ["esi", "esic"]) and "employer" not in c_lower and emp_esi is not None:
+            is_statutory_active = True
+
+        if not is_statutory_active and flt(item.get("amount", 0)) <= 0 and flt(item.get("standard_amount", 0)) <= 0:
             continue
 
         prorated_deductions.append(item)
 
-    # If Prof.Tax wasn't in employee structure but pt_amount > 0, add it
+    # If Prof.Tax wasn't in employee structure but pt_amount is not None (PT is enabled in settings), add it
     has_pt = any((d.get("component_name") or d.get("salary_component")) in ["Prof.Tax", "Professional Tax", "PT"] for d in prorated_deductions)
-    if not has_pt and pt_amount > 0:
+    if not has_pt and pt_amount is not None:
         prorated_deductions.append({
             "component_name": "Prof.Tax",
             "salary_component": "Prof.Tax",
@@ -1750,9 +1860,9 @@ def preview_salary_slip(employee, start_date, end_date):
             "amount": pt_amount
         })
 
-    # If PF wasn't in employee structure but emp_pf > 0, add it
+    # If PF wasn't in employee structure but emp_pf is not None (PF is enabled in settings), add it
     has_pf = any(any(k in (d.get("component_name") or d.get("salary_component") or "").lower() for k in ["pf", "provident fund", "epf"]) and "employer" not in (d.get("component_name") or d.get("salary_component") or "").lower() for d in prorated_deductions)
-    if not has_pf and emp_pf is not None and emp_pf > 0:
+    if not has_pf and emp_pf is not None:
         prorated_deductions.append({
             "component_name": "PF",
             "salary_component": "PF",
@@ -1761,9 +1871,9 @@ def preview_salary_slip(employee, start_date, end_date):
             "amount": emp_pf
         })
 
-    # If ESI wasn't in employee structure but emp_esi > 0, add it
+    # If ESI wasn't in employee structure but emp_esi is not None (ESI is enabled in settings), add it
     has_esi = any(any(k in (d.get("component_name") or d.get("salary_component") or "").lower() for k in ["esi", "esic"]) and "employer" not in (d.get("component_name") or d.get("salary_component") or "").lower() for d in prorated_deductions)
-    if not has_esi and emp_esi is not None and emp_esi > 0:
+    if not has_esi and emp_esi is not None:
         prorated_deductions.append({
             "component_name": "ESI",
             "salary_component": "ESI",
@@ -1785,12 +1895,19 @@ def preview_salary_slip(employee, start_date, end_date):
         })
 
     # Employee Tea & Canteen Deductions
-    enable_emp_tea = cint(get_category_setting(settings, "enable_employee_tea_deduction", emp_type, default=0))
-    emp_tea_rate = flt(get_category_setting(settings, "employee_tea_deduction_per_day", emp_type, default=0.0))
+    matched_stat_rule = get_matched_other_statutory_rule(settings, emp_type)
+    if matched_stat_rule:
+        stat_rule_active = matched_stat_rule.get("enabled", 1) not in [0, "0", False]
+        enable_emp_tea = cint(matched_stat_rule.get("enable_employee_tea_deduction", 0)) if stat_rule_active else 0
+        emp_tea_rate = flt(matched_stat_rule.get("employee_tea_deduction_per_day", 0.0)) if stat_rule_active else 0.0
+        enable_emp_canteen = cint(matched_stat_rule.get("enable_employee_canteen_deduction", 0)) if stat_rule_active else 0
+        emp_canteen_rate = flt(matched_stat_rule.get("employee_canteen_deduction_per_meal", 0.0)) if stat_rule_active else 0.0
+    else:
+        enable_emp_tea = cint(get_category_setting(settings, "enable_employee_tea_deduction", emp_type, default=0))
+        emp_tea_rate = flt(get_category_setting(settings, "employee_tea_deduction_per_day", emp_type, default=0.0))
+        enable_emp_canteen = cint(get_category_setting(settings, "enable_employee_canteen_deduction", emp_type, default=0))
+        emp_canteen_rate = flt(get_category_setting(settings, "employee_canteen_deduction_per_meal", emp_type, default=0.0))
     emp_tea_deduction = float(round(flt(present_days) * emp_tea_rate, 2)) if enable_emp_tea else 0.0
-
-    enable_emp_canteen = cint(get_category_setting(settings, "enable_employee_canteen_deduction", emp_type, default=0))
-    emp_canteen_rate = flt(get_category_setting(settings, "employee_canteen_deduction_per_meal", emp_type, default=0.0))
 
     # Fetch Canteen entries if canteen deduction or lunch allowance is enabled
     enable_lunch = cint(get_category_setting(settings, "enable_lunch_allowance", emp_type, default=1))
@@ -1863,14 +1980,64 @@ def preview_salary_slip(employee, start_date, end_date):
     grand_net_pay = excel_round(grand_gross_pay - total_deductions)
 
     # 5.6. Employer Statutory Contributions & Total Monthly Cost to Company (CTC)
-    pf_rate = flt(get_category_setting(settings, "employer_pf_rate", emp_type, default=12.0)) / 100.0
-    pf_admin_rate = flt(get_category_setting(settings, "pf_admin_rate", emp_type, default=0.5)) / 100.0
-    edli_rate = flt(get_category_setting(settings, "edli_rate", emp_type, default=0.5)) / 100.0
-    esi_rate = flt(get_category_setting(settings, "employer_esi_rate", emp_type, default=3.25)) / 100.0
-    employer_pf_ceiling = flt(get_category_setting(settings, "employer_pf_wage_ceiling", emp_type, default=(get_category_setting(settings, "pf_wage_ceiling", emp_type, default=15000.0))))
-    employer_max_pf = flt(get_category_setting(settings, "employer_pf_max_amount", emp_type, default=(employer_pf_ceiling * pf_rate if employer_pf_ceiling > 0 else 1800.0)))
-    esi_ceiling = flt(get_category_setting(settings, "esi_wage_ceiling", emp_type, default=21000.0))
-    
+    matched_empr_rule = get_matched_other_employer_statutory_rule(settings, emp_type)
+    empr_rule_active = matched_empr_rule and (matched_empr_rule.get("enabled", 1) not in [0, "0", False])
+
+    if matched_empr_rule and not empr_rule_active:
+        pf_rate = 0.0
+        pf_admin_rate = 0.0
+        edli_rate = 0.0
+        esi_rate = 0.0
+        employer_pf_ceiling = 0.0
+        employer_max_pf = 0.0
+        esi_ceiling = 0.0
+        enable_bonus = 0
+        bonus_rate = 0.0
+        enable_el = 0
+        el_days = 0.0
+        admin_edli_basis = "Statutory PF Wage (Capped at Ceiling)"
+        admin_edli_gross_pct = 0.0
+        enable_tea = 0
+        tea_rate = 0.0
+        enable_lunch = 0
+        lunch_rate = 0.0
+    elif matched_empr_rule:
+        pf_rate = flt(matched_empr_rule.get("employer_pf_rate", 12.0)) / 100.0
+        pf_admin_rate = flt(matched_empr_rule.get("pf_admin_rate", 0.5)) / 100.0
+        edli_rate = flt(matched_empr_rule.get("edli_rate", 0.5)) / 100.0
+        esi_rate = flt(matched_empr_rule.get("employer_esi_rate", 3.25)) / 100.0
+        employer_pf_ceiling = flt(matched_empr_rule.get("employer_pf_wage_ceiling", 15000.0))
+        employer_max_pf = flt(matched_empr_rule.get("employer_pf_max_amount", employer_pf_ceiling * pf_rate if employer_pf_ceiling > 0 else 1800.0))
+        esi_ceiling = flt(matched_empr_rule.get("esi_wage_ceiling", 21000.0))
+        enable_bonus = cint(matched_empr_rule.get("enable_bonus_provision", 1))
+        bonus_rate = (flt(matched_empr_rule.get("bonus_provision_rate", 8.33)) / 100.0) if enable_bonus else 0.0
+        enable_el = cint(matched_empr_rule.get("enable_el_provision", 1))
+        el_days = flt(matched_empr_rule.get("el_provision_days_per_year", 15.6)) if enable_el else 0.0
+        admin_edli_basis = matched_empr_rule.get("pf_admin_edli_basis") or "Statutory PF Wage (Capped at Ceiling)"
+        admin_edli_gross_pct = flt(matched_empr_rule.get("pf_admin_edli_gross_percent", 100.0))
+        enable_tea = cint(matched_empr_rule.get("enable_tea_allowance", 1))
+        tea_rate = flt(matched_empr_rule.get("tea_allowance_per_day", 5.0))
+        enable_lunch = cint(matched_empr_rule.get("enable_lunch_allowance", 1))
+        lunch_rate = flt(matched_empr_rule.get("lunch_allowance_per_meal", 50.0))
+    else:
+        pf_rate = flt(get_category_setting(settings, "employer_pf_rate", emp_type, default=12.0)) / 100.0
+        pf_admin_rate = flt(get_category_setting(settings, "pf_admin_rate", emp_type, default=0.5)) / 100.0
+        edli_rate = flt(get_category_setting(settings, "edli_rate", emp_type, default=0.5)) / 100.0
+        esi_rate = flt(get_category_setting(settings, "employer_esi_rate", emp_type, default=3.25)) / 100.0
+        employer_pf_ceiling = flt(get_category_setting(settings, "employer_pf_wage_ceiling", emp_type, default=(get_category_setting(settings, "pf_wage_ceiling", emp_type, default=15000.0))))
+        employer_max_pf = flt(get_category_setting(settings, "employer_pf_max_amount", emp_type, default=(employer_pf_ceiling * pf_rate if employer_pf_ceiling > 0 else 1800.0)))
+        esi_ceiling = flt(get_category_setting(settings, "esi_wage_ceiling", emp_type, default=21000.0))
+        enable_bonus = cint(get_category_setting(settings, "enable_bonus_provision", emp_type, default=1))
+        bonus_rate = (flt(get_category_setting(settings, "bonus_provision_rate", emp_type, default=8.33)) / 100.0) if enable_bonus else 0.0
+        enable_el = cint(get_category_setting(settings, "enable_el_provision", emp_type, default=1))
+        el_days = flt(get_category_setting(settings, "el_provision_days_per_year", emp_type, default=15.6)) if enable_el else 0.0
+        admin_edli_basis = None
+        admin_edli_gross_pct = None
+        enable_tea = None
+        tea_rate = None
+        enable_lunch = None
+        lunch_rate = None
+
     # Dynamic PF base for Employer
     pf_basis_raw = get_category_setting(settings, "pf_wage_basis", emp_type)
     selected_pf_components = []
@@ -1905,11 +2072,6 @@ def preview_salary_slip(employee, start_date, end_date):
     else:
         pf_base_for_employer = earned_gross_salary
 
-    enable_bonus = cint(get_category_setting(settings, "enable_bonus_provision", emp_type, default=1))
-    bonus_rate = (flt(get_category_setting(settings, "bonus_provision_rate", emp_type, default=8.33)) / 100.0) if enable_bonus else 0.0
-    enable_el = cint(get_category_setting(settings, "enable_el_provision", emp_type, default=1))
-    el_days = flt(get_category_setting(settings, "el_provision_days_per_year", emp_type, default=15.6)) if enable_el else 0.0
-
     enable_pf = cint(get_category_setting(settings, "enable_auto_pf", emp_type, default=1))
     pf_no = emp.get("pf_number") if hasattr(emp, "get") else getattr(emp, "pf_number", None)
     has_pf_component = False
@@ -1931,16 +2093,17 @@ def preview_salary_slip(employee, start_date, end_date):
             employer_pf = float(round(pf_base_for_employer * pf_rate))
         
         # Determine PF Admin & EDLI wage basis dynamically from settings
-        is_ctc_staff = "ctc" in (emp_type or "").lower() and "non" not in (emp_type or "").lower()
-        admin_edli_basis = get_category_setting(settings, "pf_admin_edli_basis", emp_type, default=None)
-        if is_ctc_staff or not admin_edli_basis:
-            if not is_ctc_staff and ("non ctc" in (emp_type or "").lower() or "non-ctc" in (emp_type or "").lower()):
-                admin_edli_basis = "Percentage of Gross Salary"
-            else:
-                admin_edli_basis = "Statutory PF Wage (Capped at Ceiling)"
+        if not admin_edli_basis:
+            is_ctc_staff = "ctc" in (emp_type or "").lower() and "non" not in (emp_type or "").lower()
+            admin_edli_basis = get_category_setting(settings, "pf_admin_edli_basis", emp_type, default=None)
+            if is_ctc_staff or not admin_edli_basis:
+                if not is_ctc_staff and ("non ctc" in (emp_type or "").lower() or "non-ctc" in (emp_type or "").lower()):
+                    admin_edli_basis = "Percentage of Gross Salary"
+                else:
+                    admin_edli_basis = "Statutory PF Wage (Capped at Ceiling)"
 
         if admin_edli_basis == "Percentage of Gross Salary":
-            gross_pct = flt(get_category_setting(settings, "pf_admin_edli_gross_percent", emp_type))
+            gross_pct = admin_edli_gross_pct if admin_edli_gross_pct is not None else flt(get_category_setting(settings, "pf_admin_edli_gross_percent", emp_type))
             pf_statutory_base = round(flt(grand_gross_pay) * (gross_pct / 100.0), 2)
         elif admin_edli_basis == "Actual PF Wage (Uncapped)":
             pf_statutory_base = pf_base_for_employer
@@ -1972,21 +2135,23 @@ def preview_salary_slip(employee, start_date, end_date):
         else:
             employer_esi = excel_round(raw_employer_esi)
 
-    is_staff = "staff" in (emp_type or "").lower()
-    enable_tea = cint(get_category_setting(settings, "enable_tea_allowance", emp_type, default=1))
-    tea_rate_default = 14.0 if is_staff else 5.0
-    tea_rate_val = get_category_setting(settings, "tea_allowance_per_day", emp_type, default=None)
-    if tea_rate_val is None or tea_rate_val == "":
-        tea_rate = tea_rate_default
-    else:
-        tea_rate = flt(tea_rate_val)
+    if enable_tea is None:
+        is_staff = "staff" in (emp_type or "").lower()
+        enable_tea = cint(get_category_setting(settings, "enable_tea_allowance", emp_type, default=1))
+        tea_rate_default = 14.0 if is_staff else 5.0
+        tea_rate_val = get_category_setting(settings, "tea_allowance_per_day", emp_type, default=None)
+        if tea_rate_val is None or tea_rate_val == "":
+            tea_rate = tea_rate_default
+        else:
+            tea_rate = flt(tea_rate_val)
     tea_expenses = float(round(flt(present_days) * tea_rate)) if enable_tea else 0.0
 
-    enable_lunch = cint(get_category_setting(settings, "enable_lunch_allowance", emp_type, default=1))
-    lunch_rate_val = get_category_setting(settings, "lunch_allowance_per_meal", emp_type, default=None)
-    if lunch_rate_val is None or lunch_rate_val == "":
-        lunch_rate_val = get_category_setting(settings, "lunch_allowance_per_day", emp_type, default=None)
-    lunch_rate = flt(lunch_rate_val) if (lunch_rate_val is not None and lunch_rate_val != "") else 50.0
+    if enable_lunch is None:
+        enable_lunch = cint(get_category_setting(settings, "enable_lunch_allowance", emp_type, default=1))
+        lunch_rate_val = get_category_setting(settings, "lunch_allowance_per_meal", emp_type, default=None)
+        if lunch_rate_val is None or lunch_rate_val == "":
+            lunch_rate_val = get_category_setting(settings, "lunch_allowance_per_day", emp_type, default=None)
+        lunch_rate = flt(lunch_rate_val) if (lunch_rate_val is not None and lunch_rate_val != "") else 50.0
 
     if not canteen_entries and enable_lunch and (frappe.db.table_exists("Canteen Entry") or frappe.db.exists("DocType", "Canteen Entry")):
         canteen_entries = frappe.db.sql(
