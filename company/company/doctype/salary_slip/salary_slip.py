@@ -1810,6 +1810,30 @@ def preview_salary_slip(employee, start_date, end_date):
     tentative_net = max(0.0, grand_gross_pay - (flt(pt_amount) + flt(emp_pf or 0) + flt(emp_esi or 0) + sum(flt(d.amount) for d in emp.deductions if not any(k in (d.component_name or d.salary_component or "").lower() for k in ["prof", "pt", "pf", "esi", "lwf"]))))
     emp_lwf, empr_lwf, is_lwf_eligible = calculate_lwf(emp, grand_gross_pay, start_date, settings, employee_id=emp.name, prorated_earnings=prorated_earnings, net_pay=tentative_net)
 
+    # Resolved dynamic deduction component names
+    matched_pt_rule = None
+    raw_other_pt_rules = getattr(settings, "other_pt_rules", None) if not isinstance(settings, dict) else settings.get("other_pt_rules", None)
+    if raw_other_pt_rules:
+        pt_rules = frappe.parse_json(raw_other_pt_rules) if isinstance(raw_other_pt_rules, str) else raw_other_pt_rules
+        if isinstance(pt_rules, list):
+            matched_pt_rule = next((r for r in pt_rules if (r.get("employee_type") or "").strip().lower() == (emp_type or "").strip().lower()), None)
+
+    if matched_pt_rule and matched_pt_rule.get("pt_deduction_component"):
+        pt_component_name = (matched_pt_rule.get("pt_deduction_component") or "Prof.Tax").strip()
+    else:
+        pt_component_name = (get_category_setting(settings, "pt_deduction_component", emp_type, default="Prof.Tax") or "Prof.Tax").strip()
+
+    matched_stat_rule = get_matched_other_statutory_rule(settings, emp_type)
+    if matched_stat_rule and matched_stat_rule.get("pf_deduction_component"):
+        pf_component_name = (matched_stat_rule.get("pf_deduction_component") or "PF").strip()
+    else:
+        pf_component_name = (get_category_setting(settings, "pf_deduction_component", emp_type, default="PF") or "PF").strip()
+
+    if matched_stat_rule and matched_stat_rule.get("esi_deduction_component"):
+        esi_component_name = (matched_stat_rule.get("esi_deduction_component") or "ESI").strip()
+    else:
+        esi_component_name = (get_category_setting(settings, "esi_deduction_component", emp_type, default="ESI") or "ESI").strip()
+
     prorated_deductions = []
     base_deductions_total = 0.0
     for d in emp.deductions:
@@ -1818,15 +1842,21 @@ def preview_salary_slip(employee, start_date, end_date):
         item["standard_amount"] = flt(d.amount)
         base_deductions_total += flt(d.amount)
         c_lower = c_name.lower()
-        if c_name in ["Prof.Tax", "Professional Tax", "PT"]:
-            # Override PT amount according to slab and cycle
+        if c_name in [pt_component_name, "Prof.Tax", "Professional Tax", "PT", "Prof Tax"]:
+            # Override PT amount according to slab and cycle and use configured component name
+            item["component_name"] = pt_component_name
+            item["salary_component"] = pt_component_name
             item["amount"] = pt_amount if pt_amount is not None else 0.0
-        elif any(k in c_lower for k in ["pf", "provident fund", "epf"]) and "employer" not in c_lower and "admin" not in c_lower:
+        elif (c_lower == pf_component_name.lower() or any(k in c_lower for k in ["pf", "provident fund", "epf"])) and "employer" not in c_lower and "admin" not in c_lower:
+            item["component_name"] = pf_component_name
+            item["salary_component"] = pf_component_name
             if emp_pf is not None:
                 item["amount"] = emp_pf
             else:
                 item["amount"] = flt(d.amount)
-        elif any(k in c_lower for k in ["esi", "esic"]) and "employer" not in c_lower:
+        elif (c_lower == esi_component_name.lower() or any(k in c_lower for k in ["esi", "esic"])) and "employer" not in c_lower:
+            item["component_name"] = esi_component_name
+            item["salary_component"] = esi_component_name
             if emp_esi is not None:
                 item["amount"] = emp_esi
             else:
@@ -1837,11 +1867,11 @@ def preview_salary_slip(employee, start_date, end_date):
             item["amount"] = flt(d.amount)
 
         is_statutory_active = False
-        if c_name in ["Prof.Tax", "Professional Tax", "PT"] and pt_amount is not None:
+        if c_name in [pt_component_name, "Prof.Tax", "Professional Tax", "PT", "Prof Tax"] and pt_amount is not None:
             is_statutory_active = True
-        elif any(k in c_lower for k in ["pf", "provident fund", "epf"]) and "employer" not in c_lower and "admin" not in c_lower and emp_pf is not None:
+        elif (c_lower == pf_component_name.lower() or any(k in c_lower for k in ["pf", "provident fund", "epf"])) and "employer" not in c_lower and "admin" not in c_lower and emp_pf is not None:
             is_statutory_active = True
-        elif any(k in c_lower for k in ["esi", "esic"]) and "employer" not in c_lower and emp_esi is not None:
+        elif (c_lower == esi_component_name.lower() or any(k in c_lower for k in ["esi", "esic"])) and "employer" not in c_lower and emp_esi is not None:
             is_statutory_active = True
 
         if not is_statutory_active and flt(item.get("amount", 0)) <= 0 and flt(item.get("standard_amount", 0)) <= 0:
@@ -1850,33 +1880,41 @@ def preview_salary_slip(employee, start_date, end_date):
         prorated_deductions.append(item)
 
     # If Prof.Tax wasn't in employee structure but pt_amount is not None (PT is enabled in settings), add it
-    has_pt = any((d.get("component_name") or d.get("salary_component")) in ["Prof.Tax", "Professional Tax", "PT"] for d in prorated_deductions)
+    has_pt = any((d.get("component_name") or d.get("salary_component") or "").lower() in [pt_component_name.lower(), "prof.tax", "professional tax", "pt", "prof tax"] for d in prorated_deductions)
     if not has_pt and pt_amount is not None:
         prorated_deductions.append({
-            "component_name": "Prof.Tax",
-            "salary_component": "Prof.Tax",
+            "component_name": pt_component_name,
+            "salary_component": pt_component_name,
             "type": "Deduction",
             "standard_amount": 0.0,
             "amount": pt_amount
         })
 
     # If PF wasn't in employee structure but emp_pf is not None (PF is enabled in settings), add it
-    has_pf = any(any(k in (d.get("component_name") or d.get("salary_component") or "").lower() for k in ["pf", "provident fund", "epf"]) and "employer" not in (d.get("component_name") or d.get("salary_component") or "").lower() for d in prorated_deductions)
+    has_pf = any(
+        (d.get("component_name") or d.get("salary_component") or "").lower() == pf_component_name.lower()
+        or (any(k in (d.get("component_name") or d.get("salary_component") or "").lower() for k in ["pf", "provident fund", "epf"]) and "employer" not in (d.get("component_name") or d.get("salary_component") or "").lower())
+        for d in prorated_deductions
+    )
     if not has_pf and emp_pf is not None:
         prorated_deductions.append({
-            "component_name": "PF",
-            "salary_component": "PF",
+            "component_name": pf_component_name,
+            "salary_component": pf_component_name,
             "type": "Deduction",
             "standard_amount": 0.0,
             "amount": emp_pf
         })
 
     # If ESI wasn't in employee structure but emp_esi is not None (ESI is enabled in settings), add it
-    has_esi = any(any(k in (d.get("component_name") or d.get("salary_component") or "").lower() for k in ["esi", "esic"]) and "employer" not in (d.get("component_name") or d.get("salary_component") or "").lower() for d in prorated_deductions)
+    has_esi = any(
+        (d.get("component_name") or d.get("salary_component") or "").lower() == esi_component_name.lower()
+        or (any(k in (d.get("component_name") or d.get("salary_component") or "").lower() for k in ["esi", "esic"]) and "employer" not in (d.get("component_name") or d.get("salary_component") or "").lower())
+        for d in prorated_deductions
+    )
     if not has_esi and emp_esi is not None:
         prorated_deductions.append({
-            "component_name": "ESI",
-            "salary_component": "ESI",
+            "component_name": esi_component_name,
+            "salary_component": esi_component_name,
             "type": "Deduction",
             "standard_amount": 0.0,
             "amount": emp_esi
@@ -2073,16 +2111,10 @@ def preview_salary_slip(employee, start_date, end_date):
         pf_base_for_employer = earned_gross_salary
 
     enable_pf = cint(get_category_setting(settings, "enable_auto_pf", emp_type, default=1))
-    pf_no = emp.get("pf_number") if hasattr(emp, "get") else getattr(emp, "pf_number", None)
-    has_pf_component = False
-    if hasattr(emp, "deductions") and emp.deductions:
-        for d in emp.deductions:
-            c_name = (d.component_name or d.salary_component or "").lower() if hasattr(d, "component_name") else (d.get("component_name") or d.get("salary_component") or "").lower()
-            if any(k in c_name for k in ["pf", "provident fund", "epf"]) and "employer" not in c_name and "admin" not in c_name:
-                has_pf_component = True
-                break
+    if matched_stat_rule:
+        enable_pf = cint(matched_stat_rule.get("enable_auto_pf", 1))
 
-    if not enable_pf or (not pf_no and not has_pf_component):
+    if not enable_pf or pf_rate <= 0:
         employer_pf = 0.0
         pf_admin_charges = 0.0
         edli_charges = 0.0
@@ -2116,16 +2148,10 @@ def preview_salary_slip(employee, start_date, end_date):
         edli_charges = excel_round(pf_statutory_base * edli_rate)
 
     enable_esi = cint(get_category_setting(settings, "enable_auto_esi", emp_type, default=1))
-    esi_no = emp.get("esi_no") if hasattr(emp, "get") else getattr(emp, "esi_no", None)
-    has_esi_component = False
-    if hasattr(emp, "deductions") and emp.deductions:
-        for d in emp.deductions:
-            c_name = (d.component_name or d.salary_component or "").lower() if hasattr(d, "component_name") else (d.get("component_name") or d.get("salary_component") or "").lower()
-            if any(k in c_name for k in ["esi", "esic"]) and "employer" not in c_name:
-                has_esi_component = True
-                break
+    if matched_stat_rule:
+        enable_esi = cint(matched_stat_rule.get("enable_auto_esi", 1))
 
-    if not enable_esi or (not esi_no and not has_esi_component) or (esi_ceiling > 0 and earned_gross_salary > esi_ceiling and grand_gross_pay > esi_ceiling):
+    if not enable_esi or esi_rate <= 0 or (esi_ceiling > 0 and earned_gross_salary > esi_ceiling and grand_gross_pay > esi_ceiling):
         employer_esi = 0.0
     else:
         esi_rounding = get_category_setting(settings, "esi_rounding_method", emp_type, default="Round Up to Next Rupee (ROUNDUP / CEIL)")
@@ -2604,7 +2630,7 @@ def get_salary_slip_with_details(name):
                     has_pf_component = True
                     break
 
-        if not enable_pf or (not pf_no and not has_pf_component):
+        if not enable_pf:
             employer_pf = 0.0
             pf_admin_charges = 0.0
             edli_charges = 0.0
@@ -2646,7 +2672,7 @@ def get_salary_slip_with_details(name):
                     has_esi_component = True
                     break
 
-        if not enable_esi or (not esi_no and not has_esi_component) or (esi_ceiling > 0 and earned_gross_salary > esi_ceiling and gross_val > esi_ceiling):
+        if not enable_esi or (esi_ceiling > 0 and earned_gross_salary > esi_ceiling and gross_val > esi_ceiling):
             employer_esi = 0.0
         else:
             esi_rounding = get_category_setting(settings, "esi_rounding_method", emp_type, default="Round Up to Next Rupee (ROUNDUP / CEIL)")

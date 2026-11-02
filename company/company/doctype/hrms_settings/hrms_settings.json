@@ -218,6 +218,9 @@
   "other_pt_rules",
   "other_statutory_rules",
   "other_employer_statutory_rules",
+  "pt_deduction_component",
+  "pf_deduction_component",
+  "esi_deduction_component",
   "enable_lwf",
   "lwf_state",
   "lwf_deduction_month",
@@ -268,7 +271,22 @@
   "drivers_employee_tea_deduction_per_day",
   "drivers_enable_employee_canteen_deduction",
   "drivers_employee_canteen_deduction_per_meal",
-  "custom_salary_component_rules"
+  "custom_salary_component_rules",
+  "staff_ctc_pt_deduction_component",
+  "staff_ctc_pf_deduction_component",
+  "staff_ctc_esi_deduction_component",
+  "staff_non_ctc_pt_deduction_component",
+  "staff_non_ctc_pf_deduction_component",
+  "staff_non_ctc_esi_deduction_component",
+  "workers_pt_deduction_component",
+  "workers_pf_deduction_component",
+  "workers_esi_deduction_component",
+  "north_indian_pt_deduction_component",
+  "north_indian_pf_deduction_component",
+  "north_indian_esi_deduction_component",
+  "drivers_pt_deduction_component",
+  "drivers_pf_deduction_component",
+  "drivers_esi_deduction_component"
  ],
  "fields": [
   {
@@ -1591,6 +1609,24 @@
    "label": "Other Employee Employer Statutory and CTC Rules"
   },
   {
+   "default": "Prof.Tax",
+   "fieldname": "pt_deduction_component",
+   "fieldtype": "Data",
+   "label": "PT Deduction Salary Component"
+  },
+  {
+   "default": "PF",
+   "fieldname": "pf_deduction_component",
+   "fieldtype": "Data",
+   "label": "Employee PF Deduction Salary Component"
+  },
+  {
+   "default": "ESI",
+   "fieldname": "esi_deduction_component",
+   "fieldtype": "Data",
+   "label": "Employee ESI Deduction Salary Component"
+  },
+  {
    "default": "1",
    "fieldname": "enable_lwf",
    "fieldtype": "Check",
@@ -1892,6 +1928,96 @@
    "fieldname": "custom_salary_component_rules",
    "fieldtype": "Long Text",
    "label": "Custom Salary Component Rules"
+  },
+  {
+   "default": "Prof.Tax",
+   "fieldname": "staff_ctc_pt_deduction_component",
+   "fieldtype": "Data",
+   "label": "Staff Ctc PT Deduction Component"
+  },
+  {
+   "default": "PF",
+   "fieldname": "staff_ctc_pf_deduction_component",
+   "fieldtype": "Data",
+   "label": "Staff Ctc PF Deduction Component"
+  },
+  {
+   "default": "ESI",
+   "fieldname": "staff_ctc_esi_deduction_component",
+   "fieldtype": "Data",
+   "label": "Staff Ctc ESI Deduction Component"
+  },
+  {
+   "default": "Prof.Tax",
+   "fieldname": "staff_non_ctc_pt_deduction_component",
+   "fieldtype": "Data",
+   "label": "Staff Non Ctc PT Deduction Component"
+  },
+  {
+   "default": "PF",
+   "fieldname": "staff_non_ctc_pf_deduction_component",
+   "fieldtype": "Data",
+   "label": "Staff Non Ctc PF Deduction Component"
+  },
+  {
+   "default": "ESI",
+   "fieldname": "staff_non_ctc_esi_deduction_component",
+   "fieldtype": "Data",
+   "label": "Staff Non Ctc ESI Deduction Component"
+  },
+  {
+   "default": "Prof.Tax",
+   "fieldname": "workers_pt_deduction_component",
+   "fieldtype": "Data",
+   "label": "Workers PT Deduction Component"
+  },
+  {
+   "default": "PF",
+   "fieldname": "workers_pf_deduction_component",
+   "fieldtype": "Data",
+   "label": "Workers PF Deduction Component"
+  },
+  {
+   "default": "ESI",
+   "fieldname": "workers_esi_deduction_component",
+   "fieldtype": "Data",
+   "label": "Workers ESI Deduction Component"
+  },
+  {
+   "default": "Prof.Tax",
+   "fieldname": "north_indian_pt_deduction_component",
+   "fieldtype": "Data",
+   "label": "North Indian PT Deduction Component"
+  },
+  {
+   "default": "PF",
+   "fieldname": "north_indian_pf_deduction_component",
+   "fieldtype": "Data",
+   "label": "North Indian PF Deduction Component"
+  },
+  {
+   "default": "ESI",
+   "fieldname": "north_indian_esi_deduction_component",
+   "fieldtype": "Data",
+   "label": "North Indian ESI Deduction Component"
+  },
+  {
+   "default": "Prof.Tax",
+   "fieldname": "drivers_pt_deduction_component",
+   "fieldtype": "Data",
+   "label": "Drivers PT Deduction Component"
+  },
+  {
+   "default": "PF",
+   "fieldname": "drivers_pf_deduction_component",
+   "fieldtype": "Data",
+   "label": "Drivers PF Deduction Component"
+  },
+  {
+   "default": "ESI",
+   "fieldname": "drivers_esi_deduction_component",
+   "fieldtype": "Data",
+   "label": "Drivers ESI Deduction Component"
   }
  ],
  "issingle": 1,
