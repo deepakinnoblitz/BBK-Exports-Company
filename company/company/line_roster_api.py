@@ -1491,9 +1491,9 @@ def undo_face_line_change(roster_id, employee=None, previous_line=None, effectiv
 
 
 @frappe.whitelist()
-def save_employee_face_embedding(employee, face_descriptor, face_3d_landmarks=None, face_image=None):
+def save_employee_face_embedding(employee, face_descriptor=None, face_3d_landmarks=None, face_image=None):
 	"""
-	Saves the 3D Face Descriptor vector and landmarks for an Employee.
+	Saves the 3D Face Descriptor vector, landmarks, and captured image for an Employee.
 	"""
 	if not employee:
 		frappe.throw("Employee is required.")
@@ -1501,15 +1501,17 @@ def save_employee_face_embedding(employee, face_descriptor, face_3d_landmarks=No
 	if not frappe.db.exists("Employee", employee):
 		frappe.throw(f"Employee {employee} not found.")
 
-	desc_str = json.dumps(face_descriptor) if not isinstance(face_descriptor, str) else face_descriptor
-	landmarks_str = json.dumps(face_3d_landmarks) if (face_3d_landmarks and not isinstance(face_3d_landmarks, str)) else face_3d_landmarks
-
 	update_values = {
-		"face_descriptor": desc_str,
 		"face_enrolled": 1,
 		"face_enrolled_at": now_datetime()
 	}
-	if landmarks_str:
+
+	if face_descriptor is not None:
+		desc_str = json.dumps(face_descriptor) if not isinstance(face_descriptor, str) else face_descriptor
+		update_values["face_descriptor"] = desc_str
+
+	if face_3d_landmarks is not None:
+		landmarks_str = json.dumps(face_3d_landmarks) if not isinstance(face_3d_landmarks, str) else face_3d_landmarks
 		update_values["face_3d_landmarks"] = landmarks_str
 
 	if face_image and isinstance(face_image, str) and face_image.startswith("data:image"):
@@ -1526,5 +1528,33 @@ def save_employee_face_embedding(employee, face_descriptor, face_3d_landmarks=No
 
 	return {
 		"success": True,
-		"message": f"Face enrolled successfully for {employee}"
+		"message": f"Face enrolled successfully for {employee}",
+		"face_enrolled_image": update_values.get("face_enrolled_image"),
+		"face_enrolled_at": str(update_values.get("face_enrolled_at"))
+	}
+
+
+@frappe.whitelist()
+def clear_employee_face_embedding(employee):
+	"""
+	Clears face biometrics for an Employee.
+	"""
+	if not employee:
+		frappe.throw("Employee is required.")
+
+	if not frappe.db.exists("Employee", employee):
+		frappe.throw(f"Employee {employee} not found.")
+
+	frappe.db.set_value("Employee", employee, {
+		"face_enrolled": 0,
+		"face_enrolled_at": None,
+		"face_enrolled_image": None,
+		"face_descriptor": None,
+		"face_3d_landmarks": None
+	})
+	frappe.db.commit()
+
+	return {
+		"success": True,
+		"message": f"Face biometrics cleared successfully for {employee}."
 	}
