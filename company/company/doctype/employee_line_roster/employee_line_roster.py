@@ -67,7 +67,11 @@ class EmployeeLineRoster(Document):
 		from company.company.line_roster_api import record_roster_history
 
 		default_line = frappe.db.get_value("Employee", self.employee, "line_order")
-		source_type = "DEFAULT LINE CHANGE" if self.assignment_type == "Line Change" else (self.assignment_type or "MANUAL")
+		is_face = bool(self.reason and any(k in self.reason.lower() for k in ("face recognition", "face biometric")))
+		if is_face:
+			source_type = "FACE_BIOMETRIC_CHANGE"
+		else:
+			source_type = "DEFAULT LINE CHANGE" if self.assignment_type == "Line Change" else (self.assignment_type or "MANUAL")
 		record_roster_history(
 			roster_id=self.name,
 			employee=self.employee,
@@ -92,7 +96,11 @@ class EmployeeLineRoster(Document):
 		line_changed = self.line_order != doc_before_save.line_order
 
 		if status_changed or line_changed:
-			source_type = "DEFAULT LINE CHANGE" if self.assignment_type == "Line Change" else (self.assignment_type or "MANUAL")
+			is_face = bool(self.reason and any(k in self.reason.lower() for k in ("face recognition", "face biometric")))
+			if is_face:
+				source_type = "FACE_BIOMETRIC_CHANGE"
+			else:
+				source_type = "DEFAULT LINE CHANGE" if self.assignment_type == "Line Change" else (self.assignment_type or "MANUAL")
 			if self.status == "Cancelled":
 				cancel_reason = self.reason if (self.reason and self.reason not in ("Assignment cancelled", "Line roster assignment updated")) else "Cancelled by user"
 				record_roster_history(

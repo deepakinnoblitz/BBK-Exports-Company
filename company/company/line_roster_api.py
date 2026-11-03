@@ -171,7 +171,9 @@ def record_roster_history(roster_id, employee, employee_name, effective_from, ef
 		history.new_line = new_line
 
 		s_str = (source or "MANUAL").strip()
-		if s_str.lower() in ("line change", "default line change", "line_change", "default_line_change"):
+		if s_str.lower() in ("face recognition", "face biometric change", "face_recognition", "face_biometric_change"):
+			history.source = "FACE_BIOMETRIC_CHANGE"
+		elif s_str.lower() in ("line change", "default line change", "line_change", "default_line_change"):
 			history.source = "DEFAULT_LINE_CHANGE"
 		else:
 			history.source = s_str.upper()
@@ -1241,4 +1243,338 @@ def get_line_report(from_date=None, to_date=None, employee=None, line=None, stat
 	return {
 		"columns": columns,
 		"result": data
+	}
+
+
+# ----------------------------------------------------------------------
+# 6. FACE RECOGNITION LINE CHANGE APIS
+# ----------------------------------------------------------------------
+
+@frappe.whitelist()
+def get_face_catalog(include_all=False):
+	"""
+	Returns active employees with face biometric details and their current line today.
+	"""
+	today_str = getdate().strftime("%Y-%m-%d")
+
+	employees = frappe.db.sql("""
+		SELECT 
+			e.name, e.employee_id, e.employee_name, e.department, e.designation,
+			e.line_order as default_line, e.profile_picture,
+			COALESCE(e.face_enrolled, 0) as face_enrolled,
+			e.face_enrolled_at, e.face_enrolled_image,
+			e.face_descriptor, e.face_3d_landmarks
+		FROM `tabEmployee` e
+		WHERE e.status = 'Active'
+		ORDER BY e.employee_name ASC
+	""", as_dict=True)
+
+	# Batch-fetch active date-specific line assignments for today (avoids 1,000 N+1 queries)
+	rosters = frappe.db.sql("""
+		SELECT r.employee, r.line_order, r.line_name, r.assignment_type
+		FROM `tabEmployee Line Roster` r
+		WHERE r.status = 'Active'
+		  AND r.effective_from <= %(today_str)s
+		  AND (r.effective_to IS NULL OR r.effective_to >= %(today_str)s)
+		ORDER BY r.modified DESC
+	""", {"today_str": today_str}, as_dict=True)
+	roster_map = {}
+	for r in rosters:
+		if r.employee not in roster_map:
+			roster_map[r.employee] = {
+				"line_order": r.line_order,
+				"line_name": r.line_name,
+				"source": "LINE_ROSTER"
+			}
+
+	catalog = []
+	for emp in employees:
+		# Resolve current active line for today via O(1) batch lookup
+		current_line_info = roster_map.get(emp.name)
+		emp["current_line"] = current_line_info["line_order"] if current_line_info else emp.default_line
+		emp["current_line_name"] = current_line_info["line_name"] if current_line_info else emp.default_line
+		emp["source"] = current_line_info["source"] if current_line_info else "DEFAULT"
+
+		# Parse descriptor if string
+		if emp.face_descriptor and isinstance(emp.face_descriptor, str):
+			try:
+				emp["face_descriptor"] = json.loads(emp.face_descriptor)
+			except Exception:
+				pass
+
+		# Parse 3D landmarks if string
+		if emp.face_3d_landmarks and isinstance(emp.face_3d_landmarks, str):
+			try:
+				emp["face_3d_landmarks"] = json.loads(emp.face_3d_landmarks)
+			except Exception:
+				pass
+
+		catalog.append(emp)
+
+	return catalog
+
+
+@frappe.whitelist()
+def get_live_line_occupancy(attendance_date=None):
+	"""
+	Returns all active lines with their live headcount for the date.
+	"""
+	target_date = getdate(attendance_date) if attendance_date else getdate()
+	date_str = target_date.strftime("%Y-%m-%d")
+
+	lines = frappe.db.sql("""
+		SELECT name, line_name, status, description
+		FROM `tabLine Order`
+		WHERE status = 'Active'
+		ORDER BY line_name ASC
+	""", as_dict=True)
+
+	# Fetch all active rosters for this date
+	active_rosters = frappe.db.sql("""
+		SELECT r.line_order, count(r.name) as total_assigned
+		FROM `tabEmployee Line Roster` r
+		WHERE r.status = 'Active'
+		  AND r.effective_from <= %(date_str)s
+		  AND (r.effective_to IS NULL OR r.effective_to >= %(date_str)s)
+		GROUP BY r.line_order
+	""", {"date_str": date_str}, as_dict=True)
+	roster_map = {r.line_order: r.total_assigned for r in active_rosters}
+
+	result = []
+	for l in lines:
+		assigned_count = roster_map.get(l.name, 0)
+
+		# Count default line workers if no overriding roster exists
+		default_count = frappe.db.sql("""
+			SELECT count(name)
+			FROM `tabEmployee`
+			WHERE status = 'Active'
+			  AND line_order = %(line)s
+			  AND name NOT IN (
+				  SELECT employee FROM `tabEmployee Line Roster`
+				  WHERE status = 'Active'
+				    AND effective_from <= %(date_str)s
+				    AND (effective_to IS NULL OR effective_to >= %(date_str)s)
+			  )
+		""", {"line": l.name, "date_str": date_str})[0][0] or 0
+
+		total_headcount = assigned_count + default_count
+
+		result.append({
+			"name": l.name,
+			"line_name": l.line_name,
+			"description": l.description,
+			"assigned_count": total_headcount,
+			"capacity": 20,
+		})
+
+	return result
+
+
+@frappe.whitelist()
+def face_recognition_line_change(employee, target_line, effective_from=None, effective_to=None, source_line=None, reason=None, mode="Pre-Fixed"):
+	"""
+	Performs a line change triggered by Face Recognition.
+	Cancels any conflicting active roster for the employee on that date,
+	creates a new assignment with assignment_type='Line Change',
+	and logs an immutable history entry.
+	"""
+	if not employee or not target_line:
+		frappe.throw("Employee and Target Line are required.")
+
+	target_date = getdate(effective_from) if effective_from else getdate()
+	effective_from_str = target_date.strftime("%Y-%m-%d")
+	effective_to_str = getdate(effective_to).strftime("%Y-%m-%d") if effective_to else effective_from_str
+
+	emp_doc = frappe.get_doc("Employee", employee)
+	prev_line = source_line or emp_doc.line_order
+
+	# Cancel any existing active roster assignment for this period
+	conflicts = check_roster_conflict(employee, effective_from_str, effective_to_str)
+	for c in conflicts:
+		frappe.db.set_value("Employee Line Roster", c.name, {
+			"status": "Cancelled",
+			"reason": f"Replaced by Face Recognition Line Change to {target_line}"
+		})
+		record_roster_history(
+			roster_id=c.name,
+			employee=employee,
+			employee_name=emp_doc.employee_name,
+			effective_from=c.effective_from,
+			effective_to=c.effective_to,
+			previous_line=c.line_order,
+			new_line=target_line,
+			changed_by=frappe.session.user,
+			reason=f"Overridden by Face Recognition Line Change ({mode})",
+			source="FACE_BIOMETRIC_CHANGE"
+		)
+
+	# Create new Employee Line Roster
+	roster = frappe.new_doc("Employee Line Roster")
+	roster.employee = employee
+	roster.employee_name = emp_doc.employee_name
+	roster.department = emp_doc.department
+	roster.designation = emp_doc.designation
+	roster.line_order = target_line
+	roster.effective_from = effective_from_str
+	roster.effective_to = effective_to_str
+	roster.assignment_type = "Line Change"
+	roster.status = "Active"
+	roster.reason = reason or f"Face Recognition Line Change ({mode}): {prev_line or 'Unassigned'} ➔ {target_line}"
+	roster.insert(ignore_permissions=True)
+
+	# Record audit log
+	record_roster_history(
+		roster_id=roster.name,
+		employee=employee,
+		employee_name=emp_doc.employee_name,
+		effective_from=effective_from_str,
+		effective_to=effective_to_str,
+		previous_line=prev_line,
+		new_line=target_line,
+		changed_by=frappe.session.user,
+		reason=roster.reason,
+		source="FACE_BIOMETRIC_CHANGE"
+	)
+
+	frappe.db.commit()
+
+	return {
+		"success": True,
+		"roster_name": roster.name,
+		"employee": employee,
+		"employee_name": emp_doc.employee_name,
+		"previous_line": prev_line,
+		"target_line": target_line,
+		"effective_from": effective_from_str,
+		"effective_to": effective_to_str,
+		"message": f"{emp_doc.employee_name} successfully transferred to {target_line}"
+	}
+
+
+@frappe.whitelist()
+def undo_face_line_change(roster_id, employee=None, previous_line=None, effective_from=None):
+	"""
+	Reverts a line change performed via Face Recognition.
+	"""
+	if not roster_id:
+		frappe.throw("Roster ID is required to undo.")
+
+	if not frappe.db.exists("Employee Line Roster", roster_id):
+		frappe.throw(f"Roster record {roster_id} not found.")
+
+	roster = frappe.get_doc("Employee Line Roster", roster_id)
+	target_line = roster.line_order
+	emp = employee or roster.employee
+	emp_name = roster.employee_name
+	eff_from = effective_from or roster.effective_from
+	eff_to = roster.effective_to
+
+	# Cancel the roster
+	roster.status = "Cancelled"
+	roster.reason = "Undone from Face Recognition Kiosk"
+	roster.save(ignore_permissions=True)
+
+	restored_roster_name = None
+	if previous_line and previous_line != target_line:
+		restored = frappe.new_doc("Employee Line Roster")
+		restored.employee = emp
+		restored.line_order = previous_line
+		restored.effective_from = eff_from
+		restored.effective_to = eff_to
+		restored.assignment_type = "Line Change"
+		restored.status = "Active"
+		restored.reason = f"Restored previous line {previous_line} via Undo"
+		restored.insert(ignore_permissions=True)
+		restored_roster_name = restored.name
+
+	record_roster_history(
+		roster_id=roster.name,
+		employee=emp,
+		employee_name=emp_name,
+		effective_from=eff_from,
+		effective_to=eff_to,
+		previous_line=target_line,
+		new_line=previous_line,
+		changed_by=frappe.session.user,
+		reason="Reversed/Undone via Face Recognition Kiosk",
+		source="FACE_BIOMETRIC_CHANGE"
+	)
+
+	frappe.db.commit()
+
+	return {
+		"success": True,
+		"message": f"Line change for {emp_name} undone successfully.",
+		"restored_roster_name": restored_roster_name
+	}
+
+
+@frappe.whitelist()
+def save_employee_face_embedding(employee, face_descriptor=None, face_3d_landmarks=None, face_image=None):
+	"""
+	Saves the 3D Face Descriptor vector, landmarks, and captured image for an Employee.
+	"""
+	if not employee:
+		frappe.throw("Employee is required.")
+
+	if not frappe.db.exists("Employee", employee):
+		frappe.throw(f"Employee {employee} not found.")
+
+	update_values = {
+		"face_enrolled": 1,
+		"face_enrolled_at": now_datetime()
+	}
+
+	if face_descriptor is not None:
+		desc_str = json.dumps(face_descriptor) if not isinstance(face_descriptor, str) else face_descriptor
+		update_values["face_descriptor"] = desc_str
+
+	if face_3d_landmarks is not None:
+		landmarks_str = json.dumps(face_3d_landmarks) if not isinstance(face_3d_landmarks, str) else face_3d_landmarks
+		update_values["face_3d_landmarks"] = landmarks_str
+
+	if face_image and isinstance(face_image, str) and face_image.startswith("data:image"):
+		import base64
+		from frappe.utils.file_manager import save_file
+		header, encoded = face_image.split(",", 1)
+		file_data = base64.b64decode(encoded)
+		fname = f"face_{employee}_{frappe.utils.now_datetime().strftime('%Y%m%d%H%M%S')}.jpg"
+		saved_file = save_file(fname, file_data, "Employee", employee, is_private=0)
+		update_values["face_enrolled_image"] = saved_file.file_url
+
+	frappe.db.set_value("Employee", employee, update_values)
+	frappe.db.commit()
+
+	return {
+		"success": True,
+		"message": f"Face enrolled successfully for {employee}",
+		"face_enrolled_image": update_values.get("face_enrolled_image"),
+		"face_enrolled_at": str(update_values.get("face_enrolled_at"))
+	}
+
+
+@frappe.whitelist()
+def clear_employee_face_embedding(employee):
+	"""
+	Clears face biometrics for an Employee.
+	"""
+	if not employee:
+		frappe.throw("Employee is required.")
+
+	if not frappe.db.exists("Employee", employee):
+		frappe.throw(f"Employee {employee} not found.")
+
+	frappe.db.set_value("Employee", employee, {
+		"face_enrolled": 0,
+		"face_enrolled_at": None,
+		"face_enrolled_image": None,
+		"face_descriptor": None,
+		"face_3d_landmarks": None
+	})
+	frappe.db.commit()
+
+	return {
+		"success": True,
+		"message": f"Face biometrics cleared successfully for {employee}."
 	}

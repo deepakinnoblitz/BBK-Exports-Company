@@ -59,7 +59,14 @@
   "total_deductions",
   "net_salary",
   "section_break_sgcv",
-  "documents"
+  "documents",
+  "section_break_face_biometrics",
+  "face_enrolled",
+  "face_enrolled_at",
+  "column_break_face_1",
+  "face_enrolled_image",
+  "face_descriptor",
+  "face_3d_landmarks"
  ],
  "fields": [
   {
@@ -374,6 +381,47 @@
    "fieldname": "bus_route_point",
    "fieldtype": "Data",
    "label": "Bus Route Point"
+  },
+  {
+   "fieldname": "section_break_face_biometrics",
+   "fieldtype": "Section Break",
+   "label": "Face Biometrics & Recognition"
+  },
+  {
+   "default": "0",
+   "fieldname": "face_enrolled",
+   "fieldtype": "Check",
+   "in_list_view": 1,
+   "label": "Face Enrolled",
+   "read_only": 1
+  },
+  {
+   "fieldname": "face_enrolled_at",
+   "fieldtype": "Datetime",
+   "label": "Face Enrolled At",
+   "read_only": 1
+  },
+  {
+   "fieldname": "column_break_face_1",
+   "fieldtype": "Column Break"
+  },
+  {
+   "fieldname": "face_enrolled_image",
+   "fieldtype": "Attach Image",
+   "label": "Face Enrolled Image",
+   "read_only": 1
+  },
+  {
+   "fieldname": "face_descriptor",
+   "fieldtype": "Long Text",
+   "label": "Face Descriptor Vector (512D)",
+   "read_only": 1
+  },
+  {
+   "fieldname": "face_3d_landmarks",
+   "fieldtype": "Long Text",
+   "label": "Face 3D Landmarks Data",
+   "read_only": 1
   }
  ],
  "grid_page_length": 50,
