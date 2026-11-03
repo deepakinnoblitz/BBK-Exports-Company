@@ -1269,13 +1269,31 @@ def get_face_catalog(include_all=False):
 		ORDER BY e.employee_name ASC
 	""", as_dict=True)
 
+	# Batch-fetch active date-specific line assignments for today (avoids 1,000 N+1 queries)
+	rosters = frappe.db.sql("""
+		SELECT r.employee, r.line_order, r.line_name, r.assignment_type
+		FROM `tabEmployee Line Roster` r
+		WHERE r.status = 'Active'
+		  AND r.effective_from <= %(today_str)s
+		  AND (r.effective_to IS NULL OR r.effective_to >= %(today_str)s)
+		ORDER BY r.modified DESC
+	""", {"today_str": today_str}, as_dict=True)
+	roster_map = {}
+	for r in rosters:
+		if r.employee not in roster_map:
+			roster_map[r.employee] = {
+				"line_order": r.line_order,
+				"line_name": r.line_name,
+				"source": "LINE_ROSTER"
+			}
+
 	catalog = []
 	for emp in employees:
-		# Resolve current active line for today
-		current_line_info = get_applicable_line(emp.name, today_str)
-		emp["current_line"] = current_line_info.get("line_order") if current_line_info else emp.default_line
-		emp["current_line_name"] = current_line_info.get("line_name") if current_line_info else emp.default_line
-		emp["source"] = current_line_info.get("source") if current_line_info else "DEFAULT"
+		# Resolve current active line for today via O(1) batch lookup
+		current_line_info = roster_map.get(emp.name)
+		emp["current_line"] = current_line_info["line_order"] if current_line_info else emp.default_line
+		emp["current_line_name"] = current_line_info["line_name"] if current_line_info else emp.default_line
+		emp["source"] = current_line_info["source"] if current_line_info else "DEFAULT"
 
 		# Parse descriptor if string
 		if emp.face_descriptor and isinstance(emp.face_descriptor, str):
