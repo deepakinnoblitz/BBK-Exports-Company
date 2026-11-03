@@ -171,7 +171,9 @@ def record_roster_history(roster_id, employee, employee_name, effective_from, ef
 		history.new_line = new_line
 
 		s_str = (source or "MANUAL").strip()
-		if s_str.lower() in ("line change", "default line change", "line_change", "default_line_change"):
+		if s_str.lower() in ("face recognition", "face biometric change", "face_recognition", "face_biometric_change"):
+			history.source = "FACE_BIOMETRIC_CHANGE"
+		elif s_str.lower() in ("line change", "default line change", "line_change", "default_line_change"):
 			history.source = "DEFAULT_LINE_CHANGE"
 		else:
 			history.source = s_str.upper()
@@ -1356,7 +1358,7 @@ def face_recognition_line_change(employee, target_line, effective_from=None, eff
 	"""
 	Performs a line change triggered by Face Recognition.
 	Cancels any conflicting active roster for the employee on that date,
-	creates a new assignment with assignment_type='Face Recognition',
+	creates a new assignment with assignment_type='Line Change',
 	and logs an immutable history entry.
 	"""
 	if not employee or not target_line:
@@ -1386,7 +1388,7 @@ def face_recognition_line_change(employee, target_line, effective_from=None, eff
 			new_line=target_line,
 			changed_by=frappe.session.user,
 			reason=f"Overridden by Face Recognition Line Change ({mode})",
-			source="FACE_RECOGNITION"
+			source="FACE_BIOMETRIC_CHANGE"
 		)
 
 	# Create new Employee Line Roster
@@ -1398,7 +1400,7 @@ def face_recognition_line_change(employee, target_line, effective_from=None, eff
 	roster.line_order = target_line
 	roster.effective_from = effective_from_str
 	roster.effective_to = effective_to_str
-	roster.assignment_type = "Face Recognition"
+	roster.assignment_type = "Line Change"
 	roster.status = "Active"
 	roster.reason = reason or f"Face Recognition Line Change ({mode}): {prev_line or 'Unassigned'} ➔ {target_line}"
 	roster.insert(ignore_permissions=True)
@@ -1414,7 +1416,7 @@ def face_recognition_line_change(employee, target_line, effective_from=None, eff
 		new_line=target_line,
 		changed_by=frappe.session.user,
 		reason=roster.reason,
-		source="FACE_RECOGNITION"
+		source="FACE_BIOMETRIC_CHANGE"
 	)
 
 	frappe.db.commit()
@@ -1462,7 +1464,7 @@ def undo_face_line_change(roster_id, employee=None, previous_line=None, effectiv
 		restored.line_order = previous_line
 		restored.effective_from = eff_from
 		restored.effective_to = eff_to
-		restored.assignment_type = "Face Recognition"
+		restored.assignment_type = "Line Change"
 		restored.status = "Active"
 		restored.reason = f"Restored previous line {previous_line} via Undo"
 		restored.insert(ignore_permissions=True)
@@ -1478,7 +1480,7 @@ def undo_face_line_change(roster_id, employee=None, previous_line=None, effectiv
 		new_line=previous_line,
 		changed_by=frappe.session.user,
 		reason="Reversed/Undone via Face Recognition Kiosk",
-		source="FACE_RECOGNITION"
+		source="FACE_BIOMETRIC_CHANGE"
 	)
 
 	frappe.db.commit()
