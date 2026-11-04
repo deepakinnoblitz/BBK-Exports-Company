@@ -155,7 +155,7 @@ def is_holiday_for_date(target_date):
 	return frappe.db.exists("Holidays", {"holiday_date": d_str, "is_working_day": 0}) is not None
 
 
-def record_roster_history(roster_id, employee, employee_name, effective_from, effective_to, previous_line, new_line, changed_by, reason, source="MANUAL"):
+def record_roster_history(roster_id, employee, employee_name, effective_from, effective_to=None, previous_line=None, new_line=None, changed_by=None, reason=None, source="MANUAL"):
 	"""Creates an immutable audit log entry in Employee Line Roster History."""
 	try:
 		if not employee_name and employee:
@@ -166,9 +166,6 @@ def record_roster_history(roster_id, employee, employee_name, effective_from, ef
 		history.employee = employee
 		history.employee_name = employee_name or employee
 		history.effective_from = effective_from
-		history.effective_to = effective_to or effective_from
-		history.previous_line = previous_line
-		history.new_line = new_line
 
 		s_str = (source or "MANUAL").strip()
 		if s_str.lower() in ("face recognition", "face biometric change", "face_recognition", "face_biometric_change"):
@@ -177,8 +174,55 @@ def record_roster_history(roster_id, employee, employee_name, effective_from, ef
 			history.source = "DEFAULT_LINE_CHANGE"
 		else:
 			history.source = s_str.upper()
+		else:
+			history.source = "MANUAL"
 
-		history.changed_by = changed_by or frappe.session.user
+		if not effective_to and history.source != "DEFAULT LINE CHANGE":
+			effective_to = effective_from
+		history.effective_to = effective_to or None
+
+		# Validate links to Line Order so invalid strings don't cause LinkValidationError
+		if previous_line:
+			if not frappe.db.exists("Line Order", previous_line):
+				matched = frappe.db.get_value("Line Order", {"line_name": previous_line}, "name")
+				previous_line = matched or None
+		else:
+			previous_line = None
+		history.previous_line = previous_line
+
+		if new_line:
+			if not frappe.db.exists("Line Order", new_line):
+				matched = frappe.db.get_value("Line Order", {"line_name": new_line}, "name")
+				new_line = matched or None
+		else:
+			new_line = None
+		history.new_line = new_line
+
+		user = changed_by or frappe.session.user
+		if not user or not frappe.db.exists("User", user):
+			user = "Administrator"
+		history.changed_by = user
+
+		# Prevent duplicate log entry if one with identical properties was already logged
+		if roster_id and employee:
+			existing = frappe.db.sql("""
+				SELECT name FROM `tabEmployee Line Roster History`
+				WHERE roster_id = %(roster_id)s
+				  AND employee = %(employee)s
+				  AND COALESCE(previous_line, '') = COALESCE(%(previous_line)s, '')
+				  AND COALESCE(new_line, '') = COALESCE(%(new_line)s, '')
+				  AND source = %(source)s
+				LIMIT 1
+			""", {
+				"roster_id": roster_id,
+				"employee": employee,
+				"previous_line": previous_line or '',
+				"new_line": new_line or '',
+				"source": history.source
+			})
+			if existing:
+				return
+
 		history.changed_at = now_datetime()
 		history.reason = reason or "Roster assignment changed"
 		history.insert(ignore_permissions=True)
@@ -974,8 +1018,29 @@ def generate_rotation_assignments(rotation_name=None, employees=None, start_date
 @frappe.whitelist()
 def get_roster_history(roster_id=None, employee=None):
 	"""Returns audit history records for line roster assignments."""
+	# 1. Clean up any exact duplicate history rows in DB if they exist
+	try:
+		duplicate_ids = frappe.db.sql("""
+			SELECT h1.name
+			FROM `tabEmployee Line Roster History` h1
+			INNER JOIN `tabEmployee Line Roster History` h2
+			  ON h1.roster_id = h2.roster_id
+			 AND h1.employee = h2.employee
+			 AND COALESCE(h1.previous_line, '') = COALESCE(h2.previous_line, '')
+			 AND COALESCE(h1.new_line, '') = COALESCE(h2.new_line, '')
+			 AND h1.source = h2.source
+			 AND h1.name > h2.name
+		""", as_dict=True)
+		for d in duplicate_ids:
+			frappe.db.delete("Employee Line Roster History", {"name": d.name})
+		if duplicate_ids:
+			frappe.db.commit()
+	except Exception:
+		pass
+
+	# 2. Query history records
 	if roster_id and employee:
-		return frappe.db.sql("""
+		records = frappe.db.sql("""
 			SELECT name, roster_id, employee, employee_name, effective_from, effective_to,
 			       previous_line, new_line, source, changed_by, changed_at, reason, creation
 			FROM `tabEmployee Line Roster History`
@@ -983,20 +1048,40 @@ def get_roster_history(roster_id=None, employee=None):
 			ORDER BY changed_at desc, creation desc
 			LIMIT 100
 		""", {"roster_id": roster_id, "employee": employee}, as_dict=True)
+	else:
+		filters = {}
+		if roster_id:
+			filters["roster_id"] = roster_id
+		if employee:
+			filters["employee"] = employee
 
-	filters = {}
-	if roster_id:
-		filters["roster_id"] = roster_id
-	if employee:
-		filters["employee"] = employee
+		records = frappe.db.get_all(
+			"Employee Line Roster History",
+			filters=filters,
+			fields=["name", "roster_id", "employee", "employee_name", "effective_from", "effective_to", "previous_line", "new_line", "source", "changed_by", "changed_at", "reason", "creation"],
+			order_by="changed_at desc, creation desc",
+			limit=100
+		)
 
-	return frappe.db.get_all(
-		"Employee Line Roster History",
-		filters=filters,
-		fields=["name", "roster_id", "employee", "employee_name", "effective_from", "effective_to", "previous_line", "new_line", "source", "changed_by", "changed_at", "reason", "creation"],
-		order_by="changed_at desc, creation desc",
-		limit=100
-	)
+	# 3. Deduplicate returned list
+	deduped = []
+	seen = set()
+	for row in records:
+		key = (
+			row.get("roster_id") or "",
+			row.get("employee") or "",
+			row.get("previous_line") or "",
+			row.get("new_line") or "",
+			row.get("source") or "",
+			row.get("reason") or "",
+			str(row.get("effective_from") or "")
+		)
+		if key in seen:
+			continue
+		seen.add(key)
+		deduped.append(row)
+
+	return deduped
 
 
 # ----------------------------------------------------------------------
