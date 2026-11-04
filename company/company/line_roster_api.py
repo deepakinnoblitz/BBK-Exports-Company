@@ -1710,14 +1710,17 @@ def save_employee_face_embedding(employee, face_descriptor=None, face_3d_landmar
 		saved_file = save_file(fname, file_data, "Employee", employee, is_private=0)
 		update_values["face_enrolled_image"] = saved_file.file_url
 
-	frappe.db.set_value("Employee", employee, update_values)
+	frappe.db.set_value("Employee", employee, update_values, update_modified=False)
 	frappe.db.commit()
+
+	latest_modified = frappe.db.get_value("Employee", employee, "modified")
 
 	return {
 		"success": True,
 		"message": f"Face enrolled successfully for {employee}",
 		"face_enrolled_image": update_values.get("face_enrolled_image"),
-		"face_enrolled_at": str(update_values.get("face_enrolled_at"))
+		"face_enrolled_at": str(update_values.get("face_enrolled_at")),
+		"modified": str(latest_modified) if latest_modified else None
 	}
 
 
@@ -1738,10 +1741,13 @@ def clear_employee_face_embedding(employee):
 		"face_enrolled_image": None,
 		"face_descriptor": None,
 		"face_3d_landmarks": None
-	})
+	}, update_modified=False)
 	frappe.db.commit()
+
+	latest_modified = frappe.db.get_value("Employee", employee, "modified")
 
 	return {
 		"success": True,
-		"message": f"Face biometrics cleared successfully for {employee}."
+		"message": f"Face biometrics cleared successfully for {employee}.",
+		"modified": str(latest_modified) if latest_modified else None
 	}
