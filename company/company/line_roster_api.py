@@ -1095,8 +1095,18 @@ def get_roster_history(roster_id=None, employee=None):
 			 AND h1.source = h2.source
 			 AND h1.name > h2.name
 		""", as_dict=True)
-		for d in duplicate_ids:
-			frappe.db.delete("Employee Line Roster History", {"name": d.name})
+		# Restore any base line rosters that were erroneously cancelled by Face Recognition Line Change
+		frappe.db.sql("""
+			UPDATE `tabEmployee Line Roster`
+			SET status = 'Active',
+			    reason = 'Restored active line assignment'
+			WHERE status = 'Cancelled'
+			  AND reason LIKE 'Replaced by Face Recognition Line Change%'
+		""")
+		frappe.db.sql("""
+			DELETE FROM `tabEmployee Line Roster History`
+			WHERE reason LIKE 'Overridden by Face Recognition Line Change%'
+		""")
 		if duplicate_ids:
 			frappe.db.commit()
 	except Exception:
@@ -1418,11 +1428,12 @@ def get_line_report(from_date=None, to_date=None, employee=None, line=None, stat
 # ----------------------------------------------------------------------
 
 @frappe.whitelist()
-def get_face_catalog(include_all=False):
+def get_face_catalog(include_all=False, attendance_date=None):
 	"""
-	Returns active employees with face biometric details and their current line today.
+	Returns active employees with face biometric details and their current line today (or on attendance_date).
 	"""
-	today_str = getdate().strftime("%Y-%m-%d")
+	target_date = getdate(attendance_date) if attendance_date else getdate()
+	date_str = target_date.strftime("%Y-%m-%d")
 
 	employees = frappe.db.sql("""
 		SELECT 
@@ -1436,15 +1447,20 @@ def get_face_catalog(include_all=False):
 		ORDER BY e.employee_name ASC
 	""", as_dict=True)
 
-	# Batch-fetch active date-specific line assignments for today (avoids 1,000 N+1 queries)
+	# Batch-fetch active date-specific line assignments for the target date (avoids 1,000 N+1 queries)
+	# Prioritize: 1. Override, 2. Bounded dates, 3. Shorter duration, 4. Newer modified
 	rosters = frappe.db.sql("""
 		SELECT r.employee, r.line_order, r.line_name, r.assignment_type
 		FROM `tabEmployee Line Roster` r
 		WHERE r.status = 'Active'
-		  AND r.effective_from <= %(today_str)s
-		  AND (r.effective_to IS NULL OR r.effective_to >= %(today_str)s)
-		ORDER BY r.modified DESC
-	""", {"today_str": today_str}, as_dict=True)
+		  AND r.effective_from <= %(date_str)s
+		  AND (r.effective_to IS NULL OR r.effective_to >= %(date_str)s)
+		ORDER BY 
+			CASE WHEN r.assignment_type = 'Override' THEN 1 ELSE 2 END ASC,
+			CASE WHEN r.effective_to IS NOT NULL THEN 1 ELSE 2 END ASC,
+			DATEDIFF(COALESCE(r.effective_to, '2099-12-31'), r.effective_from) ASC,
+			r.modified DESC
+	""", {"date_str": date_str}, as_dict=True)
 	roster_map = {}
 	for r in rosters:
 		if r.employee not in roster_map:
@@ -1456,7 +1472,7 @@ def get_face_catalog(include_all=False):
 
 	catalog = []
 	for emp in employees:
-		# Resolve current active line for today via O(1) batch lookup
+		# Resolve current active line for target date via O(1) batch lookup
 		current_line_info = roster_map.get(emp.name)
 		emp["current_line"] = current_line_info["line_order"] if current_line_info else emp.default_line
 		emp["current_line_name"] = current_line_info["line_name"] if current_line_info else emp.default_line
@@ -1485,6 +1501,7 @@ def get_face_catalog(include_all=False):
 def get_live_line_occupancy(attendance_date=None):
 	"""
 	Returns all active lines with their live headcount for the date.
+	Deduplicates active workers by priority so no employee is counted twice.
 	"""
 	target_date = getdate(attendance_date) if attendance_date else getdate()
 	date_str = target_date.strftime("%Y-%m-%d")
@@ -1496,34 +1513,47 @@ def get_live_line_occupancy(attendance_date=None):
 		ORDER BY line_name ASC
 	""", as_dict=True)
 
-	# Fetch all active rosters for this date
-	active_rosters = frappe.db.sql("""
-		SELECT r.line_order, count(r.name) as total_assigned
+	# Fetch all active rosters for this date, deduplicated per employee using priority
+	rosters = frappe.db.sql("""
+		SELECT r.employee, r.line_order
 		FROM `tabEmployee Line Roster` r
 		WHERE r.status = 'Active'
 		  AND r.effective_from <= %(date_str)s
 		  AND (r.effective_to IS NULL OR r.effective_to >= %(date_str)s)
-		GROUP BY r.line_order
+		ORDER BY 
+			CASE WHEN r.assignment_type = 'Override' THEN 1 ELSE 2 END ASC,
+			CASE WHEN r.effective_to IS NOT NULL THEN 1 ELSE 2 END ASC,
+			DATEDIFF(COALESCE(r.effective_to, '2099-12-31'), r.effective_from) ASC,
+			r.modified DESC
 	""", {"date_str": date_str}, as_dict=True)
-	roster_map = {r.line_order: r.total_assigned for r in active_rosters}
+
+	assigned_emps = set()
+	roster_map = {}
+	for r in rosters:
+		if r.employee not in assigned_emps:
+			assigned_emps.add(r.employee)
+			roster_map[r.line_order] = roster_map.get(r.line_order, 0) + 1
 
 	result = []
 	for l in lines:
 		assigned_count = roster_map.get(l.name, 0)
 
 		# Count default line workers if no overriding roster exists
-		default_count = frappe.db.sql("""
-			SELECT count(name)
-			FROM `tabEmployee`
-			WHERE status = 'Active'
-			  AND line_order = %(line)s
-			  AND name NOT IN (
-				  SELECT employee FROM `tabEmployee Line Roster`
-				  WHERE status = 'Active'
-				    AND effective_from <= %(date_str)s
-				    AND (effective_to IS NULL OR effective_to >= %(date_str)s)
-			  )
-		""", {"line": l.name, "date_str": date_str})[0][0] or 0
+		if assigned_emps:
+			default_count = frappe.db.sql("""
+				SELECT count(name)
+				FROM `tabEmployee`
+				WHERE status = 'Active'
+				  AND line_order = %(line)s
+				  AND name NOT IN %(assigned_emps)s
+			""", {"line": l.name, "assigned_emps": tuple(assigned_emps)})[0][0] or 0
+		else:
+			default_count = frappe.db.sql("""
+				SELECT count(name)
+				FROM `tabEmployee`
+				WHERE status = 'Active'
+				  AND line_order = %(line)s
+			""", {"line": l.name})[0][0] or 0
 
 		total_headcount = assigned_count + default_count
 
@@ -1542,9 +1572,8 @@ def get_live_line_occupancy(attendance_date=None):
 def face_recognition_line_change(employee, target_line, effective_from=None, effective_to=None, source_line=None, reason=None, mode="Pre-Fixed"):
 	"""
 	Performs a line change triggered by Face Recognition.
-	Cancels any conflicting active roster for the employee on that date,
-	creates a new assignment with assignment_type='Line Change',
-	and logs an immutable history entry.
+	Non-destructively overrides the line for the specified date(s) without
+	cancelling the employee's default line or ongoing line assignments.
 	"""
 	if not employee or not target_line:
 		frappe.throw("Employee and Target Line are required.")
@@ -1554,29 +1583,45 @@ def face_recognition_line_change(employee, target_line, effective_from=None, eff
 	effective_to_str = getdate(effective_to).strftime("%Y-%m-%d") if effective_to else effective_from_str
 
 	emp_doc = frappe.get_doc("Employee", employee)
-	prev_line = source_line or emp_doc.line_order
 
-	# Cancel any existing active roster assignment for this period
+	# Accurately resolve previous line: use source_line if provided, or current applicable line for date, falling back to emp_doc.line_order
+	if not source_line:
+		applicable = get_applicable_line(employee, effective_from_str)
+		prev_line = (applicable.get("line_order") if applicable else None) or emp_doc.line_order
+	else:
+		prev_line = source_line
+
+	# Only cancel/replace an existing assignment if it was ALREADY a Face Recognition change
+	# for the exact same date range (e.g. employee re-scanning today).
+	# Base line assignments (Default Line Change, ongoing assignments, multi-day rosters) are NEVER cancelled!
 	conflicts = check_roster_conflict(employee, effective_from_str, effective_to_str)
 	for c in conflicts:
-		frappe.db.set_value("Employee Line Roster", c.name, {
-			"status": "Cancelled",
-			"reason": f"Replaced by Face Recognition Line Change to {target_line}"
-		})
-		record_roster_history(
-			roster_id=c.name,
-			employee=employee,
-			employee_name=emp_doc.employee_name,
-			effective_from=c.effective_from,
-			effective_to=c.effective_to,
-			previous_line=c.line_order,
-			new_line=target_line,
-			changed_by=frappe.session.user,
-			reason=f"Overridden by Face Recognition Line Change ({mode})",
-			source="FACE_BIOMETRIC_CHANGE"
+		c_from = str(c.effective_from)
+		c_to = str(c.effective_to) if c.effective_to else None
+		is_exact_face_match = (
+			c_from == effective_from_str
+			and c_to == effective_to_str
+			and (c.assignment_type == "Override" or (c.get("reason") and "face" in str(c.get("reason")).lower()))
 		)
+		if is_exact_face_match:
+			frappe.db.set_value("Employee Line Roster", c.name, {
+				"status": "Cancelled",
+				"reason": f"Replaced by new Face Recognition Line Change to {target_line}"
+			})
+			record_roster_history(
+				roster_id=c.name,
+				employee=employee,
+				employee_name=emp_doc.employee_name,
+				effective_from=c.effective_from,
+				effective_to=c.effective_to,
+				previous_line=c.line_order,
+				new_line=target_line,
+				changed_by=frappe.session.user,
+				reason=f"Overridden by Face Recognition Line Change ({mode})",
+				source="FACE_BIOMETRIC_CHANGE"
+			)
 
-	# Create new Employee Line Roster
+	# Create new Employee Line Roster with assignment_type="Override"
 	roster = frappe.new_doc("Employee Line Roster")
 	roster.employee = employee
 	roster.employee_name = emp_doc.employee_name
@@ -1585,24 +1630,10 @@ def face_recognition_line_change(employee, target_line, effective_from=None, eff
 	roster.line_order = target_line
 	roster.effective_from = effective_from_str
 	roster.effective_to = effective_to_str
-	roster.assignment_type = "Line Change"
+	roster.assignment_type = "Override"
 	roster.status = "Active"
 	roster.reason = reason or f"Face Recognition Line Change ({mode}): {prev_line or 'Unassigned'} ➔ {target_line}"
 	roster.insert(ignore_permissions=True)
-
-	# Record audit log
-	record_roster_history(
-		roster_id=roster.name,
-		employee=employee,
-		employee_name=emp_doc.employee_name,
-		effective_from=effective_from_str,
-		effective_to=effective_to_str,
-		previous_line=prev_line,
-		new_line=target_line,
-		changed_by=frappe.session.user,
-		reason=roster.reason,
-		source="FACE_BIOMETRIC_CHANGE"
-	)
 
 	frappe.db.commit()
 
@@ -1637,19 +1668,36 @@ def undo_face_line_change(roster_id, employee=None, previous_line=None, effectiv
 	eff_from = effective_from or roster.effective_from
 	eff_to = roster.effective_to
 
-	# Cancel the roster
+	# Cancel the face change roster
 	roster.status = "Cancelled"
 	roster.reason = "Undone from Face Recognition Kiosk"
 	roster.save(ignore_permissions=True)
 
+	# Check if an active base roster already exists covering eff_from
+	has_active = frappe.db.sql("""
+		SELECT name, line_order FROM `tabEmployee Line Roster`
+		WHERE employee = %(emp)s
+		  AND status = 'Active'
+		  AND name != %(roster_id)s
+		  AND effective_from <= %(eff_from)s
+		  AND (effective_to IS NULL OR effective_to >= %(eff_from)s)
+		ORDER BY 
+			CASE WHEN assignment_type = 'Override' THEN 1 ELSE 2 END ASC,
+			CASE WHEN effective_to IS NOT NULL THEN 1 ELSE 2 END ASC,
+			DATEDIFF(COALESCE(effective_to, '2099-12-31'), effective_from) ASC,
+			modified DESC
+		LIMIT 1
+	""", {"emp": emp, "roster_id": roster_id, "eff_from": eff_from}, as_dict=True)
+
 	restored_roster_name = None
-	if previous_line and previous_line != target_line:
+	# Only create a restored roster if NO active roster exists and previous_line is specified
+	if not has_active and previous_line and previous_line != target_line:
 		restored = frappe.new_doc("Employee Line Roster")
 		restored.employee = emp
 		restored.line_order = previous_line
 		restored.effective_from = eff_from
 		restored.effective_to = eff_to
-		restored.assignment_type = "Line Change"
+		restored.assignment_type = "Override"
 		restored.status = "Active"
 		restored.reason = f"Restored previous line {previous_line} via Undo"
 		restored.insert(ignore_permissions=True)
@@ -1662,7 +1710,7 @@ def undo_face_line_change(roster_id, employee=None, previous_line=None, effectiv
 		effective_from=eff_from,
 		effective_to=eff_to,
 		previous_line=target_line,
-		new_line=previous_line,
+		new_line=has_active[0].line_order if has_active else previous_line,
 		changed_by=frappe.session.user,
 		reason="Reversed/Undone via Face Recognition Kiosk",
 		source="FACE_BIOMETRIC_CHANGE"
@@ -1673,6 +1721,7 @@ def undo_face_line_change(roster_id, employee=None, previous_line=None, effectiv
 	return {
 		"success": True,
 		"message": f"Line change for {emp_name} undone successfully.",
+		"restored_roster": restored_roster_name or (has_active[0].name if has_active else None),
 		"restored_roster_name": restored_roster_name
 	}
 

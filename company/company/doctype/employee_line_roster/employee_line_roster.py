@@ -83,7 +83,7 @@ class EmployeeLineRoster(Document):
 		""", {"employee": self.employee, "name": self.name or "", "dt": self.effective_from}, as_dict=1)
 
 		if prev_active and prev_active[0].line_order:
-			previous_line = prev_active[0].line_order
+			previous_line = prev_active[0].line_order 
 		else:
 			default_line = frappe.db.get_value("Employee", self.employee, "line_order")
 			if default_line != self.line_order:
