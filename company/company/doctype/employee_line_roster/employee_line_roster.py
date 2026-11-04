@@ -66,7 +66,29 @@ class EmployeeLineRoster(Document):
 	def after_insert(self):
 		from company.company.line_roster_api import record_roster_history
 
-		default_line = frappe.db.get_value("Employee", self.employee, "line_order")
+		# Determine previous line for audit history
+		previous_line = None
+		prev_active = frappe.db.sql("""
+			SELECT line_order FROM `tabEmployee Line Roster`
+			WHERE employee = %(employee)s
+			  AND status = 'Active'
+			  AND name != %(name)s
+			  AND effective_from <= %(dt)s
+			  AND (effective_to IS NULL OR effective_to >= %(dt)s)
+			ORDER BY 
+				CASE WHEN assignment_type = 'Override' THEN 1 ELSE 2 END ASC,
+				CASE WHEN effective_to IS NOT NULL THEN 1 ELSE 2 END ASC,
+				modified DESC
+			LIMIT 1
+		""", {"employee": self.employee, "name": self.name or "", "dt": self.effective_from}, as_dict=1)
+
+		if prev_active and prev_active[0].line_order:
+			previous_line = prev_active[0].line_order
+		else:
+			default_line = frappe.db.get_value("Employee", self.employee, "line_order")
+			if default_line != self.line_order:
+				previous_line = default_line
+
 		is_face = bool(self.reason and any(k in self.reason.lower() for k in ("face recognition", "face biometric")))
 		if is_face:
 			source_type = "FACE_BIOMETRIC_CHANGE"
@@ -78,7 +100,7 @@ class EmployeeLineRoster(Document):
 			employee_name=self.employee_name,
 			effective_from=self.effective_from,
 			effective_to=self.effective_to,
-			previous_line=default_line if default_line != self.line_order else None,
+			previous_line=previous_line,
 			new_line=self.line_order if self.status == "Active" else None,
 			changed_by=frappe.session.user,
 			reason=self.reason or ("Line changed from default" if self.assignment_type == "Line Change" else "Line roster assignment created"),

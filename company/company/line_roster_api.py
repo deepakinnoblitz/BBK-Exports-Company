@@ -35,7 +35,11 @@ def get_applicable_line(employee, attendance_date):
 		  AND status = 'Active'
 		  AND effective_from <= %(date_str)s
 		  AND (effective_to IS NULL OR effective_to >= %(date_str)s)
-		ORDER BY modified DESC
+		ORDER BY 
+			CASE WHEN assignment_type = 'Override' THEN 1 ELSE 2 END ASC,
+			CASE WHEN effective_to IS NOT NULL THEN 1 ELSE 2 END ASC,
+			DATEDIFF(COALESCE(effective_to, '2099-12-31'), effective_from) ASC,
+			modified DESC
 		LIMIT 1
 	""", {"employee": employee, "date_str": date_str}, as_dict=1)
 
@@ -292,26 +296,36 @@ def create_roster_assignment(data):
 	if not employee or not line_order or not effective_from:
 		frappe.throw("Employee, Line Order, and Effective From are required.")
 
-	# If assignment type is Override or Line Change, cancel conflicting active records first
+	# If assignment type is Override or Line Change, cancel conflicting active records only if fully superseded
 	if assignment_type in ("Override", "Line Change"):
 		conflicts = check_roster_conflict(employee, effective_from, effective_to)
 		for c in conflicts:
-			frappe.db.set_value("Employee Line Roster", c.name, {
-				"status": "Cancelled",
-				"reason": f"Overridden by new assignment for {line_order} ({effective_from} to {effective_to or 'ongoing'})"
-			})
-			record_roster_history(
-				roster_id=c.name,
-				employee=employee,
-				employee_name=None,
-				effective_from=c.effective_from,
-				effective_to=c.effective_to,
-				previous_line=c.line_order,
-				new_line=None,
-				changed_by=frappe.session.user,
-				reason=f"Overridden by {assignment_type}",
-				source="OVERRIDE" if assignment_type == "Override" else "DEFAULT_LINE_CHANGE"
-			)
+			c_from = str(c.effective_from)
+			c_to = str(c.effective_to) if c.effective_to else None
+			req_from = str(effective_from)
+			req_to = str(effective_to) if effective_to else None
+
+			# Only cancel if c has no dates outside the new assignment (exact match or subset)
+			is_exact_or_subset = (c_from >= req_from and req_to is not None and c_to is not None and c_to <= req_to)
+			is_line_change_replace = (assignment_type == "Line Change" and not effective_to and not c.effective_to)
+
+			if is_exact_or_subset or is_line_change_replace:
+				frappe.db.set_value("Employee Line Roster", c.name, {
+					"status": "Cancelled",
+					"reason": f"Overridden by new assignment for {line_order} ({effective_from} to {effective_to or 'ongoing'})"
+				})
+				record_roster_history(
+					roster_id=c.name,
+					employee=employee,
+					employee_name=None,
+					effective_from=c.effective_from,
+					effective_to=c.effective_to,
+					previous_line=c.line_order,
+					new_line=None,
+					changed_by=frappe.session.user,
+					reason=f"Overridden by {assignment_type}",
+					source="OVERRIDE" if assignment_type == "Override" else "DEFAULT_LINE_CHANGE"
+				)
 
 	doc = frappe.new_doc("Employee Line Roster")
 	doc.employee = employee
@@ -746,7 +760,38 @@ def get_monthly_roster(month=None, year=None, department=None, employee=None, se
 				r_from = getdate(r.effective_from)
 				r_to = getdate(r.effective_to) if r.effective_to else None
 				if r_from <= d_obj and (r_to is None or d_obj <= r_to):
-					assigned_roster = r
+					if assigned_roster is None:
+						assigned_roster = r
+					else:
+						# Priority:
+						# 1. Override beats non-override
+						# 2. Date-bounded beats open-ended
+						# 3. Shorter duration beats longer duration
+						# 4. Newer modified beats older
+						r_ov = 1 if r.get("assignment_type") == "Override" else 0
+						curr_ov = 1 if assigned_roster.get("assignment_type") == "Override" else 0
+						if r_ov != curr_ov:
+							if r_ov > curr_ov:
+								assigned_roster = r
+							continue
+
+						r_bd = 1 if r.get("effective_to") else 0
+						curr_bd = 1 if assigned_roster.get("effective_to") else 0
+						if r_bd != curr_bd:
+							if r_bd > curr_bd:
+								assigned_roster = r
+							continue
+
+						if r_bd and curr_bd:
+							r_dur = (getdate(r.effective_to) - getdate(r.effective_from)).days
+							curr_dur = (getdate(assigned_roster.effective_to) - getdate(assigned_roster.effective_from)).days
+							if r_dur != curr_dur:
+								if r_dur < curr_dur:
+									assigned_roster = r
+								continue
+
+						if str(r.get("modified") or "") >= str(assigned_roster.get("modified") or ""):
+							assigned_roster = r
 
 			if assigned_roster:
 				l_name = assigned_roster.line_order
