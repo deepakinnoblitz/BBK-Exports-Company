@@ -167,17 +167,26 @@ def record_roster_history(roster_id, employee, employee_name, effective_from, ef
 		history.employee_name = employee_name or employee
 		history.effective_from = effective_from
 
-		s_str = (source or "MANUAL").strip()
-		if s_str.lower() in ("face recognition", "face biometric change", "face_recognition", "face_biometric_change"):
-			history.source = "FACE_BIOMETRIC_CHANGE"
-		elif s_str.lower() in ("line change", "default line change", "line_change", "default_line_change"):
-			history.source = "DEFAULT_LINE_CHANGE"
-		else:
-			history.source = s_str.upper()
-		else:
-			history.source = "MANUAL"
+		canonical_sources = {
+			"face_biometric_change": "FACE_BIOMETRIC_CHANGE",
+			"face biometric change": "FACE_BIOMETRIC_CHANGE",
+			"face_recognition": "FACE_BIOMETRIC_CHANGE",
+			"face recognition": "FACE_BIOMETRIC_CHANGE",
+			"face_biometric": "FACE_BIOMETRIC_CHANGE",
+			"face biometric": "FACE_BIOMETRIC_CHANGE",
+			"default_line_change": "DEFAULT_LINE_CHANGE",
+			"default line change": "DEFAULT_LINE_CHANGE",
+			"line_change": "DEFAULT_LINE_CHANGE",
+			"line change": "DEFAULT_LINE_CHANGE",
+			"manual": "MANUAL",
+			"bulk": "BULK",
+			"rotation": "ROTATION",
+			"override": "OVERRIDE",
+		}
+		raw_source = (source or "MANUAL").strip().lower()
+		history.source = canonical_sources.get(raw_source, "MANUAL")
 
-		if not effective_to and history.source != "DEFAULT LINE CHANGE":
+		if not effective_to and history.source != "DEFAULT_LINE_CHANGE":
 			effective_to = effective_from
 		history.effective_to = effective_to or None
 
@@ -301,7 +310,7 @@ def create_roster_assignment(data):
 				new_line=None,
 				changed_by=frappe.session.user,
 				reason=f"Overridden by {assignment_type}",
-				source="OVERRIDE" if assignment_type == "Override" else "DEFAULT LINE CHANGE"
+				source="OVERRIDE" if assignment_type == "Override" else "DEFAULT_LINE_CHANGE"
 			)
 
 	doc = frappe.new_doc("Employee Line Roster")
@@ -1018,8 +1027,18 @@ def generate_rotation_assignments(rotation_name=None, employees=None, start_date
 @frappe.whitelist()
 def get_roster_history(roster_id=None, employee=None):
 	"""Returns audit history records for line roster assignments."""
-	# 1. Clean up any exact duplicate history rows in DB if they exist
+	# 1. Clean up any exact duplicate history rows and normalize legacy sources in DB if they exist
 	try:
+		frappe.db.sql("""
+			UPDATE `tabEmployee Line Roster History`
+			SET source = 'DEFAULT_LINE_CHANGE'
+			WHERE source IN ('DEFAULT LINE CHANGE', 'Default Line Change', 'Line Change', 'LINE_CHANGE')
+		""")
+		frappe.db.sql("""
+			UPDATE `tabEmployee Line Roster History`
+			SET source = 'FACE_BIOMETRIC_CHANGE'
+			WHERE source IN ('FACE_RECOGNITION', 'Face Recognition', 'FACE BIOMETRIC CHANGE', 'Face Biometric Change', 'face_recognition')
+		""")
 		duplicate_ids = frappe.db.sql("""
 			SELECT h1.name
 			FROM `tabEmployee Line Roster History` h1
@@ -1063,10 +1082,28 @@ def get_roster_history(roster_id=None, employee=None):
 			limit=100
 		)
 
-	# 3. Deduplicate returned list
+	# 3. Deduplicate returned list and normalize sources
+	canonical_sources = {
+		"face_biometric_change": "FACE_BIOMETRIC_CHANGE",
+		"face biometric change": "FACE_BIOMETRIC_CHANGE",
+		"face_recognition": "FACE_BIOMETRIC_CHANGE",
+		"face recognition": "FACE_BIOMETRIC_CHANGE",
+		"face_biometric": "FACE_BIOMETRIC_CHANGE",
+		"face biometric": "FACE_BIOMETRIC_CHANGE",
+		"default_line_change": "DEFAULT_LINE_CHANGE",
+		"default line change": "DEFAULT_LINE_CHANGE",
+		"line_change": "DEFAULT_LINE_CHANGE",
+		"line change": "DEFAULT_LINE_CHANGE",
+		"manual": "MANUAL",
+		"bulk": "BULK",
+		"rotation": "ROTATION",
+		"override": "OVERRIDE",
+	}
 	deduped = []
 	seen = set()
 	for row in records:
+		raw_source = (row.get("source") or "MANUAL").strip().lower()
+		row["source"] = canonical_sources.get(raw_source, "MANUAL")
 		key = (
 			row.get("roster_id") or "",
 			row.get("employee") or "",
