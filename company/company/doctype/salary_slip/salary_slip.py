@@ -1873,6 +1873,10 @@ def preview_salary_slip(employee, start_date, end_date):
             is_statutory_active = True
         elif (c_lower == esi_component_name.lower() or any(k in c_lower for k in ["esi", "esic"])) and "employer" not in c_lower and emp_esi is not None:
             is_statutory_active = True
+        elif "tea" in c_lower and ("deduction" in c_lower or "expense" in c_lower):
+            is_statutory_active = True
+        elif ("canteen" in c_lower or "lunch" in c_lower or "mess" in c_lower) and ("deduction" in c_lower or "expense" in c_lower):
+            is_statutory_active = True
 
         if not is_statutory_active and flt(item.get("amount", 0)) <= 0 and flt(item.get("standard_amount", 0)) <= 0:
             continue
@@ -1940,11 +1944,15 @@ def preview_salary_slip(employee, start_date, end_date):
         emp_tea_rate = flt(matched_stat_rule.get("employee_tea_deduction_per_day", 0.0)) if stat_rule_active else 0.0
         enable_emp_canteen = cint(matched_stat_rule.get("enable_employee_canteen_deduction", 0)) if stat_rule_active else 0
         emp_canteen_rate = flt(matched_stat_rule.get("employee_canteen_deduction_per_meal", 0.0)) if stat_rule_active else 0.0
+        tea_component_name = (matched_stat_rule.get("tea_deduction_component") or "Tea Deduction").strip()
+        canteen_component_name = (matched_stat_rule.get("canteen_deduction_component") or "Canteen Deduction").strip()
     else:
         enable_emp_tea = cint(get_category_setting(settings, "enable_employee_tea_deduction", emp_type, default=0))
         emp_tea_rate = flt(get_category_setting(settings, "employee_tea_deduction_per_day", emp_type, default=0.0))
         enable_emp_canteen = cint(get_category_setting(settings, "enable_employee_canteen_deduction", emp_type, default=0))
         emp_canteen_rate = flt(get_category_setting(settings, "employee_canteen_deduction_per_meal", emp_type, default=0.0))
+        tea_component_name = (get_category_setting(settings, "tea_deduction_component", emp_type, default="Tea Deduction") or "Tea Deduction").strip()
+        canteen_component_name = (get_category_setting(settings, "canteen_deduction_component", emp_type, default="Canteen Deduction") or "Canteen Deduction").strip()
     emp_tea_deduction = float(round(flt(present_days) * emp_tea_rate, 2)) if enable_emp_tea else 0.0
 
     # Fetch Canteen entries if canteen deduction or lunch allowance is enabled
@@ -1969,15 +1977,17 @@ def preview_salary_slip(employee, start_date, end_date):
     has_tea_ded = False
     for d in prorated_deductions:
         c_name = (d.get("component_name") or d.get("salary_component") or "").lower()
-        if "tea" in c_name and ("deduction" in c_name or "expense" in c_name):
+        if c_name == tea_component_name.lower() or ("tea" in c_name and ("deduction" in c_name or "expense" in c_name)):
             has_tea_ded = True
-            if enable_emp_tea:
-                d["amount"] = emp_tea_deduction
+            d["component_name"] = tea_component_name
+            d["salary_component"] = tea_component_name
+            d["type"] = "Deduction"
+            d["amount"] = emp_tea_deduction if enable_emp_tea else 0.0
             break
-    if not has_tea_ded and emp_tea_deduction > 0:
+    if not has_tea_ded and enable_emp_tea and emp_tea_deduction > 0:
         prorated_deductions.append({
-            "component_name": "Tea Deduction",
-            "salary_component": "Tea Deduction",
+            "component_name": tea_component_name,
+            "salary_component": tea_component_name,
             "type": "Deduction",
             "standard_amount": 0.0,
             "amount": emp_tea_deduction
@@ -1987,15 +1997,17 @@ def preview_salary_slip(employee, start_date, end_date):
     has_canteen_ded = False
     for d in prorated_deductions:
         c_name = (d.get("component_name") or d.get("salary_component") or "").lower()
-        if ("canteen" in c_name or "lunch" in c_name or "mess" in c_name) and ("deduction" in c_name or "expense" in c_name):
+        if c_name == canteen_component_name.lower() or (("canteen" in c_name or "lunch" in c_name or "mess" in c_name) and ("deduction" in c_name or "expense" in c_name)):
             has_canteen_ded = True
-            if enable_emp_canteen:
-                d["amount"] = emp_canteen_deduction
+            d["component_name"] = canteen_component_name
+            d["salary_component"] = canteen_component_name
+            d["type"] = "Deduction"
+            d["amount"] = emp_canteen_deduction if enable_emp_canteen else 0.0
             break
-    if not has_canteen_ded and emp_canteen_deduction > 0:
+    if not has_canteen_ded and enable_emp_canteen and emp_canteen_deduction > 0:
         prorated_deductions.append({
-            "component_name": "Canteen Deduction",
-            "salary_component": "Canteen Deduction",
+            "component_name": canteen_component_name,
+            "salary_component": canteen_component_name,
             "type": "Deduction",
             "standard_amount": 0.0,
             "amount": emp_canteen_deduction
@@ -2272,6 +2284,8 @@ def preview_salary_slip(employee, start_date, end_date):
         "employee_canteen_rate": emp_canteen_rate,
         "enable_employee_tea_deduction": enable_emp_tea,
         "enable_employee_canteen_deduction": enable_emp_canteen,
+        "tea_deduction_component": tea_component_name,
+        "canteen_deduction_component": canteen_component_name,
         "earnings": prorated_earnings,
         "deductions": prorated_deductions,
         # Employer Contributions & CTC
@@ -2732,6 +2746,7 @@ def get_salary_slip_with_details(name):
         total_employer_contrib = round(employer_pf + pf_admin_charges + edli_charges + employer_esi + employer_lwf, 2)
         total_monthly_ctc = round(earned_ctc + tea_expenses + lunch_expenses + bonus_provision + el_provision, 2)
 
+    matched_stat_rule = get_matched_other_statutory_rule(settings, emp_type)
     res.update({
         "earned_gross_salary": earned_gross_salary,
         "employer_pf": employer_pf,
@@ -2769,10 +2784,46 @@ def get_salary_slip_with_details(name):
         "has_el_in_earnings": has_el_in_earnings,
         "enable_workers_tea_allowance": enable_tea,
         "workers_tea_allowance_per_day": round(tea_rate, 2),
-        "enable_employee_tea_deduction": cint(get_category_setting(settings, "enable_employee_tea_deduction", emp_type, default=0)),
-        "employee_tea_deduction_per_day": flt(get_category_setting(settings, "employee_tea_deduction_per_day", emp_type, default=0.0)),
-        "enable_employee_canteen_deduction": cint(get_category_setting(settings, "enable_employee_canteen_deduction", emp_type, default=0)),
-        "employee_canteen_deduction_per_meal": flt(get_category_setting(settings, "employee_canteen_deduction_per_meal", emp_type, default=0.0)),
+        "enable_employee_tea_deduction": (
+            cint(matched_stat_rule.get("enable_employee_tea_deduction", 0))
+            if (matched_stat_rule and matched_stat_rule.get("enabled", 1) not in [0, "0", False])
+            else cint(get_category_setting(settings, "enable_employee_tea_deduction", emp_type, default=0))
+        ),
+        "employee_tea_rate": (
+            flt(matched_stat_rule.get("employee_tea_deduction_per_day", 0.0))
+            if (matched_stat_rule and matched_stat_rule.get("enabled", 1) not in [0, "0", False])
+            else flt(get_category_setting(settings, "employee_tea_deduction_per_day", emp_type, default=0.0))
+        ),
+        "employee_tea_deduction_per_day": (
+            flt(matched_stat_rule.get("employee_tea_deduction_per_day", 0.0))
+            if (matched_stat_rule and matched_stat_rule.get("enabled", 1) not in [0, "0", False])
+            else flt(get_category_setting(settings, "employee_tea_deduction_per_day", emp_type, default=0.0))
+        ),
+        "enable_employee_canteen_deduction": (
+            cint(matched_stat_rule.get("enable_employee_canteen_deduction", 0))
+            if (matched_stat_rule and matched_stat_rule.get("enabled", 1) not in [0, "0", False])
+            else cint(get_category_setting(settings, "enable_employee_canteen_deduction", emp_type, default=0))
+        ),
+        "employee_canteen_rate": (
+            flt(matched_stat_rule.get("employee_canteen_deduction_per_meal", 0.0))
+            if (matched_stat_rule and matched_stat_rule.get("enabled", 1) not in [0, "0", False])
+            else flt(get_category_setting(settings, "employee_canteen_deduction_per_meal", emp_type, default=0.0))
+        ),
+        "employee_canteen_deduction_per_meal": (
+            flt(matched_stat_rule.get("employee_canteen_deduction_per_meal", 0.0))
+            if (matched_stat_rule and matched_stat_rule.get("enabled", 1) not in [0, "0", False])
+            else flt(get_category_setting(settings, "employee_canteen_deduction_per_meal", emp_type, default=0.0))
+        ),
+        "tea_deduction_component": (
+            (matched_stat_rule.get("tea_deduction_component") or "").strip()
+            if (matched_stat_rule and matched_stat_rule.get("tea_deduction_component"))
+            else (get_category_setting(settings, "tea_deduction_component", emp_type, default="Tea Deduction") or "Tea Deduction").strip()
+        ),
+        "canteen_deduction_component": (
+            (matched_stat_rule.get("canteen_deduction_component") or "").strip()
+            if (matched_stat_rule and matched_stat_rule.get("canteen_deduction_component"))
+            else (get_category_setting(settings, "canteen_deduction_component", emp_type, default="Canteen Deduction") or "Canteen Deduction").strip()
+        ),
     })
 
     # ── Days Breakdown (mirrors preview_salary_slip) ──────────────────────────
@@ -3180,11 +3231,21 @@ def generate_salary_slips_from_employee(year=None, month=None, employees=None, s
 
             for e in data.get("earnings", []):
                 if flt(e.get("amount", 0)) > 0 or flt(e.get("standard_amount", 0)) > 0:
-                    slip.append("earnings", e)
+                    slip.append("earnings", {
+                        "component_name": e.get("component_name") or e.get("salary_component") or "Earning",
+                        "type": "Earning",
+                        "amount": flt(e.get("amount", 0)),
+                        "static_amount": flt(e.get("standard_amount") or e.get("static_amount") or 0.0),
+                    })
 
             for d in data.get("deductions", []):
                 if flt(d.get("amount", 0)) > 0:
-                    slip.append("deductions", d)
+                    slip.append("deductions", {
+                        "component_name": d.get("component_name") or d.get("salary_component") or "Deduction",
+                        "type": "Deduction",
+                        "amount": flt(d.get("amount", 0)),
+                        "static_amount": flt(d.get("standard_amount") or d.get("static_amount") or 0.0),
+                    })
 
             slip.insert(ignore_permissions=True)
             created_count += 1
