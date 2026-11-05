@@ -57,7 +57,7 @@ class EmployeeLineRoster(Document):
 			"eff_to": eff_to
 		}, as_dict=1)
 
-		if conflicts and self.assignment_type not in ("Override", "Line Change"):
+		if conflicts and self.assignment_type not in ("Override", "Line Change", "Face Biometric Change", "Face Recognition"):
 			conflict_list = ", ".join([f"{c.name} (Line: {c.line_order}, {c.effective_from} to {c.effective_to or c.effective_from})" for c in conflicts])
 			frappe.throw(
 				f"Line conflict detected for Employee {self.employee_name or self.employee}. Overlaps with: {conflict_list}. Use Override or Line Change assignment type if you want to replace existing assignments."
@@ -76,7 +76,11 @@ class EmployeeLineRoster(Document):
 			  AND effective_from <= %(dt)s
 			  AND (effective_to IS NULL OR effective_to >= %(dt)s)
 			ORDER BY 
-				CASE WHEN assignment_type = 'Override' THEN 1 ELSE 2 END ASC,
+				CASE 
+					WHEN assignment_type = 'Override' THEN 1 
+					WHEN assignment_type IN ('Face Biometric Change', 'Face Recognition') THEN 2
+					ELSE 3 
+				END ASC,
 				CASE WHEN effective_to IS NOT NULL THEN 1 ELSE 2 END ASC,
 				modified DESC
 			LIMIT 1
@@ -89,7 +93,10 @@ class EmployeeLineRoster(Document):
 			if default_line != self.line_order:
 				previous_line = default_line
 
-		is_face = bool(self.reason and any(k in self.reason.lower() for k in ("face recognition", "face biometric")))
+		is_face = bool(
+			self.assignment_type in ("Face Biometric Change", "Face Recognition", "FACE_BIOMETRIC_CHANGE")
+			or (self.reason and any(k in self.reason.lower() for k in ("face recognition", "face biometric")))
+		)
 		if is_face:
 			source_type = "FACE_BIOMETRIC_CHANGE"
 		else:
@@ -118,7 +125,12 @@ class EmployeeLineRoster(Document):
 		line_changed = self.line_order != doc_before_save.line_order
 
 		if status_changed or line_changed:
-			is_face = bool(self.reason and any(k in self.reason.lower() for k in ("face recognition", "face biometric")))
+			is_face = bool(
+				self.assignment_type in ("Face Biometric Change", "Face Recognition", "FACE_BIOMETRIC_CHANGE")
+				or (doc_before_save and doc_before_save.assignment_type in ("Face Biometric Change", "Face Recognition", "FACE_BIOMETRIC_CHANGE"))
+				or (self.reason and any(k in self.reason.lower() for k in ("face recognition", "face biometric")))
+				or (doc_before_save and doc_before_save.reason and any(k in doc_before_save.reason.lower() for k in ("face recognition", "face biometric")))
+			)
 			if is_face:
 				source_type = "FACE_BIOMETRIC_CHANGE"
 			else:

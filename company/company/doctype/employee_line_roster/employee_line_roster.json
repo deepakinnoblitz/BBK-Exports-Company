@@ -94,7 +94,7 @@
    "in_list_view": 1,
    "in_standard_filter": 1,
    "label": "Assignment Type",
-   "options": "Manual\nBulk\nRotation\nOverride\nLine Change"
+   "options": "Manual\nBulk\nRotation\nOverride\nLine Change\nFace Biometric Change"
   },
   {
    "default": "Active",

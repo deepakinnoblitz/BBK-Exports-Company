@@ -36,7 +36,11 @@ def get_applicable_line(employee, attendance_date):
 		  AND effective_from <= %(date_str)s
 		  AND (effective_to IS NULL OR effective_to >= %(date_str)s)
 		ORDER BY 
-			CASE WHEN assignment_type = 'Override' THEN 1 ELSE 2 END ASC,
+			CASE 
+				WHEN assignment_type = 'Override' THEN 1 
+				WHEN assignment_type IN ('Face Biometric Change', 'Face Recognition') THEN 2
+				ELSE 3 
+			END ASC,
 			CASE WHEN effective_to IS NOT NULL THEN 1 ELSE 2 END ASC,
 			DATEDIFF(COALESCE(effective_to, '2099-12-31'), effective_from) ASC,
 			modified DESC
@@ -310,9 +314,29 @@ def create_roster_assignment(data):
 			is_line_change_replace = (assignment_type == "Line Change" and not effective_to and not c.effective_to)
 
 			if is_exact_or_subset or is_line_change_replace:
+				# Check if c was a Face Biometric Change record
+				c_is_face = (
+					c.assignment_type in ("Face Biometric Change", "Face Recognition", "FACE_BIOMETRIC_CHANGE")
+					or (c.get("reason") and any(k in str(c.get("reason")).lower() for k in ("face recognition", "face biometric")))
+					or bool(frappe.db.get_value("Employee Line Roster History", {"roster_id": c.name, "source": "FACE_BIOMETRIC_CHANGE"}, "name"))
+				)
+
+				# Preserve the source/assignment_type as Face Biometric Change if it was originally Face Biometric
+				c_source_type = "Face Biometric Change" if c_is_face else c.assignment_type
+				c_history_source = "FACE_BIOMETRIC_CHANGE" if c_is_face else ("OVERRIDE" if assignment_type == "Override" else "DEFAULT_LINE_CHANGE")
+
+				orig_c_reason = c.get("reason") or ""
+				if c_is_face and not any(k in orig_c_reason.lower() for k in ("face recognition", "face biometric")):
+					c_cancel_reason = f"Face Recognition Line Change: Overridden by {assignment_type} for {line_order} ({effective_from} to {effective_to or 'ongoing'})"
+				elif orig_c_reason:
+					c_cancel_reason = f"{orig_c_reason} | Overridden by {assignment_type} for {line_order} ({effective_from} to {effective_to or 'ongoing'})"
+				else:
+					c_cancel_reason = f"Overridden by {assignment_type} for {line_order} ({effective_from} to {effective_to or 'ongoing'})"
+
 				frappe.db.set_value("Employee Line Roster", c.name, {
 					"status": "Cancelled",
-					"reason": f"Overridden by new assignment for {line_order} ({effective_from} to {effective_to or 'ongoing'})"
+					"assignment_type": c_source_type,
+					"reason": c_cancel_reason
 				})
 				record_roster_history(
 					roster_id=c.name,
@@ -324,7 +348,7 @@ def create_roster_assignment(data):
 					new_line=None,
 					changed_by=frappe.session.user,
 					reason=f"Overridden by {assignment_type}",
-					source="OVERRIDE" if assignment_type == "Override" else "DEFAULT_LINE_CHANGE"
+					source=c_history_source
 				)
 
 	doc = frappe.new_doc("Employee Line Roster")
@@ -507,9 +531,25 @@ def bulk_assign_lines(employees, line_order, effective_from, effective_to, assig
 			if conflicts:
 				if override_conflicts:
 					for c in conflicts:
+						c_is_face = (
+							c.assignment_type in ("Face Biometric Change", "Face Recognition", "FACE_BIOMETRIC_CHANGE")
+							or (c.get("reason") and any(k in str(c.get("reason")).lower() for k in ("face recognition", "face biometric")))
+							or bool(frappe.db.get_value("Employee Line Roster History", {"roster_id": c.name, "source": "FACE_BIOMETRIC_CHANGE"}, "name"))
+						)
+						c_source_type = "Face Biometric Change" if c_is_face else c.assignment_type
+						c_history_source = "FACE_BIOMETRIC_CHANGE" if c_is_face else "OVERRIDE"
+						orig_c_reason = c.get("reason") or ""
+						if c_is_face and not any(k in orig_c_reason.lower() for k in ("face recognition", "face biometric")):
+							c_cancel_reason = f"Face Recognition Line Change: Overridden by bulk assignment for {line_order} ({effective_from} to {effective_to})"
+						elif orig_c_reason:
+							c_cancel_reason = f"{orig_c_reason} | Overridden by bulk assignment for {line_order} ({effective_from} to {effective_to})"
+						else:
+							c_cancel_reason = f"Overridden by bulk assignment for {line_order} ({effective_from} to {effective_to})"
+
 						frappe.db.set_value("Employee Line Roster", c.name, {
 							"status": "Cancelled",
-							"reason": f"Overridden by bulk assignment for {line_order} ({effective_from} to {effective_to})"
+							"assignment_type": c_source_type,
+							"reason": c_cancel_reason
 						})
 						record_roster_history(
 							roster_id=c.name,
@@ -521,7 +561,7 @@ def bulk_assign_lines(employees, line_order, effective_from, effective_to, assig
 							new_line=None,
 							changed_by=frappe.session.user,
 							reason="Overridden by bulk assignment",
-							source="OVERRIDE"
+							source=c_history_source
 						)
 				else:
 					skipped_count += 1
@@ -768,8 +808,8 @@ def get_monthly_roster(month=None, year=None, department=None, employee=None, se
 						# 2. Date-bounded beats open-ended
 						# 3. Shorter duration beats longer duration
 						# 4. Newer modified beats older
-						r_ov = 1 if r.get("assignment_type") == "Override" else 0
-						curr_ov = 1 if assigned_roster.get("assignment_type") == "Override" else 0
+						r_ov = 1 if r.get("assignment_type") in ("Override", "Face Biometric Change", "Face Recognition") else 0
+						curr_ov = 1 if assigned_roster.get("assignment_type") in ("Override", "Face Biometric Change", "Face Recognition") else 0
 						if r_ov != curr_ov:
 							if r_ov > curr_ov:
 								assigned_roster = r
@@ -1009,9 +1049,25 @@ def generate_rotation_assignments(rotation_name=None, employees=None, start_date
 			if conflicts:
 				if override:
 					for c in conflicts:
+						c_is_face = (
+							c.assignment_type in ("Face Biometric Change", "Face Recognition", "FACE_BIOMETRIC_CHANGE")
+							or (c.get("reason") and any(k in str(c.get("reason")).lower() for k in ("face recognition", "face biometric")))
+							or bool(frappe.db.get_value("Employee Line Roster History", {"roster_id": c.name, "source": "FACE_BIOMETRIC_CHANGE"}, "name"))
+						)
+						c_source_type = "Face Biometric Change" if c_is_face else c.assignment_type
+						c_history_source = "FACE_BIOMETRIC_CHANGE" if c_is_face else "ROTATION"
+						orig_c_reason = c.get("reason") or ""
+						if c_is_face and not any(k in orig_c_reason.lower() for k in ("face recognition", "face biometric")):
+							c_cancel_reason = f"Face Recognition Line Change: Overridden by Rotation '{rot.rotation_name}' generation for {selected_line}"
+						elif orig_c_reason:
+							c_cancel_reason = f"{orig_c_reason} | Overridden by Rotation '{rot.rotation_name}' generation for {selected_line}"
+						else:
+							c_cancel_reason = f"Overridden by Rotation '{rot.rotation_name}' generation for {selected_line}"
+
 						frappe.db.set_value("Employee Line Roster", c.name, {
 							"status": "Cancelled",
-							"reason": f"Overridden by Rotation '{rot.rotation_name}' generation for {selected_line}"
+							"assignment_type": c_source_type,
+							"reason": c_cancel_reason
 						})
 						record_roster_history(
 							roster_id=c.name,
@@ -1023,7 +1079,7 @@ def generate_rotation_assignments(rotation_name=None, employees=None, start_date
 							new_line=selected_line,
 							changed_by=frappe.session.user,
 							reason=f"Overridden by Rotation: {rot.rotation_name}",
-							source="ROTATION"
+							source=c_history_source
 						)
 						overridden += 1
 					doc = frappe.new_doc("Employee Line Roster")
@@ -1083,6 +1139,29 @@ def get_roster_history(roster_id=None, employee=None):
 			UPDATE `tabEmployee Line Roster History`
 			SET source = 'FACE_BIOMETRIC_CHANGE'
 			WHERE source IN ('FACE_RECOGNITION', 'Face Recognition', 'FACE BIOMETRIC CHANGE', 'Face Biometric Change', 'face_recognition')
+		""")
+		# Ensure any cancelled face biometric roster maintains assignment_type and source
+		frappe.db.sql("""
+			UPDATE `tabEmployee Line Roster`
+			SET assignment_type = 'Face Biometric Change'
+			WHERE assignment_type = 'Override'
+			  AND (
+				reason LIKE '%Face Recognition%'
+				OR reason LIKE '%Face Biometric%'
+				OR name IN (
+					SELECT DISTINCT roster_id 
+					FROM `tabEmployee Line Roster History` 
+					WHERE source = 'FACE_BIOMETRIC_CHANGE'
+				)
+			  )
+		""")
+		frappe.db.sql("""
+			UPDATE `tabEmployee Line Roster History` h
+			INNER JOIN `tabEmployee Line Roster` r ON h.roster_id = r.name
+			SET h.source = 'FACE_BIOMETRIC_CHANGE'
+			WHERE r.assignment_type = 'Face Biometric Change'
+			  AND h.source = 'OVERRIDE'
+			  AND h.reason LIKE 'Overridden by%'
 		""")
 		duplicate_ids = frappe.db.sql("""
 			SELECT h1.name
@@ -1456,7 +1535,11 @@ def get_face_catalog(include_all=False, attendance_date=None):
 		  AND r.effective_from <= %(date_str)s
 		  AND (r.effective_to IS NULL OR r.effective_to >= %(date_str)s)
 		ORDER BY 
-			CASE WHEN r.assignment_type = 'Override' THEN 1 ELSE 2 END ASC,
+			CASE 
+				WHEN r.assignment_type = 'Override' THEN 1 
+				WHEN r.assignment_type IN ('Face Biometric Change', 'Face Recognition') THEN 2
+				ELSE 3 
+			END ASC,
 			CASE WHEN r.effective_to IS NOT NULL THEN 1 ELSE 2 END ASC,
 			DATEDIFF(COALESCE(r.effective_to, '2099-12-31'), r.effective_from) ASC,
 			r.modified DESC
@@ -1521,7 +1604,11 @@ def get_live_line_occupancy(attendance_date=None):
 		  AND r.effective_from <= %(date_str)s
 		  AND (r.effective_to IS NULL OR r.effective_to >= %(date_str)s)
 		ORDER BY 
-			CASE WHEN r.assignment_type = 'Override' THEN 1 ELSE 2 END ASC,
+			CASE 
+				WHEN r.assignment_type = 'Override' THEN 1 
+				WHEN r.assignment_type IN ('Face Biometric Change', 'Face Recognition') THEN 2
+				ELSE 3 
+			END ASC,
 			CASE WHEN r.effective_to IS NOT NULL THEN 1 ELSE 2 END ASC,
 			DATEDIFF(COALESCE(r.effective_to, '2099-12-31'), r.effective_from) ASC,
 			r.modified DESC
@@ -1601,11 +1688,12 @@ def face_recognition_line_change(employee, target_line, effective_from=None, eff
 		is_exact_face_match = (
 			c_from == effective_from_str
 			and c_to == effective_to_str
-			and (c.assignment_type == "Override" or (c.get("reason") and "face" in str(c.get("reason")).lower()))
+			and (c.assignment_type in ("Face Biometric Change", "Face Recognition", "Override") or (c.get("reason") and "face" in str(c.get("reason")).lower()))
 		)
 		if is_exact_face_match:
 			frappe.db.set_value("Employee Line Roster", c.name, {
 				"status": "Cancelled",
+				"assignment_type": "Face Biometric Change",
 				"reason": f"Replaced by new Face Recognition Line Change to {target_line}"
 			})
 			record_roster_history(
@@ -1621,7 +1709,7 @@ def face_recognition_line_change(employee, target_line, effective_from=None, eff
 				source="FACE_BIOMETRIC_CHANGE"
 			)
 
-	# Create new Employee Line Roster with assignment_type="Override"
+	# Create new Employee Line Roster with assignment_type="Face Biometric Change"
 	roster = frappe.new_doc("Employee Line Roster")
 	roster.employee = employee
 	roster.employee_name = emp_doc.employee_name
@@ -1630,7 +1718,7 @@ def face_recognition_line_change(employee, target_line, effective_from=None, eff
 	roster.line_order = target_line
 	roster.effective_from = effective_from_str
 	roster.effective_to = effective_to_str
-	roster.assignment_type = "Override"
+	roster.assignment_type = "Face Biometric Change"
 	roster.status = "Active"
 	roster.reason = reason or f"Face Recognition Line Change ({mode}): {prev_line or 'Unassigned'} ➔ {target_line}"
 	roster.insert(ignore_permissions=True)
@@ -1682,7 +1770,11 @@ def undo_face_line_change(roster_id, employee=None, previous_line=None, effectiv
 		  AND effective_from <= %(eff_from)s
 		  AND (effective_to IS NULL OR effective_to >= %(eff_from)s)
 		ORDER BY 
-			CASE WHEN assignment_type = 'Override' THEN 1 ELSE 2 END ASC,
+			CASE 
+				WHEN assignment_type = 'Override' THEN 1 
+				WHEN assignment_type IN ('Face Biometric Change', 'Face Recognition') THEN 2
+				ELSE 3 
+			END ASC,
 			CASE WHEN effective_to IS NOT NULL THEN 1 ELSE 2 END ASC,
 			DATEDIFF(COALESCE(effective_to, '2099-12-31'), effective_from) ASC,
 			modified DESC
@@ -1697,7 +1789,7 @@ def undo_face_line_change(roster_id, employee=None, previous_line=None, effectiv
 		restored.line_order = previous_line
 		restored.effective_from = eff_from
 		restored.effective_to = eff_to
-		restored.assignment_type = "Override"
+		restored.assignment_type = "Face Biometric Change"
 		restored.status = "Active"
 		restored.reason = f"Restored previous line {previous_line} via Undo"
 		restored.insert(ignore_permissions=True)
