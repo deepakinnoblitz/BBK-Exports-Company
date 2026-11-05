@@ -221,6 +221,8 @@
   "pt_deduction_component",
   "pf_deduction_component",
   "esi_deduction_component",
+  "tea_deduction_component",
+  "canteen_deduction_component",
   "enable_lwf",
   "lwf_state",
   "lwf_deduction_month",
@@ -275,18 +277,28 @@
   "staff_ctc_pt_deduction_component",
   "staff_ctc_pf_deduction_component",
   "staff_ctc_esi_deduction_component",
+  "staff_ctc_tea_deduction_component",
+  "staff_ctc_canteen_deduction_component",
   "staff_non_ctc_pt_deduction_component",
   "staff_non_ctc_pf_deduction_component",
   "staff_non_ctc_esi_deduction_component",
+  "staff_non_ctc_tea_deduction_component",
+  "staff_non_ctc_canteen_deduction_component",
   "workers_pt_deduction_component",
   "workers_pf_deduction_component",
   "workers_esi_deduction_component",
+  "workers_tea_deduction_component",
+  "workers_canteen_deduction_component",
   "north_indian_pt_deduction_component",
   "north_indian_pf_deduction_component",
   "north_indian_esi_deduction_component",
+  "north_indian_tea_deduction_component",
+  "north_indian_canteen_deduction_component",
   "drivers_pt_deduction_component",
   "drivers_pf_deduction_component",
-  "drivers_esi_deduction_component"
+  "drivers_esi_deduction_component",
+  "drivers_tea_deduction_component",
+  "drivers_canteen_deduction_component"
  ],
  "fields": [
   {
@@ -1627,6 +1639,18 @@
    "label": "Employee ESI Deduction Salary Component"
   },
   {
+   "default": "Tea Deduction",
+   "fieldname": "tea_deduction_component",
+   "fieldtype": "Data",
+   "label": "Tea Deduction Salary Component"
+  },
+  {
+   "default": "Canteen Deduction",
+   "fieldname": "canteen_deduction_component",
+   "fieldtype": "Data",
+   "label": "Canteen Deduction Salary Component"
+  },
+  {
    "default": "1",
    "fieldname": "enable_lwf",
    "fieldtype": "Check",
@@ -1948,6 +1972,18 @@
    "label": "Staff Ctc ESI Deduction Component"
   },
   {
+   "default": "Tea Deduction",
+   "fieldname": "staff_ctc_tea_deduction_component",
+   "fieldtype": "Data",
+   "label": "Staff Ctc Tea Deduction Component"
+  },
+  {
+   "default": "Canteen Deduction",
+   "fieldname": "staff_ctc_canteen_deduction_component",
+   "fieldtype": "Data",
+   "label": "Staff Ctc Canteen Deduction Component"
+  },
+  {
    "default": "Prof.Tax",
    "fieldname": "staff_non_ctc_pt_deduction_component",
    "fieldtype": "Data",
@@ -1964,6 +2000,18 @@
    "fieldname": "staff_non_ctc_esi_deduction_component",
    "fieldtype": "Data",
    "label": "Staff Non Ctc ESI Deduction Component"
+  },
+  {
+   "default": "Tea Deduction",
+   "fieldname": "staff_non_ctc_tea_deduction_component",
+   "fieldtype": "Data",
+   "label": "Staff Non Ctc Tea Deduction Component"
+  },
+  {
+   "default": "Canteen Deduction",
+   "fieldname": "staff_non_ctc_canteen_deduction_component",
+   "fieldtype": "Data",
+   "label": "Staff Non Ctc Canteen Deduction Component"
   },
   {
    "default": "Prof.Tax",
@@ -1984,6 +2032,18 @@
    "label": "Workers ESI Deduction Component"
   },
   {
+   "default": "Tea Deduction",
+   "fieldname": "workers_tea_deduction_component",
+   "fieldtype": "Data",
+   "label": "Workers Tea Deduction Component"
+  },
+  {
+   "default": "Canteen Deduction",
+   "fieldname": "workers_canteen_deduction_component",
+   "fieldtype": "Data",
+   "label": "Workers Canteen Deduction Component"
+  },
+  {
    "default": "Prof.Tax",
    "fieldname": "north_indian_pt_deduction_component",
    "fieldtype": "Data",
@@ -2002,6 +2062,18 @@
    "label": "North Indian ESI Deduction Component"
   },
   {
+   "default": "Tea Deduction",
+   "fieldname": "north_indian_tea_deduction_component",
+   "fieldtype": "Data",
+   "label": "North Indian Tea Deduction Component"
+  },
+  {
+   "default": "Canteen Deduction",
+   "fieldname": "north_indian_canteen_deduction_component",
+   "fieldtype": "Data",
+   "label": "North Indian Canteen Deduction Component"
+  },
+  {
    "default": "Prof.Tax",
    "fieldname": "drivers_pt_deduction_component",
    "fieldtype": "Data",
@@ -2018,6 +2090,18 @@
    "fieldname": "drivers_esi_deduction_component",
    "fieldtype": "Data",
    "label": "Drivers ESI Deduction Component"
+  },
+  {
+   "default": "Tea Deduction",
+   "fieldname": "drivers_tea_deduction_component",
+   "fieldtype": "Data",
+   "label": "Drivers Tea Deduction Component"
+  },
+  {
+   "default": "Canteen Deduction",
+   "fieldname": "drivers_canteen_deduction_component",
+   "fieldtype": "Data",
+   "label": "Drivers Canteen Deduction Component"
   }
  ],
  "issingle": 1,
