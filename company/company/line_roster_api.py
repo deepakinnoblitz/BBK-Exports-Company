@@ -407,18 +407,7 @@ def delete_or_cancel_roster_assignment(name, reason=None, delete_permanently=Fal
 	doc = frappe.get_doc("Employee Line Roster", name)
 
 	if is_delete:
-		record_roster_history(
-			roster_id=doc.name,
-			employee=doc.employee,
-			employee_name=doc.employee_name,
-			effective_from=doc.effective_from,
-			effective_to=doc.effective_to,
-			previous_line=doc.line_order,
-			new_line=None,
-			changed_by=frappe.session.user,
-			reason=reason or "Deleted permanently",
-			source="MANUAL"
-		)
+		frappe.db.sql("DELETE FROM `tabEmployee Line Roster History` WHERE roster_id = %s", doc.name)
 		doc.delete()
 	else:
 		if doc.status != "Cancelled":
@@ -1186,35 +1175,46 @@ def get_roster_history(roster_id=None, employee=None):
 			DELETE FROM `tabEmployee Line Roster History`
 			WHERE reason LIKE 'Overridden by Face Recognition Line Change%'
 		""")
+		# Purge any orphaned history records whose roster_id was deleted
+		frappe.db.sql("""
+			DELETE FROM `tabEmployee Line Roster History`
+			WHERE roster_id != ''
+			  AND roster_id NOT IN (SELECT name FROM `tabEmployee Line Roster`)
+		""")
 		if duplicate_ids:
 			frappe.db.commit()
 	except Exception:
 		pass
 
 	# 2. Query history records
-	if roster_id and employee:
+	if roster_id:
 		records = frappe.db.sql("""
 			SELECT name, roster_id, employee, employee_name, effective_from, effective_to,
 			       previous_line, new_line, source, changed_by, changed_at, reason, creation
 			FROM `tabEmployee Line Roster History`
-			WHERE roster_id = %(roster_id)s OR employee = %(employee)s
+			WHERE roster_id = %(roster_id)s
 			ORDER BY changed_at desc, creation desc
 			LIMIT 100
-		""", {"roster_id": roster_id, "employee": employee}, as_dict=True)
+		""", {"roster_id": roster_id}, as_dict=True)
+	elif employee:
+		records = frappe.db.sql("""
+			SELECT h.name, h.roster_id, h.employee, h.employee_name, h.effective_from, h.effective_to,
+			       h.previous_line, h.new_line, h.source, h.changed_by, h.changed_at, h.reason, h.creation
+			FROM `tabEmployee Line Roster History` h
+			INNER JOIN `tabEmployee Line Roster` r ON h.roster_id = r.name
+			WHERE h.employee = %(employee)s
+			ORDER BY h.changed_at desc, h.creation desc
+			LIMIT 100
+		""", {"employee": employee}, as_dict=True)
 	else:
-		filters = {}
-		if roster_id:
-			filters["roster_id"] = roster_id
-		if employee:
-			filters["employee"] = employee
-
-		records = frappe.db.get_all(
-			"Employee Line Roster History",
-			filters=filters,
-			fields=["name", "roster_id", "employee", "employee_name", "effective_from", "effective_to", "previous_line", "new_line", "source", "changed_by", "changed_at", "reason", "creation"],
-			order_by="changed_at desc, creation desc",
-			limit=100
-		)
+		records = frappe.db.sql("""
+			SELECT h.name, h.roster_id, h.employee, h.employee_name, h.effective_from, h.effective_to,
+			       h.previous_line, h.new_line, h.source, h.changed_by, h.changed_at, h.reason, h.creation
+			FROM `tabEmployee Line Roster History` h
+			INNER JOIN `tabEmployee Line Roster` r ON h.roster_id = r.name
+			ORDER BY h.changed_at desc, h.creation desc
+			LIMIT 100
+		""", as_dict=True)
 
 	# 3. Deduplicate returned list and normalize sources
 	canonical_sources = {

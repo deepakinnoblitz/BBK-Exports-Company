@@ -163,3 +163,7 @@ class EmployeeLineRoster(Document):
 					reason=update_reason,
 					source=source_type
 				)
+
+	def on_trash(self):
+		frappe.db.sql("DELETE FROM `tabEmployee Line Roster History` WHERE roster_id = %s", self.name)
+
