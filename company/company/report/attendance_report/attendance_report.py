@@ -3,6 +3,7 @@
 
 import frappe
 from frappe import _
+from company.company.shift_roster_api import is_security_employee, is_employee_weekly_off
 
 
 def execute(filters: dict | None = None):
@@ -76,7 +77,7 @@ def get_data(filters: dict | None) -> list[dict]:
 
 		employees = frappe.get_all(
 			"Employee",
-			fields=["name", "employee_name", "date_of_joining", "status"],
+			fields=["name", "employee_name", "date_of_joining", "status", "employee_type", "weekly_off", "shift", "designation", "department"],
 			filters=emp_filters
 		)
 		
@@ -158,10 +159,33 @@ def get_data(filters: dict | None) -> list[dict]:
 				if emp.name in attendance_map and date_str in attendance_map[emp.name]:
 					row = attendance_map[emp.name][date_str]
 				
+				# Security employee specific weekly off check
+				elif is_security_employee(emp) and is_employee_weekly_off(emp, curr_date_ptr):
+					row = {
+						"attendance_date": curr_date_ptr,
+						"employee": emp.name,
+						"employee_name": emp.employee_name,
+						"status": "Weekly Off",
+						"in_time": None,
+						"out_time": None,
+						"working_hours_display": "Weekly Off",
+						"official_overtime": None,
+						"unofficial_overtime": None,
+						"name": "",
+						"manual": 0
+					}
+
 				# If no attendance, check for Holiday (Global check)
 				elif date_str in holiday_map:
 					h_record = holiday_map[date_str]
-					if not h_record.is_working_day:
+					# For security employees whose weekly-off is NOT Sunday, standard Sunday entries in holiday_map should NOT mark Sunday as Holiday
+					is_sec_working_sunday = (
+						is_security_employee(emp)
+						and curr_date_ptr.weekday() == 6
+						and not is_employee_weekly_off(emp, curr_date_ptr)
+						and "sunday" in (h_record.description or "").lower()
+					)
+					if not h_record.is_working_day and not is_sec_working_sunday:
 						row = {
 							"attendance_date": curr_date_ptr,
 							"employee": emp.name,
@@ -170,6 +194,20 @@ def get_data(filters: dict | None) -> list[dict]:
 							"in_time": None,
 							"out_time": None,
 							"working_hours_display": h_record.description, # Show description here
+							"official_overtime": None,
+							"unofficial_overtime": None,
+							"name": "",
+							"manual": 0
+						}
+					elif is_sec_working_sunday and curr_date_ptr <= today:
+						row = {
+							"attendance_date": curr_date_ptr,
+							"employee": emp.name,
+							"employee_name": emp.employee_name,
+							"status": "Missing",
+							"in_time": None,
+							"out_time": None,
+							"working_hours_display": "00:00",
 							"official_overtime": None,
 							"unofficial_overtime": None,
 							"name": "",

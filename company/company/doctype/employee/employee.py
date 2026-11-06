@@ -7,6 +7,9 @@ class Employee(Document):
 	def validate(self):
 		if not self.employee_id or not str(self.employee_id).strip():
 			self.employee_id = None
+		from company.company.shift_roster_api import is_security_employee
+		if not is_security_employee(self):
+			self.weekly_off = "Sunday"
 		self.validate_duplicate_components()
 		self.validate_status_and_dol()
 		self.calculate_totals()

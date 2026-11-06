@@ -1133,6 +1133,36 @@ def evaluate_custom_salary_rules(rules_raw, comp_type, emp, emp_type, start_date
     return results
 
 
+def adjust_security_weekly_offs(emp, start_date, end_date, holiday_dates, non_working_dates, non_working_days_details, working_dates):
+    """If employee is a Security employee with custom weekly-off, adjust non-working and working dates."""
+    from company.company.shift_roster_api import is_security_employee, is_employee_weekly_off
+    if not is_security_employee(emp):
+        return
+    emp_wo = getattr(emp, "weekly_off", None) or (emp.get("weekly_off") if hasattr(emp, "get") else None)
+    if not emp_wo or emp_wo == "Sunday":
+        return
+
+    non_working_dates.clear()
+    non_working_days_details.clear()
+    working_dates.clear()
+
+    curr = start_date
+    while curr <= end_date:
+        if curr in holiday_dates:
+            curr += timedelta(days=1)
+            continue
+        if is_employee_weekly_off(emp, curr):
+            non_working_dates.append(curr)
+            non_working_days_details.append({
+                "date": curr.strftime("%Y-%m-%d"),
+                "description": emp_wo,
+                "status": "Non Working Day"
+            })
+        else:
+            working_dates.append(curr)
+        curr += timedelta(days=1)
+
+
 @frappe.whitelist()
 def preview_salary_slip(employee, start_date, end_date):
     """
@@ -1198,6 +1228,8 @@ def preview_salary_slip(employee, start_date, end_date):
             else:
                 if start_date <= h_date <= end_date:
                     working_dates.append(h_date)
+
+    adjust_security_weekly_offs(emp, start_date, end_date, holiday_dates, non_working_dates, non_working_days_details, working_dates)
 
     # 3. Fetch Data based on source
     attendance_records = []
@@ -2894,6 +2926,8 @@ def get_salary_slip_with_details(name):
             else:
                 if start_date <= h_date <= end_date:
                     working_dates.append(h_date)
+
+    adjust_security_weekly_offs(emp, start_date, end_date, holiday_dates, non_working_dates, non_working_days_details, working_dates)
 
     total_days = (end_date - start_date).days + 1
     attendance_records = []
