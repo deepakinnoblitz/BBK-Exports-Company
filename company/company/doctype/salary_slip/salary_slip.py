@@ -1834,6 +1834,14 @@ def preview_salary_slip(employee, start_date, end_date):
     else:
         esi_component_name = (get_category_setting(settings, "esi_deduction_component", emp_type, default="ESI") or "ESI").strip()
 
+    lwf_component_name = (
+        getattr(settings, "lwf_deduction_component", None)
+        or (settings.get("lwf_deduction_component") if isinstance(settings, dict) else None)
+        or getattr(settings, "lwf_salary_component", None)
+        or (settings.get("lwf_salary_component") if isinstance(settings, dict) else None)
+        or "Labour Welfare Fund"
+    ).strip()
+
     prorated_deductions = []
     base_deductions_total = 0.0
     for d in emp.deductions:
@@ -1861,7 +1869,9 @@ def preview_salary_slip(employee, start_date, end_date):
                 item["amount"] = emp_esi
             else:
                 item["amount"] = flt(d.amount)
-        elif any(k in c_lower for k in ["lwf", "labour welfare fund", "welfare fund"]):
+        elif c_lower == lwf_component_name.lower() or any(k in c_lower for k in ["lwf", "labour welfare fund", "welfare fund"]):
+            item["component_name"] = lwf_component_name
+            item["salary_component"] = lwf_component_name
             item["amount"] = emp_lwf
         else:
             item["amount"] = flt(d.amount)
@@ -1872,6 +1882,8 @@ def preview_salary_slip(employee, start_date, end_date):
         elif (c_lower == pf_component_name.lower() or any(k in c_lower for k in ["pf", "provident fund", "epf"])) and "employer" not in c_lower and "admin" not in c_lower and emp_pf is not None:
             is_statutory_active = True
         elif (c_lower == esi_component_name.lower() or any(k in c_lower for k in ["esi", "esic"])) and "employer" not in c_lower and emp_esi is not None:
+            is_statutory_active = True
+        elif (c_lower == lwf_component_name.lower() or any(k in c_lower for k in ["lwf", "labour welfare fund", "welfare fund"])) and emp_lwf > 0:
             is_statutory_active = True
         elif "tea" in c_lower and ("deduction" in c_lower or "expense" in c_lower):
             is_statutory_active = True
@@ -1925,11 +1937,15 @@ def preview_salary_slip(employee, start_date, end_date):
         })
 
     # If LWF wasn't in employee structure but emp_lwf > 0, add it
-    has_lwf = any(any(k in (d.get("component_name") or d.get("salary_component") or "").lower() for k in ["lwf", "labour welfare fund", "welfare fund"]) for d in prorated_deductions)
+    has_lwf = any(
+        (d.get("component_name") or d.get("salary_component") or "").lower() == lwf_component_name.lower()
+        or any(k in (d.get("component_name") or d.get("salary_component") or "").lower() for k in ["lwf", "labour welfare fund", "welfare fund"])
+        for d in prorated_deductions
+    )
     if not has_lwf and emp_lwf > 0:
         prorated_deductions.append({
-            "component_name": "Labour Welfare Fund",
-            "salary_component": "Labour Welfare Fund",
+            "component_name": lwf_component_name,
+            "salary_component": lwf_component_name,
             "type": "Deduction",
             "standard_amount": 0.0,
             "amount": emp_lwf,
