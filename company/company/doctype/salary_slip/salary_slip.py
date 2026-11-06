@@ -1326,8 +1326,9 @@ def preview_salary_slip(employee, start_date, end_date):
             day_attendance = next((a for a in attendance_records if getdate(a["attendance_date"]) == single_day_date), None)
             if day_attendance:
                 day_hours = flt(day_attendance.get("working_hours_decimal") or 0)
-                ot_raw = day_attendance.get("official_overtime") or day_attendance.get("unofficial_overtime")
-                day_ot = parse_time_to_hours(ot_raw)
+                unoff_hours = parse_time_to_hours(day_attendance.get("unofficial_overtime"))
+                off_hours = parse_time_to_hours(day_attendance.get("official_overtime"))
+                day_ot = unoff_hours if unoff_hours > 0 else off_hours
 
         total_ot_hours += day_ot
 
@@ -2991,8 +2992,9 @@ def get_salary_slip_with_details(name):
             day_attendance = next((a for a in attendance_records if getdate(a["attendance_date"]) == single_day_date), None)
             if day_attendance:
                 day_hours = flt(day_attendance.get("working_hours_decimal") or 0)
-                ot_raw = day_attendance.get("official_overtime") or day_attendance.get("unofficial_overtime")
-                day_ot = parse_time_to_hours(ot_raw)
+                unoff_hours = parse_time_to_hours(day_attendance.get("unofficial_overtime"))
+                off_hours = parse_time_to_hours(day_attendance.get("official_overtime"))
+                day_ot = unoff_hours if unoff_hours > 0 else off_hours
 
         physical_val = 0
         if calc_source == "Daily Log":
