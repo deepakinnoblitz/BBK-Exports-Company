@@ -127,6 +127,40 @@ def before_insert_estimation(doc, method):
         doc.ref_no = get_next_estimation_preview()
 
 
+@frappe.whitelist()
+def get_next_employee_id():
+    """Get next Employee Document ID preview (e.g. BEPL01977)"""
+    from frappe.utils import cint
+    current_num = 0
+
+    try:
+        series_res = frappe.db.sql("SELECT `current` FROM `tabSeries` WHERE `name` IN ('BEPL', 'BEPL.') ORDER BY `current` DESC LIMIT 1", as_dict=True)
+        if series_res and series_res[0].get("current"):
+            current_num = cint(series_res[0]["current"])
+    except Exception:
+        pass
+
+    try:
+        last_emp = frappe.db.sql(
+            """
+            SELECT name FROM `tabEmployee`
+            WHERE name REGEXP '^BEPL[0-9]+$'
+            ORDER BY CAST(SUBSTRING(name, 5) AS UNSIGNED) DESC
+            LIMIT 1
+            """,
+            as_dict=True
+        )
+        if last_emp and last_emp[0].get("name"):
+            num = int(last_emp[0]["name"][4:])
+            if num > current_num:
+                current_num = num
+    except Exception:
+        pass
+
+    next_num = current_num + 1
+    return f"BEPL{next_num:05d}"
+
+
 # =================== INVOICE REFERENCE ===================
 @frappe.whitelist()
 def get_next_invoice_preview():
