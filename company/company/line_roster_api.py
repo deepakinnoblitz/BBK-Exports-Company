@@ -1655,6 +1655,32 @@ def get_live_line_occupancy(attendance_date=None):
 	return result
 
 
+def resolve_employee_id(emp_identifier):
+	"""
+	Resolves an employee identifier (e.g. '0990' or 'EMP00990') to the canonical Employee doc name (e.g. 'EMP00990').
+	Ensures employee lookup checks the EMP00xxx format.
+	"""
+	if not emp_identifier:
+		return None
+	emp_str = str(emp_identifier).strip()
+	if frappe.db.exists("Employee", emp_str):
+		return emp_str
+
+	# Check formatted with EMP prefix and 5 digits padding, e.g. 0990 -> EMP00990
+	digits = "".join(filter(str.isdigit, emp_str))
+	if digits:
+		formatted = f"EMP{digits.zfill(5)}"
+		if frappe.db.exists("Employee", formatted):
+			return formatted
+
+	# Check by employee_id field in Employee table
+	name_by_id = frappe.db.get_value("Employee", {"employee_id": emp_str}, "name")
+	if name_by_id:
+		return name_by_id
+
+	return emp_str
+
+
 @frappe.whitelist()
 def face_recognition_line_change(employee, target_line, effective_from=None, effective_to=None, source_line=None, reason=None, mode="Pre-Fixed"):
 	"""
@@ -1664,6 +1690,8 @@ def face_recognition_line_change(employee, target_line, effective_from=None, eff
 	"""
 	if not employee or not target_line:
 		frappe.throw("Employee and Target Line are required.")
+
+	employee = resolve_employee_id(employee)
 
 	target_date = getdate(effective_from) if effective_from else getdate()
 	effective_from_str = target_date.strftime("%Y-%m-%d")
@@ -1751,8 +1779,9 @@ def undo_face_line_change(roster_id, employee=None, previous_line=None, effectiv
 
 	roster = frappe.get_doc("Employee Line Roster", roster_id)
 	target_line = roster.line_order
-	emp = employee or roster.employee
-	emp_name = roster.employee_name
+	raw_emp = employee or roster.employee
+	emp = resolve_employee_id(raw_emp) or roster.employee
+	emp_name = roster.employee_name or (frappe.db.get_value("Employee", emp, "employee_name") if emp else None)
 	eff_from = effective_from or roster.effective_from
 	eff_to = roster.effective_to
 
@@ -1826,6 +1855,8 @@ def save_employee_face_embedding(employee, face_descriptor=None, face_3d_landmar
 	if not employee:
 		frappe.throw("Employee is required.")
 
+	employee = resolve_employee_id(employee)
+
 	if not frappe.db.exists("Employee", employee):
 		frappe.throw(f"Employee {employee} not found.")
 
@@ -1872,6 +1903,8 @@ def clear_employee_face_embedding(employee):
 	"""
 	if not employee:
 		frappe.throw("Employee is required.")
+
+	employee = resolve_employee_id(employee)
 
 	if not frappe.db.exists("Employee", employee):
 		frappe.throw(f"Employee {employee} not found.")
