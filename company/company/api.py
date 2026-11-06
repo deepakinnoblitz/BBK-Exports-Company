@@ -3786,7 +3786,7 @@ def bulk_import_employees(rows, update_existing=False, bank_accounts=None):
     for b_item in all_bank_items:
         if not isinstance(b_item, dict):
             continue
-        ref_no = str(b_item.get("referral_no") or b_item.get("employee_id") or "").strip()
+        ref_no = str(b_item.get("referral_no") or b_item.get("name") or b_item.get("employee_id") or "").strip()
         acct_no = str(b_item.get("account_number") or "").strip()
         acct_name = str(b_item.get("bank_account_name") or "").strip()
 
@@ -3818,11 +3818,11 @@ def bulk_import_employees(rows, update_existing=False, bank_accounts=None):
     # =========================================================================
     for r_idx, row in enumerate(rows):
         row_num = r_idx + 1
-        emp_id = str(row.get("employee_id") or "").strip()
+        emp_doc_name = str(row.get("name") or row.get("employee_id") or "").strip()
         emp_name = str(row.get("employee_name") or "").strip()
         email = str(row.get("email") or "").strip()
 
-        if not emp_id:
+        if not emp_doc_name:
             errors.append(f"Row {row_num}: Employee ID is required")
             continue
         if not emp_name:
@@ -3833,19 +3833,21 @@ def bulk_import_employees(rows, update_existing=False, bank_accounts=None):
             continue
 
         try:
-            existing_name = frappe.db.get_value("Employee", {"employee_id": emp_id}, "name")
-            if not existing_name and frappe.db.exists("Employee", emp_id):
-                existing_name = emp_id
+            existing_name = None
+            if frappe.db.exists("Employee", emp_doc_name):
+                existing_name = emp_doc_name
+            else:
+                existing_name = frappe.db.get_value("Employee", {"employee_id": emp_doc_name}, "name")
 
             if existing_name:
                 if not update_existing:
-                    errors.append(f"Row {row_num}: Employee ID '{emp_id}' already exists")
+                    errors.append(f"Row {row_num}: Employee ID '{emp_doc_name}' already exists")
                     continue
                 doc = frappe.get_doc("Employee", existing_name)
                 is_new = False
             else:
                 doc = frappe.new_doc("Employee")
-                doc.employee_id = emp_id
+                doc.employee_id = emp_doc_name
                 is_new = True
 
             # Core Personal & Employment Details
@@ -3994,7 +3996,7 @@ def bulk_import_employees(rows, update_existing=False, bank_accounts=None):
             # Financial & Bank Details Mapping
             resolved_ba = None
             emp_b_details = row.get("bank_details") or {}
-            ref_lookup = str(emp_b_details.get("referral_no") or emp_id).strip().lower()
+            ref_lookup = str(emp_b_details.get("referral_no") or emp_doc_name).strip().lower()
             emp_acct_no = str(emp_b_details.get("account_number") or row.get("account_number") or "").strip()
             raw_ba = str(row.get("bank_account") or "").strip()
             b_name = str(emp_b_details.get("bank_name") or "").strip()
@@ -4044,7 +4046,7 @@ def bulk_import_employees(rows, update_existing=False, bank_accounts=None):
                         or raw_ba
                         or "specified in sheet"
                     )
-                    errors.append(f"Row {row_num} ({emp_id or emp_name}): Bank Account '{bank_label}' not found in master Bank Account List")
+                    errors.append(f"Row {row_num} ({emp_doc_name or emp_name}): Bank Account '{bank_label}' not found in master Bank Account List")
                     continue
                 else:
                     doc.bank_account = resolved_ba
@@ -4102,7 +4104,10 @@ def bulk_import_employees(rows, update_existing=False, bank_accounts=None):
                 doc.ctc = total_earnings
 
             doc.flags.ignore_permissions = True
-            doc.save()
+            if is_new and emp_doc_name:
+                doc.insert(set_name=emp_doc_name, ignore_permissions=True)
+            else:
+                doc.save()
             frappe.db.commit()
 
             if is_new:
@@ -4112,7 +4117,7 @@ def bulk_import_employees(rows, update_existing=False, bank_accounts=None):
 
         except Exception as e:
             frappe.db.rollback()
-            errors.append(f"Row {row_num} ({emp_id or emp_name}): {str(e)}")
+            errors.append(f"Row {row_num} ({emp_doc_name or emp_name}): {str(e)}")
 
     return {
         "success": len(errors) == 0,
