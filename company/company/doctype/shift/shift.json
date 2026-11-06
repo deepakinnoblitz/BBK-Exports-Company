@@ -10,7 +10,6 @@
   "start_time",
   "end_time",
   "status",
-  "weekly_off",
   "lunch_hours",
   "break_hours",
   "allow_overtime",
@@ -43,14 +42,6 @@
    "fieldtype": "Select",
    "label": "Status",
    "options": "Active\nInactive"
-  },
-  {
-   "default": "Sunday",
-   "fieldname": "weekly_off",
-   "fieldtype": "Select",
-   "in_list_view": 1,
-   "label": "Weekly Off",
-   "options": "Sunday\nMonday\nTuesday\nWednesday\nThursday\nFriday\nSaturday"
   },
   {
    "fieldname": "lunch_hours",

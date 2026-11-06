@@ -43,8 +43,7 @@ def get_employee_weekly_off_weekday(employee_id_or_doc, shift_id=None):
 	Returns integer weekday (0=Monday, 6=Sunday).
 	For Security employees:
 	  1. Check Employee.weekly_off
-	  2. Check Shift.weekly_off
-	  3. Default to Sunday (6)
+	  2. Default to Sunday (6)
 	For non-Security employees:
 	  Defaults strictly to Sunday (6)
 	"""
@@ -52,7 +51,7 @@ def get_employee_weekly_off_weekday(employee_id_or_doc, shift_id=None):
 		return 6
 
 	if isinstance(employee_id_or_doc, str):
-		emp = frappe.db.get_value("Employee", employee_id_or_doc, ["name", "weekly_off", "shift", "employee_type", "department", "designation"], as_dict=True)
+		emp = frappe.db.get_value("Employee", employee_id_or_doc, ["name", "weekly_off", "employee_type", "department", "designation"], as_dict=True)
 	elif hasattr(employee_id_or_doc, "get"):
 		emp = employee_id_or_doc
 	else:
@@ -70,14 +69,7 @@ def get_employee_weekly_off_weekday(employee_id_or_doc, shift_id=None):
 	if emp_wo in WEEKDAY_NAME_TO_INT:
 		return WEEKDAY_NAME_TO_INT[emp_wo]
 
-	# 2. Shift-level weekly off
-	shift_to_check = shift_id or emp.get("shift")
-	if shift_to_check:
-		shift_wo = (frappe.db.get_value("Shift", shift_to_check, "weekly_off") or "").strip().lower()
-		if shift_wo in WEEKDAY_NAME_TO_INT:
-			return WEEKDAY_NAME_TO_INT[shift_wo]
-
-	# 3. Default to Sunday (6)
+	# 2. Default to Sunday (6)
 	return 6
 
 def is_employee_weekly_off(employee_id_or_doc, target_date, shift_id=None):
@@ -672,7 +664,7 @@ def get_monthly_roster(month=None, year=None, department=None, employee=None, se
 	all_shifts = frappe.db.get_all(
 		"Shift",
 		filters={"status": "Active"},
-		fields=["name", "shift_name", "start_time", "end_time", "weekly_off"]
+		fields=["name", "shift_name", "start_time", "end_time"]
 	)
 	shift_lookup = {s.name: s for s in all_shifts}
 
