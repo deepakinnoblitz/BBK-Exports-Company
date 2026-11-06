@@ -5,6 +5,8 @@ from frappe.utils import getdate, flt
 
 class Employee(Document):
 	def validate(self):
+		if not self.employee_id or not str(self.employee_id).strip():
+			self.employee_id = None
 		self.validate_duplicate_components()
 		self.validate_status_and_dol()
 		self.calculate_totals()

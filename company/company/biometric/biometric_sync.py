@@ -33,19 +33,22 @@ def get_user_display_name(user_id):
 
 def find_employee_by_code(employee_code: str):
     """
-    Look up Employee by employee_id (HRMS employee_id == SmartOffice employee_code).
+    Look up Employee directly by Document Name (`name`).
     """
     if not employee_code:
         return None
     code = str(employee_code).strip()
+    if not code:
+        return None
+
     return frappe.db.get_value(
         "Employee",
-        {"employee_id": code, "status": ["!=", "Left"]},
+        {"name": code, "status": ["!=", "Left"]},
         ["name", "employee_name", "employee_id"],
         as_dict=True
     ) or frappe.db.get_value(
         "Employee",
-        {"employee_id": code},
+        {"name": code},
         ["name", "employee_name", "employee_id"],
         as_dict=True
     )
@@ -157,7 +160,7 @@ def sync_smartoffice_logs(from_datetime=None, to_datetime=None, sync_type="Manua
                 affected_employee_dates.add((emp_info.name, log_dt.date()))
             else:
                 log_doc.processing_status = "Error"
-                log_doc.error_message = f"No active Employee found with employee_id '{emp_code}'"
+                log_doc.error_message = f"No active Employee found with ID '{emp_code}'"
                 log_doc.processed = 0
                 error_count += 1
 
@@ -550,7 +553,8 @@ def reprocess_unmapped_logs():
     frappe.only_for(["System Manager", "HR"])
     unmapped_logs = frappe.get_all(
         "Biometric Log",
-        filters={"processing_status": "Error", "employee": ["is", "not set"]},
+        filters={"processing_status": "Error"},
+        or_filters=[{"employee": ["is", "not set"]}, {"employee": ""}],
         fields=["name", "employee_code", "log_datetime"]
     )
 
