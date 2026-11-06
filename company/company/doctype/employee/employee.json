@@ -72,10 +72,10 @@
   {
    "fieldname": "employee_id",
    "fieldtype": "Data",
-   "in_list_view": 1,
+   "in_list_view": 0,
    "label": "Employee ID",
    "read_only": 0,
-   "reqd": 1,
+   "reqd": 0,
    "unique": 1
   },
   {
