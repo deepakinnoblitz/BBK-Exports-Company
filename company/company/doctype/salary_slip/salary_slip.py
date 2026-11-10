@@ -3546,6 +3546,415 @@ def get_wages_reconciliation_statement(current_start_date, current_end_date, pre
 
 
 @frappe.whitelist()
+def get_salary_reconciliation_statement(
+    year=None,
+    month=None,
+    start_date=None,
+    end_date=None,
+    from_date=None,
+    to_date=None,
+    employee_type=None,
+    department=None,
+    amount_basis="net_pay",
+    docstatus=None
+):
+    """
+    Detailed Month-on-Month Salary Reconciliation Statement Report matching the official template.
+    Compares Current Period (e.g. Aug-26) against Previous Period (e.g. Jul-26).
+    Classifies additions, deletions, and salary revisions into Increment vs Decrement
+    cross-referenced with Employee Salary History records.
+    """
+    if from_date or to_date or start_date or end_date:
+        f_val = from_date or start_date
+        t_val = to_date or end_date
+
+        if f_val and t_val:
+            f_d = getdate(f_val)
+            t_d = getdate(t_val)
+            if (f_d.year, f_d.month) != (t_d.year, t_d.month):
+                p_y, p_m = f_d.year, f_d.month
+                _, p_last = monthrange(p_y, p_m)
+                p_start = getdate(f"{p_y:04d}-{p_m:02d}-01")
+                p_end = getdate(f"{p_y:04d}-{p_m:02d}-{p_last:02d}")
+
+                c_y, c_m = t_d.year, t_d.month
+                _, c_last = monthrange(c_y, c_m)
+                c_start = getdate(f"{c_y:04d}-{c_m:02d}-01")
+                c_end = getdate(f"{c_y:04d}-{c_m:02d}-{c_last:02d}")
+            else:
+                c_y, c_m = t_d.year, t_d.month
+                _, c_last = monthrange(c_y, c_m)
+                c_start = getdate(f"{c_y:04d}-{c_m:02d}-01")
+                c_end = getdate(f"{c_y:04d}-{c_m:02d}-{c_last:02d}")
+
+                if c_m == 1:
+                    p_y = c_y - 1
+                    p_m = 12
+                else:
+                    p_y = c_y
+                    p_m = c_m - 1
+                _, p_last = monthrange(p_y, p_m)
+                p_start = getdate(f"{p_y:04d}-{p_m:02d}-01")
+                p_end = getdate(f"{p_y:04d}-{p_m:02d}-{p_last:02d}")
+        else:
+            val = t_val or f_val
+            d = getdate(val)
+            c_y, c_m = d.year, d.month
+            _, c_last = monthrange(c_y, c_m)
+            c_start = getdate(f"{c_y:04d}-{c_m:02d}-01")
+            c_end = getdate(f"{c_y:04d}-{c_m:02d}-{c_last:02d}")
+
+            if c_m == 1:
+                p_y = c_y - 1
+                p_m = 12
+            else:
+                p_y = c_y
+                p_m = c_m - 1
+            _, p_last = monthrange(p_y, p_m)
+            p_start = getdate(f"{p_y:04d}-{p_m:02d}-01")
+            p_end = getdate(f"{p_y:04d}-{p_m:02d}-{p_last:02d}")
+    elif year and month:
+        c_y = cint(year)
+        c_m = cint(month)
+        _, c_last = monthrange(c_y, c_m)
+        c_start = getdate(f"{c_y:04d}-{c_m:02d}-01")
+        c_end = getdate(f"{c_y:04d}-{c_m:02d}-{c_last:02d}")
+
+        if c_m == 1:
+            p_y = c_y - 1
+            p_m = 12
+        else:
+            p_y = c_y
+            p_m = c_m - 1
+        _, p_last = monthrange(p_y, p_m)
+        p_start = getdate(f"{p_y:04d}-{p_m:02d}-01")
+        p_end = getdate(f"{p_y:04d}-{p_m:02d}-{p_last:02d}")
+    else:
+        # Default to current month
+        today = getdate()
+        c_y = today.year
+        c_m = today.month
+        _, c_last = monthrange(c_y, c_m)
+        c_start = getdate(f"{c_y:04d}-{c_m:02d}-01")
+        c_end = getdate(f"{c_y:04d}-{c_m:02d}-{c_last:02d}")
+        if c_m == 1:
+            p_y = c_y - 1
+            p_m = 12
+        else:
+            p_y = c_y
+            p_m = c_m - 1
+        _, p_last = monthrange(p_y, p_m)
+        p_start = getdate(f"{p_y:04d}-{p_m:02d}-01")
+        p_end = getdate(f"{p_y:04d}-{p_m:02d}-{p_last:02d}")
+
+    # Build filters
+    base_curr_filters = {
+        "pay_period_start": [">=", c_start],
+        "pay_period_end": ["<=", c_end],
+    }
+    base_prev_filters = {
+        "pay_period_start": [">=", p_start],
+        "pay_period_end": ["<=", p_end],
+    }
+
+    if docstatus is not None and docstatus != "":
+        base_curr_filters["docstatus"] = cint(docstatus)
+        base_prev_filters["docstatus"] = cint(docstatus)
+    else:
+        base_curr_filters["docstatus"] = ["in", [0, 1]]
+        base_prev_filters["docstatus"] = ["in", [0, 1]]
+
+    if employee_type:
+        if isinstance(employee_type, str) and employee_type.strip():
+            base_curr_filters["employee_type"] = employee_type.strip()
+            base_prev_filters["employee_type"] = employee_type.strip()
+        elif isinstance(employee_type, (list, tuple)) and len(employee_type) > 0:
+            base_curr_filters["employee_type"] = ["in", employee_type]
+            base_prev_filters["employee_type"] = ["in", employee_type]
+
+    if department:
+        if isinstance(department, str) and department.strip():
+            base_curr_filters["department"] = department.strip()
+            base_prev_filters["department"] = department.strip()
+        elif isinstance(department, (list, tuple)) and len(department) > 0:
+            base_curr_filters["department"] = ["in", department]
+            base_prev_filters["department"] = ["in", department]
+
+    fields = [
+        "name", "employee", "employee_name", "department", "designation", "employee_type",
+        "gross_pay", "grand_gross_pay", "net_pay", "grand_net_pay",
+        "total_monthly_ctc", "earned_ctc", "docstatus"
+    ]
+
+    curr_slips = frappe.get_all("Salary Slip", filters=base_curr_filters, fields=fields, order_by="employee asc")
+    prev_slips = frappe.get_all("Salary Slip", filters=base_prev_filters, fields=fields, order_by="employee asc")
+
+    def calc_amount(slip):
+        if not slip:
+            return 0.0
+        if amount_basis == "gross_pay":
+            return flt(slip.grand_gross_pay if (slip.grand_gross_pay is not None and slip.grand_gross_pay != 0) else (slip.gross_pay or 0.0))
+        elif amount_basis in ("earned_ctc", "ctc"):
+            return flt(slip.earned_ctc if (slip.earned_ctc is not None and slip.earned_ctc != 0) else (slip.total_monthly_ctc or 0.0))
+        # default: net_pay
+        return flt(slip.grand_net_pay if (slip.grand_net_pay is not None and slip.grand_net_pay != 0) else (slip.net_pay or 0.0))
+
+    # Pre-fetch Employee metadata for employee_id (biometric / employee code)
+    all_emp_names = list(set([s.employee for s in curr_slips + prev_slips if s.employee]))
+    emp_meta = {}
+    if all_emp_names:
+        emp_records = frappe.get_all(
+            "Employee",
+            filters={"name": ["in", all_emp_names]},
+            fields=["name", "employee_id", "employee_name", "department", "designation", "employee_type"]
+        )
+        for e in emp_records:
+            emp_meta[e.name] = e
+
+    # Fetch Employee Salary History records active around the reconciliation period
+    emp_history_map = {}
+    if all_emp_names:
+        history_records = frappe.get_all(
+            "Employee Salary History",
+            filters={"employee": ["in", all_emp_names], "changed_at": [">=", p_start]},
+            fields=[
+                "name", "employee", "employee_name", "previous_ctc", "new_ctc",
+                "previous_net_salary", "new_net_salary", "changed_components",
+                "component_details", "changed_by", "changed_by_name", "changed_at", "reason"
+            ],
+            order_by="changed_at desc"
+        )
+        for h in history_records:
+            if h.employee not in emp_history_map:
+                emp_history_map[h.employee] = h
+
+    # Map slips by employee (aggregating if multiple slips exist for single employee)
+    curr_emp_map = {}
+    for s in curr_slips:
+        emp_key = s.employee or s.name
+        if emp_key not in curr_emp_map:
+            curr_emp_map[emp_key] = {
+                "employee": emp_key,
+                "slip_name": s.name,
+                "employee_name": s.employee_name,
+                "department": s.department,
+                "designation": s.designation,
+                "employee_type": s.employee_type,
+                "amount": calc_amount(s),
+                "slips": [s]
+            }
+        else:
+            curr_emp_map[emp_key]["amount"] += calc_amount(s)
+            curr_emp_map[emp_key]["slips"].append(s)
+
+    prev_emp_map = {}
+    for s in prev_slips:
+        emp_key = s.employee or s.name
+        if emp_key not in prev_emp_map:
+            prev_emp_map[emp_key] = {
+                "employee": emp_key,
+                "slip_name": s.name,
+                "employee_name": s.employee_name,
+                "department": s.department,
+                "designation": s.designation,
+                "employee_type": s.employee_type,
+                "amount": calc_amount(s),
+                "slips": [s]
+            }
+        else:
+            prev_emp_map[emp_key]["amount"] += calc_amount(s)
+            prev_emp_map[emp_key]["slips"].append(s)
+
+    curr_keys = set(curr_emp_map.keys())
+    prev_keys = set(prev_emp_map.keys())
+
+    # Format labels
+    curr_period_str = c_start.strftime("%b-%y").upper()  # e.g., AUG-26
+    prev_period_str = p_start.strftime("%b'%y")          # e.g., Jul'26
+    curr_full_month = c_start.strftime("%B %Y")
+    prev_full_month = p_start.strftime("%B %Y")
+
+    # 1. Base Salary (Previous Month)
+    prev_total_amount = round(sum(item["amount"] for item in prev_emp_map.values()), 2)
+    prev_headcount = len(prev_emp_map)
+
+    # 2. Additions (Present in Current Month, Absent in Previous Month)
+    additions = []
+    added_keys = sorted(list(curr_keys - prev_keys))
+    add_s_no = 2
+    for k in added_keys:
+        item = curr_emp_map[k]
+        meta = emp_meta.get(k, {})
+        additions.append({
+            "s_no": add_s_no,
+            "employee": k,
+            "employee_doc_name": k,
+            "employee_id": k,
+            "biometric_id": meta.get("employee_id") or "",
+            "employee_name": item["employee_name"] or meta.get("employee_name") or k,
+            "department": item["department"] or meta.get("department") or "",
+            "designation": item["designation"] or meta.get("designation") or "",
+            "amount": round(item["amount"], 2),
+            "slip_name": item["slip_name"]
+        })
+        add_s_no += 1
+    total_addition_amount = round(sum(a["amount"] for a in additions), 2)
+    total_addition_count = len(additions)
+
+    # 3. Salary Revisions (Present in Both Months with Amount Delta)
+    common_keys = sorted(list(curr_keys & prev_keys))
+    revisions = []
+    increments = []
+    decrements = []
+    rev_s_no = 1
+    for k in common_keys:
+        c_item = curr_emp_map[k]
+        p_item = prev_emp_map[k]
+        c_amt = c_item["amount"]
+        p_amt = p_item["amount"]
+        diff = round(c_amt - p_amt, 2)
+        if abs(diff) > 0.01:
+            meta = emp_meta.get(k, {})
+            history = emp_history_map.get(k)
+            rev_type = "Increment" if diff > 0 else "Decrement"
+            reason = (history.get("reason") if history else "") or ("Salary Revision" if diff > 0 else "Salary Adjustment")
+
+            rev_data = {
+                "s_no": rev_s_no,
+                "employee": k,
+                "employee_doc_name": k,
+                "employee_id": k,
+                "biometric_id": meta.get("employee_id") or "",
+                "employee_name": c_item["employee_name"] or meta.get("employee_name") or k,
+                "department": c_item["department"] or meta.get("department") or "",
+                "designation": c_item["designation"] or meta.get("designation") or "",
+                "prev_amount": round(p_amt, 2),
+                "curr_amount": round(c_amt, 2),
+                "diff_amount": diff,
+                "abs_diff_amount": abs(diff),
+                "revision_type": rev_type,
+                "reason": reason,
+                "history_id": history.get("name") if history else None,
+                "has_history": bool(history),
+                "changed_by": history.get("changed_by_name") if history else None,
+                "changed_at": str(history.get("changed_at")) if history and history.get("changed_at") else None,
+                "changed_components": history.get("changed_components") if history else None,
+                "component_details": history.get("component_details") if history else None,
+                "slip_name": c_item["slip_name"]
+            }
+            revisions.append(rev_data)
+            if rev_type == "Increment":
+                increments.append(rev_data)
+            else:
+                decrements.append(rev_data)
+            rev_s_no += 1
+
+    total_revision_amount = round(sum(r["diff_amount"] for r in revisions), 2)
+    total_revision_count = len(revisions)
+    total_increment_amount = round(sum(r["diff_amount"] for r in increments), 2)
+    total_increment_count = len(increments)
+    total_decrement_amount = round(sum(r["abs_diff_amount"] for r in decrements), 2)
+    total_decrement_count = len(decrements)
+
+    # 4. Deletions (Present in Previous Month, Absent in Current Month)
+    deletions = []
+    deleted_keys = sorted(list(prev_keys - curr_keys))
+    del_s_no = 1
+    for k in deleted_keys:
+        item = prev_emp_map[k]
+        meta = emp_meta.get(k, {})
+        deletions.append({
+            "s_no": del_s_no,
+            "employee": k,
+            "employee_doc_name": k,
+            "employee_id": k,
+            "biometric_id": meta.get("employee_id") or "",
+            "employee_name": item["employee_name"] or meta.get("employee_name") or k,
+            "department": item["department"] or meta.get("department") or "",
+            "designation": item["designation"] or meta.get("designation") or "",
+            "amount": round(item["amount"], 2),
+            "slip_name": item["slip_name"]
+        })
+        del_s_no += 1
+    total_deletion_amount = round(sum(d["amount"] for d in deletions), 2)
+    total_deletion_count = len(deletions)
+
+    # 5. Current Month Total
+    curr_total_amount = round(sum(item["amount"] for item in curr_emp_map.values()), 2)
+    curr_headcount = len(curr_emp_map)
+
+    # 6. Total Increase / Decrease (Net Delta)
+    total_increase_decrease = round(curr_total_amount - prev_total_amount, 2)
+
+    # 7. Reconciliation Calculation & Difference
+    reconciled_total = round(prev_total_amount + total_addition_amount + total_revision_amount - total_deletion_amount, 2)
+    difference = round(curr_total_amount - reconciled_total, 2)
+
+    # Company name from settings
+    company_name = "BBK EXPORTS PRIVATE LIMITED"
+    try:
+        company_setting = frappe.db.get_single_value("HRMS Settings", "company_name")
+        if company_setting:
+            company_name = company_setting
+    except Exception:
+        pass
+
+    return {
+        "company_name": company_name,
+        "current_period_label": curr_period_str,
+        "prev_period_label": prev_period_str,
+        "current_full_month": curr_full_month,
+        "prev_full_month": prev_full_month,
+        "current_start_date": str(c_start),
+        "current_end_date": str(c_end),
+        "prev_start_date": str(p_start),
+        "prev_end_date": str(p_end),
+        "amount_basis": amount_basis,
+        "previous_month": {
+            "label": f"Salary for the Month of {prev_period_str}",
+            "count": prev_headcount,
+            "total_amount": prev_total_amount
+        },
+        "additions": additions,
+        "total_addition": {
+            "count": total_addition_count,
+            "subtotal": total_addition_amount,
+            "total": total_addition_amount
+        },
+        "revisions": revisions,
+        "increments": increments,
+        "decrements": decrements,
+        "total_increment": {
+            "count": total_increment_count,
+            "total": total_increment_amount
+        },
+        "total_decrement": {
+            "count": total_decrement_count,
+            "total": total_decrement_amount
+        },
+        "total_revision": {
+            "count": total_revision_count,
+            "subtotal": total_revision_amount,
+            "total": total_revision_amount
+        },
+        "deletions": deletions,
+        "total_deletion": {
+            "count": total_deletion_count,
+            "subtotal": total_deletion_amount,
+            "total": total_deletion_amount
+        },
+        "current_month": {
+            "label": f"Salary for the Month of {curr_period_str}",
+            "count": curr_headcount,
+            "total_amount": curr_total_amount
+        },
+        "total_increase_decrease": total_increase_decrease,
+        "reconciled_total": reconciled_total,
+        "difference": difference
+    }
+
+
+@frappe.whitelist()
 def bulk_download_pdf_2in1(names=None, format=None):
     """
     Combines salary slips 2-per-page onto standard A4 Portrait sheets (210mm x 297mm).
