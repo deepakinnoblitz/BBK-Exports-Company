@@ -3683,7 +3683,8 @@ def get_salary_reconciliation_statement(
     fields = [
         "name", "employee", "employee_name", "department", "designation", "employee_type",
         "gross_pay", "grand_gross_pay", "net_pay", "grand_net_pay",
-        "total_monthly_ctc", "earned_ctc", "docstatus"
+        "total_monthly_ctc", "earned_ctc", "docstatus",
+        "lop_days", "unpaid_leave_days", "lop", "total_working_days"
     ]
 
     curr_slips = frappe.get_all("Salary Slip", filters=base_curr_filters, fields=fields, order_by="employee asc")
@@ -3698,6 +3699,13 @@ def get_salary_reconciliation_statement(
             return flt(slip.earned_ctc if (slip.earned_ctc is not None and slip.earned_ctc != 0) else (slip.total_monthly_ctc or 0.0))
         # default: net_pay
         return flt(slip.grand_net_pay if (slip.grand_net_pay is not None and slip.grand_net_pay != 0) else (slip.net_pay or 0.0))
+
+    def extract_lop(slip):
+        if not slip:
+            return 0.0, 0.0
+        days = flt(getattr(slip, "lop_days", None) or getattr(slip, "unpaid_leave_days", None) or 0.0)
+        amt = flt(getattr(slip, "lop", None) or 0.0)
+        return days, amt
 
     # Pre-fetch Employee metadata for employee_id (biometric / employee code)
     all_emp_names = list(set([s.employee for s in curr_slips + prev_slips if s.employee]))
@@ -3732,6 +3740,7 @@ def get_salary_reconciliation_statement(
     curr_emp_map = {}
     for s in curr_slips:
         emp_key = s.employee or s.name
+        s_lop_days, s_lop_amt = extract_lop(s)
         if emp_key not in curr_emp_map:
             curr_emp_map[emp_key] = {
                 "employee": emp_key,
@@ -3741,15 +3750,20 @@ def get_salary_reconciliation_statement(
                 "designation": s.designation,
                 "employee_type": s.employee_type,
                 "amount": calc_amount(s),
+                "lop_days": s_lop_days,
+                "lop_amount": s_lop_amt,
                 "slips": [s]
             }
         else:
             curr_emp_map[emp_key]["amount"] += calc_amount(s)
+            curr_emp_map[emp_key]["lop_days"] += s_lop_days
+            curr_emp_map[emp_key]["lop_amount"] += s_lop_amt
             curr_emp_map[emp_key]["slips"].append(s)
 
     prev_emp_map = {}
     for s in prev_slips:
         emp_key = s.employee or s.name
+        s_lop_days, s_lop_amt = extract_lop(s)
         if emp_key not in prev_emp_map:
             prev_emp_map[emp_key] = {
                 "employee": emp_key,
@@ -3759,10 +3773,14 @@ def get_salary_reconciliation_statement(
                 "designation": s.designation,
                 "employee_type": s.employee_type,
                 "amount": calc_amount(s),
+                "lop_days": s_lop_days,
+                "lop_amount": s_lop_amt,
                 "slips": [s]
             }
         else:
             prev_emp_map[emp_key]["amount"] += calc_amount(s)
+            prev_emp_map[emp_key]["lop_days"] += s_lop_days
+            prev_emp_map[emp_key]["lop_amount"] += s_lop_amt
             prev_emp_map[emp_key]["slips"].append(s)
 
     curr_keys = set(curr_emp_map.keys())
@@ -3816,8 +3834,20 @@ def get_salary_reconciliation_statement(
         if abs(diff) > 0.01:
             meta = emp_meta.get(k, {})
             history = emp_history_map.get(k)
-            rev_type = "Increment" if diff > 0 else "Decrement"
-            reason = (history.get("reason") if history else "") or ("Salary Revision" if diff > 0 else "Salary Adjustment")
+            c_lop = c_item.get("lop_days", 0.0)
+            p_lop = p_item.get("lop_days", 0.0)
+            lop_diff = round(c_lop - p_lop, 2)
+
+            is_lop_variance = False
+            if not history and (abs(lop_diff) > 0.01 or (c_lop > 0 or p_lop > 0)):
+                is_lop_variance = True
+                rev_type = "LOP Variance"
+                c_day_str = f"{c_lop:g} {'day' if c_lop == 1 else 'days'}"
+                p_day_str = f"{p_lop:g} {'day' if p_lop == 1 else 'days'}"
+                reason = f"LOP: {c_day_str} in {curr_period_str} vs {p_day_str} in {prev_period_str}"
+            else:
+                rev_type = "Increment" if diff > 0 else "Decrement"
+                reason = (history.get("reason") if history else "") or ("Salary Revision" if diff > 0 else "Salary Adjustment")
 
             rev_data = {
                 "s_no": rev_s_no,
@@ -3833,6 +3863,9 @@ def get_salary_reconciliation_statement(
                 "diff_amount": diff,
                 "abs_diff_amount": abs(diff),
                 "revision_type": rev_type,
+                "is_lop_variance": is_lop_variance,
+                "curr_lop_days": c_lop,
+                "prev_lop_days": p_lop,
                 "reason": reason,
                 "history_id": history.get("name") if history else None,
                 "has_history": bool(history),
@@ -3843,7 +3876,7 @@ def get_salary_reconciliation_statement(
                 "slip_name": c_item["slip_name"]
             }
             revisions.append(rev_data)
-            if rev_type == "Increment":
+            if diff > 0:
                 increments.append(rev_data)
             else:
                 decrements.append(rev_data)
@@ -3855,6 +3888,9 @@ def get_salary_reconciliation_statement(
     total_increment_count = len(increments)
     total_decrement_amount = round(sum(r["abs_diff_amount"] for r in decrements), 2)
     total_decrement_count = len(decrements)
+    lop_variances = [r for r in revisions if r.get("is_lop_variance")]
+    total_lop_variance_amount = round(sum(r["diff_amount"] for r in lop_variances), 2)
+    total_lop_variance_count = len(lop_variances)
 
     # 4. Deletions (Present in Previous Month, Absent in Current Month)
     deletions = []
@@ -3924,6 +3960,7 @@ def get_salary_reconciliation_statement(
         "revisions": revisions,
         "increments": increments,
         "decrements": decrements,
+        "lop_variances": lop_variances,
         "total_increment": {
             "count": total_increment_count,
             "total": total_increment_amount
@@ -3931,6 +3968,10 @@ def get_salary_reconciliation_statement(
         "total_decrement": {
             "count": total_decrement_count,
             "total": total_decrement_amount
+        },
+        "total_lop_variance": {
+            "count": total_lop_variance_count,
+            "total": total_lop_variance_amount
         },
         "total_revision": {
             "count": total_revision_count,
