@@ -1142,12 +1142,16 @@ def get_populated_permissions(backend_master_role):
     return doc.permissions
 
 @frappe.whitelist()
-def get_hr_dashboard_data():
+def get_hr_dashboard_data(start_date=None, end_date=None):
     """
-    Fetch HR dashboard statistics and data.
+    Fetch HR dashboard statistics and data with optional date filtering.
     """
     data = {}
     today = frappe.utils.today()
+    target_start = start_date or today
+    target_end = end_date or target_start
+    data["filter_start_date"] = target_start
+    data["filter_end_date"] = target_end
     
     # 1. Announcements
     try:
@@ -1170,22 +1174,33 @@ def get_hr_dashboard_data():
     except Exception:
         data["announcements"] = []
 
-    # 2. Employee Stats & Today Attendance
+    # 2. Employee Stats & Attendance
     try:
         active_emp_count = frappe.db.count("Employee", {"status": "Active"})
         data["total_active_employees"] = active_emp_count
         data["total_employees"] = active_emp_count
 
-        # Today Attendance Stats for Active Employees
-        today_present = frappe.db.sql("""
-            SELECT COUNT(DISTINCT a.employee)
-            FROM `tabAttendance` a
-            INNER JOIN `tabEmployee` e ON a.employee = e.name
-            WHERE a.attendance_date = %s
-            AND a.status IN ('Present', 'Half Day')
-            AND a.docstatus != 2
-            AND e.status = 'Active'
-        """, (today,))[0][0] or 0
+        # Attendance Stats for Active Employees for target date / range
+        if target_start == target_end:
+            today_present = frappe.db.sql("""
+                SELECT COUNT(DISTINCT a.employee)
+                FROM `tabAttendance` a
+                INNER JOIN `tabEmployee` e ON a.employee = e.name
+                WHERE a.attendance_date = %s
+                AND a.status IN ('Present', 'Half Day')
+                AND a.docstatus != 2
+                AND e.status = 'Active'
+            """, (target_start,))[0][0] or 0
+        else:
+            today_present = frappe.db.sql("""
+                SELECT COUNT(DISTINCT a.employee)
+                FROM `tabAttendance` a
+                INNER JOIN `tabEmployee` e ON a.employee = e.name
+                WHERE a.attendance_date BETWEEN %s AND %s
+                AND a.status IN ('Present', 'Half Day')
+                AND a.docstatus != 2
+                AND e.status = 'Active'
+            """, (target_start, target_end))[0][0] or 0
 
         today_absent = max(0, active_emp_count - today_present)
 
@@ -1201,7 +1216,6 @@ def get_hr_dashboard_data():
 
     # 3. Pending Leaves (Workflow based)
     try:
-        # Assuming workflow states 'Pending' or 'Draft' are pending
         data["pending_leaves"] = frappe.db.count("Leave Application", {
             "workflow_state": "Pending"
         })
@@ -1216,29 +1230,27 @@ def get_hr_dashboard_data():
     except Exception:
         data["pending_request"] = 0
 
-    # 5. Today's Leaves
+    # 5. Leaves in Selected Date/Range
     try:
-        # Check Attendance for "On Leave" status or Leave Application for approved leaves today
         data["todays_leaves"] = frappe.db.sql("""
             SELECT e.employee_name, e.name as employee
             FROM `tabLeave Application` la
             JOIN `tabEmployee` e ON la.employee = e.name
             WHERE la.workflow_state = 'Approved'
-            AND %s BETWEEN la.from_date AND la.to_date
-        """, (today,), as_dict=True)
+            AND la.from_date <= %s AND la.to_date >= %s
+        """, (target_end, target_start), as_dict=True)
     except Exception:
         data["todays_leaves"] = []
 
-    # 6. Today's Birthdays
+    # 6. Birthdays on Target Date
     try:
-        # Match day and month
         data["todays_birthdays"] = frappe.db.sql("""
             SELECT employee_name, name as employee
             FROM `tabEmployee`
             WHERE status = 'Active'
             AND DAY(dob) = DAY(%s)
             AND MONTH(dob) = MONTH(%s)
-        """, (today, today), as_dict=True)
+        """, (target_start, target_start), as_dict=True)
     except Exception:
         data["todays_birthdays"] = []
 
