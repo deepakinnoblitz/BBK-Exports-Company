@@ -77,21 +77,20 @@ def sync_smartoffice_logs(from_datetime=None, to_datetime=None, sync_type="Manua
         raise frappe.ValidationError("Biometric Integration is disabled in Biometric Settings.")
 
     now = now_datetime()
-    overlap_minutes = settings.overlap_minutes or 15
-
-    # Determine sync time window
+    # Determine sync time window (Full Day: 12:00:00 AM to 11:59:59 PM)
     if not from_datetime:
-        if settings.last_successful_sync:
-            from_dt = get_datetime(settings.last_successful_sync) - timedelta(minutes=overlap_minutes)
-        else:
-            from_dt = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        # Default to the start of today (12:00:00 AM / 00:00:00) so no punches from earlier in the day are missed
+        from_dt = now.replace(hour=0, minute=0, second=0, microsecond=0)
     else:
         from_dt = get_datetime(from_datetime)
 
     if not to_datetime:
-        to_dt = now
+        # Default to the end of today (11:59:59 PM / 23:59:59)
+        to_dt = now.replace(hour=23, minute=59, second=59, microsecond=0)
     else:
         to_dt = get_datetime(to_datetime)
+        if isinstance(to_datetime, str) and len(to_datetime.strip()) == 10:
+            to_dt = to_dt.replace(hour=23, minute=59, second=59, microsecond=0)
 
     # Initialize Sync Log
     sync_log = frappe.get_doc({
