@@ -4,9 +4,37 @@ from frappe.model.document import Document
 from frappe.utils import getdate, flt
 
 class Employee(Document):
+	def autoname(self):
+		target_id = (self.employee_id or self.name or "").strip()
+		if target_id and not target_id.lower().startswith("new-employee") and not target_id.lower().startswith("new-"):
+			if frappe.db.exists("Employee", target_id):
+				frappe.throw(frappe._(f"Employee ID '{target_id}' already exists. Please choose a unique Employee ID."))
+			self.name = target_id
+			self.employee_id = target_id
+		else:
+			self.name = frappe.model.naming.make_autoname("BEPL.#####", self.doctype)
+			self.employee_id = self.name
+
 	def validate(self):
-		if not self.employee_id or not str(self.employee_id).strip():
-			self.employee_id = None
+		# Synchronize name and employee_id
+		if self.name and not self.employee_id:
+			self.employee_id = self.name
+		elif self.employee_id and not self.name:
+			self.name = self.employee_id
+
+		# Check duplicate employee_id in tabEmployee (excluding current document)
+		if self.employee_id:
+			existing = frappe.db.sql(
+				"""
+				SELECT name FROM `tabEmployee`
+				WHERE (name = %s OR employee_id = %s) AND name != %s
+				""",
+				(self.employee_id, self.employee_id, self.name or ""),
+				as_dict=True
+			)
+			if existing:
+				frappe.throw(frappe._(f"Employee ID '{self.employee_id}' already exists for another employee ({existing[0].name})."))
+
 		from company.company.shift_roster_api import is_security_employee
 		if not is_security_employee(self):
 			self.weekly_off = "Sunday"
