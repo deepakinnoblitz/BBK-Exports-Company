@@ -192,7 +192,9 @@ spa_routes = [
     "bank-account", "asset-category", "asset-category", "performance-criteria-category", 
     "designation", "salary-structure-component", "leave-type", "settings", "master", "proposals",
     "email-templates", "email-campaigns", "email-automations", "email-settings", "whatsapp-templates",
-    "whatsapp-automation", "whatsapp-settings", "whatsapp-campaigns", "lead-integration", "sales-target-entry", "role-permissions"
+    "whatsapp-automation", "whatsapp-settings", "whatsapp-campaigns", "lead-integration", "sales-target-entry", "role-permissions", 
+    "employee-type", "line-order", "shift", "bus-travel-route", "blood-group", "hr-document-category", "shift-roster", "monthly-roster",
+    "shift-rotation", "line-roster", "monthly-line-roster", "line-rotation", "face-line-change", "canteen"
 ]
 
 website_route_rules = []
