@@ -161,6 +161,35 @@ def get_next_employee_id():
     return f"BEPL{next_num:05d}"
 
 
+@frappe.whitelist()
+def check_employee_id_available(employee_id, current_employee_id=None):
+    """Check if Employee ID is unique and available for use."""
+    if not employee_id or not str(employee_id).strip():
+        return {"available": False, "message": "Employee ID cannot be empty"}
+
+    emp_id = str(employee_id).strip()
+
+    query = """
+        SELECT name, employee_name
+        FROM `tabEmployee`
+        WHERE (name = %s OR employee_id = %s)
+    """
+    params = [emp_id, emp_id]
+
+    if current_employee_id and str(current_employee_id).strip():
+        query += " AND name != %s"
+        params.append(str(current_employee_id).strip())
+
+    existing = frappe.db.sql(query, tuple(params), as_dict=True)
+    if existing:
+        return {
+            "available": False,
+            "message": f"Employee ID '{emp_id}' is already assigned to {existing[0].employee_name} ({existing[0].name})"
+        }
+
+    return {"available": True, "message": "Employee ID is available"}
+
+
 # =================== INVOICE REFERENCE ===================
 @frappe.whitelist()
 def get_next_invoice_preview():

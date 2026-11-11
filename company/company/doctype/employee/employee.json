@@ -1,7 +1,7 @@
 {
  "actions": [],
  "allow_rename": 1,
- "autoname": "BEPL.#####",
+ "autoname": "prompt",
  "creation": "2025-09-18 11:50:11.083982",
  "doctype": "DocType",
  "engine": "InnoDB",
@@ -40,6 +40,7 @@
   "production_type",
   "line_order",
   "shift",
+  "weekly_off",
   "bus_travel_route",
   "bus_route_point",
   "status",
@@ -369,6 +370,14 @@
    "fieldtype": "Link",
    "label": "Shift",
    "options": "Shift"
+  },
+  {
+   "default": "Sunday",
+   "depends_on": "eval:doc.employee_type && doc.employee_type.toLowerCase().indexOf('security') !== -1",
+   "fieldname": "weekly_off",
+   "fieldtype": "Select",
+   "label": "Weekly Off",
+   "options": "Sunday\nMonday\nTuesday\nWednesday\nThursday\nFriday\nSaturday"
   },
   {
    "fieldname": "bus_travel_route",

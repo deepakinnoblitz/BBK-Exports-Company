@@ -9,6 +9,79 @@ import frappe
 from frappe.utils import getdate, now_datetime, cint, flt
 
 # ----------------------------------------------------------------------
+# WEEKLY OFF & SECURITY SHIFT HELPERS
+# ----------------------------------------------------------------------
+
+WEEKDAY_NAME_TO_INT = {
+	"monday": 0, "tuesday": 1, "wednesday": 2, "thursday": 3,
+	"friday": 4, "saturday": 5, "sunday": 6
+}
+
+def is_security_employee(employee_doc_or_id):
+	"""Returns True if the employee belongs to Security (type, department, designation, or shift)."""
+	if not employee_doc_or_id:
+		return False
+	if isinstance(employee_doc_or_id, str):
+		emp = frappe.db.get_value("Employee", employee_doc_or_id, ["employee_type", "department", "designation", "shift"], as_dict=True)
+	elif hasattr(employee_doc_or_id, "get"):
+		emp = employee_doc_or_id
+	else:
+		emp = getattr(employee_doc_or_id, "__dict__", {})
+
+	if not emp:
+		return False
+
+	emp_type = (emp.get("employee_type") or "").strip().lower()
+	dept = (emp.get("department") or "").strip().lower()
+	desig = (emp.get("designation") or "").strip().lower()
+	shift = (emp.get("shift") or "").strip().lower()
+
+	return "security" in emp_type or "security" in dept or "security" in desig or "security" in shift
+
+def get_employee_weekly_off_weekday(employee_id_or_doc, shift_id=None):
+	"""
+	Returns integer weekday (0=Monday, 6=Sunday).
+	For Security employees:
+	  1. Check Employee.weekly_off
+	  2. Default to Sunday (6)
+	For non-Security employees:
+	  Defaults strictly to Sunday (6)
+	"""
+	if not employee_id_or_doc:
+		return 6
+
+	if isinstance(employee_id_or_doc, str):
+		emp = frappe.db.get_value("Employee", employee_id_or_doc, ["name", "weekly_off", "employee_type", "department", "designation"], as_dict=True)
+	elif hasattr(employee_id_or_doc, "get"):
+		emp = employee_id_or_doc
+	else:
+		emp = getattr(employee_id_or_doc, "__dict__", {})
+
+	if not emp:
+		return 6
+
+	# Check if Security employee
+	if not is_security_employee(emp):
+		return 6
+
+	# 1. Employee-level weekly off
+	emp_wo = (emp.get("weekly_off") or "").strip().lower()
+	if emp_wo in WEEKDAY_NAME_TO_INT:
+		return WEEKDAY_NAME_TO_INT[emp_wo]
+
+	# 2. Default to Sunday (6)
+	return 6
+
+def is_employee_weekly_off(employee_id_or_doc, target_date, shift_id=None):
+	"""Returns True if target_date is this employee's weekly-off day."""
+	if not target_date:
+		return False
+	target_d = getdate(target_date)
+	wo_weekday = get_employee_weekly_off_weekday(employee_id_or_doc, shift_id)
+	return target_d.weekday() == wo_weekday
+
+
+# ----------------------------------------------------------------------
 # 1. CENTRAL SHIFT RESOLVER
 # ----------------------------------------------------------------------
 
@@ -81,7 +154,7 @@ def get_applicable_shift(employee, attendance_date):
 
 	for rot in rotations:
 		# Check if today is a weekly-off or holiday and rotation excludes it
-		is_weekly_off = target_date.weekday() == 6  # Sunday by default
+		is_weekly_off = is_employee_weekly_off(employee, target_date)
 		if rot.exclude_weekly_offs and is_weekly_off:
 			continue
 
@@ -156,9 +229,15 @@ def get_shift_metadata(shift_id):
 
 
 def is_holiday_for_date(target_date):
-	"""Check if the given date is listed as a non-working holiday in any company Holiday List."""
+	"""Check if the given date is listed as a non-working declared public holiday in any company Holiday List."""
 	date_str = target_date.strftime("%Y-%m-%d") if isinstance(target_date, (date, datetime)) else str(target_date)
-	return frappe.db.exists("Holidays", {"holiday_date": date_str, "is_working_day": 0}) is not None
+	res = frappe.db.sql("""
+		SELECT name FROM `tabHolidays`
+		WHERE holiday_date = %s
+		  AND (is_holiday = 1 OR (is_working_day = 0 AND LOWER(COALESCE(description, '')) NOT IN ('sunday', 'weekly off', '')))
+		LIMIT 1
+	""", (date_str,))
+	return bool(res)
 
 
 def record_roster_history(roster_id, employee, employee_name, effective_from, effective_to, previous_shift, new_shift, changed_by, reason, source):
@@ -517,13 +596,13 @@ def get_monthly_roster(month=None, year=None, department=None, employee=None, se
 	start_str = start_date.strftime("%Y-%m-%d")
 	end_str = end_date.strftime("%Y-%m-%d")
 
-	# 1. Pre-fetch Holidays for the month once
+	# 1. Pre-fetch Holidays for the month once (declared public holidays only, not Sundays / weekly offs)
 	month_holidays = frappe.db.sql(
 		"""
 		SELECT holiday_date, description
 		FROM `tabHolidays`
 		WHERE holiday_date BETWEEN %s AND %s
-		  AND is_working_day = 0
+		  AND (is_holiday = 1 OR (is_working_day = 0 AND LOWER(COALESCE(description, '')) NOT IN ('sunday', 'weekly off', '')))
 		""",
 		(start_str, end_str),
 		as_dict=True
@@ -575,7 +654,7 @@ def get_monthly_roster(month=None, year=None, department=None, employee=None, se
 	employees_data = frappe.db.get_all(
 		"Employee",
 		filters=emp_filters,
-		fields=["name", "employee_name", "department", "designation", "shift"],
+		fields=["name", "employee_name", "department", "designation", "shift", "weekly_off", "employee_type"],
 		order_by="employee_name asc",
 		start=start,
 		page_length=limit
@@ -652,7 +731,7 @@ def get_monthly_roster(month=None, year=None, department=None, employee=None, se
 	# Helper to resolve rotation in-memory without ANY SQL queries
 	def resolve_rotation_in_memory(emp_id, emp_dept, target_d, d_str):
 		rots = (rotations_emp.get(emp_id) or (rotations_dept.get(emp_dept) if emp_dept else None) or [])
-		is_wo = target_d.weekday() == 6
+		is_wo = is_employee_weekly_off(emp_id, target_d)
 		is_h = target_d in holiday_map
 
 		for rot in rots:
@@ -703,6 +782,8 @@ def get_monthly_roster(month=None, year=None, department=None, employee=None, se
 				if (r_to is None and d_obj >= r_from) or (r_to is not None and r_from <= d_obj <= r_to):
 					assigned_roster = r
 
+			is_emp_wo = is_employee_weekly_off(emp, d_obj, emp.shift)
+
 			if assigned_roster:
 				s_name = assigned_roster.shift
 				s_meta = shift_lookup.get(s_name, {})
@@ -714,7 +795,7 @@ def get_monthly_roster(month=None, year=None, department=None, employee=None, se
 					"assignment_type": assigned_roster.assignment_type,
 					"start_time": str(s_meta.get("start_time") or ""),
 					"end_time": str(s_meta.get("end_time") or ""),
-					"is_weekly_off": day_info["is_weekend"],
+					"is_weekly_off": is_emp_wo,
 					"is_holiday": day_info["is_holiday"]
 				}
 			else:
@@ -728,7 +809,7 @@ def get_monthly_roster(month=None, year=None, department=None, employee=None, se
 						"roster_id": rot_match.get("roster_id"),
 						"start_time": rot_match.get("start_time", ""),
 						"end_time": rot_match.get("end_time", ""),
-						"is_weekly_off": day_info["is_weekend"],
+						"is_weekly_off": is_emp_wo,
 						"is_holiday": day_info["is_holiday"]
 					}
 				elif emp.shift:
@@ -741,7 +822,7 @@ def get_monthly_roster(month=None, year=None, department=None, employee=None, se
 						"roster_id": None,
 						"start_time": str(s_meta.get("start_time") or ""),
 						"end_time": str(s_meta.get("end_time") or ""),
-						"is_weekly_off": day_info["is_weekend"],
+						"is_weekly_off": is_emp_wo,
 						"is_holiday": day_info["is_holiday"]
 					}
 				else:
@@ -749,7 +830,7 @@ def get_monthly_roster(month=None, year=None, department=None, employee=None, se
 						"shift": None,
 						"shift_name": "Unassigned",
 						"source": "NONE",
-						"is_weekly_off": day_info["is_weekend"],
+						"is_weekly_off": is_emp_wo,
 						"is_holiday": day_info["is_holiday"]
 					}
 
