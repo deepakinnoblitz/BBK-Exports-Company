@@ -2,7 +2,7 @@
  "actions": [],
  "allow_rename": 1,
  "autoname": "autoname",
- "creation": "2026-09-17 18:30:00.000000",
+ "creation": "2026-09-17 18:30:00",
  "doctype": "DocType",
  "engine": "InnoDB",
  "field_order": [
@@ -25,7 +25,7 @@
    "fieldtype": "Select",
    "in_list_view": 1,
    "label": "Category Type",
-   "options": "CTC\nNon CTC\nSkilled\nSemi Skilled\nUnskilled\nGeneral",
+   "options": "CTC\nNon CTC\nGeneral",
    "reqd": 1
   },
   {
@@ -37,7 +37,7 @@
  "grid_page_length": 50,
  "index_web_pages_for_search": 1,
  "links": [],
- "modified": "2026-09-17 18:30:00.000000",
+ "modified": "2026-11-11 12:34:30.939461",
  "modified_by": "Administrator",
  "module": "Company",
  "name": "Employee Type",
@@ -81,19 +81,15 @@
    "write": 1
   },
   {
-   "create": 0,
-   "delete": 0,
-   "email": 0,
    "export": 1,
    "print": 1,
    "read": 1,
    "report": 1,
-   "role": "Employee",
-   "share": 0,
-   "write": 0
+   "role": "Employee"
   }
  ],
  "row_format": "Dynamic",
  "sort_field": "creation",
- "sort_order": "ASC"
+ "sort_order": "ASC",
+ "states": []
 }

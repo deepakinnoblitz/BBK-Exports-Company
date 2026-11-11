@@ -311,8 +311,9 @@ def process_punches_for_employee_dates(employee_date_pairs, sync_user="Administr
         att_doc.out_time = out_time
         att_doc.attendance_source = "Biometric"
         att_doc.manual = 0
-        if not att_doc.shift:
-            att_doc.shift = frappe.db.get_value("Employee", employee, "shift")
+        if not (att_doc.shift or "").strip():
+            att_doc.shift = None
+            att_doc.populate_shift()
 
         # Populate child table attendance_punches
         att_doc.set("attendance_punches", [])
