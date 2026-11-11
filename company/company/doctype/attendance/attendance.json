@@ -73,6 +73,7 @@
         },
         {
             "fetch_from": "employee.shift",
+            "fetch_if_empty": 1,
             "fieldname": "shift",
             "fieldtype": "Link",
             "in_list_view": 1,
