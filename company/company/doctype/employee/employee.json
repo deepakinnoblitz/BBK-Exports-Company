@@ -183,12 +183,14 @@
   {
    "fieldname": "pf_number",
    "fieldtype": "Data",
-   "label": "PF Number"
+   "label": "PF Number",
+   "unique": 1
   },
   {
    "fieldname": "esi_no",
    "fieldtype": "Data",
-   "label": "ESI No"
+   "label": "ESI No",
+   "unique": 1
   },
   {
    "fieldname": "personal_email",
@@ -347,17 +349,20 @@
   {
    "fieldname": "aadhar_number",
    "fieldtype": "Data",
-   "label": "Aadhar Number"
+   "label": "Aadhar Number",
+   "unique": 1
   },
   {
    "fieldname": "pan_number",
    "fieldtype": "Data",
-   "label": "PAN Number"
+   "label": "PAN Number",
+   "unique": 1
   },
   {
    "fieldname": "uan_number",
    "fieldtype": "Data",
-   "label": "UAN Number"
+   "label": "UAN Number",
+   "unique": 1
   },
   {
    "fieldname": "line_order",

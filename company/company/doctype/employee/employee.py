@@ -38,6 +38,8 @@ class Employee(Document):
 		from company.company.shift_roster_api import is_security_employee
 		if not is_security_employee(self):
 			self.weekly_off = "Sunday"
+		from company.company.utils.employee_validation import validate_and_normalize_employee_fields
+		validate_and_normalize_employee_fields(self)
 		self.validate_duplicate_components()
 		self.validate_status_and_dol()
 		self.calculate_totals()
