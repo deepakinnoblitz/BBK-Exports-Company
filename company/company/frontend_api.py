@@ -10,6 +10,14 @@ from datetime import datetime
 def get_csrf_token():
     return frappe.sessions.get_csrf_token()
 
+
+@frappe.whitelist(allow_guest=True)
+def get_app_branding():
+    """Return public branding fields (app_logo, company_name) for sign-in and app shell."""
+    from company.company.doctype.hrms_settings.hrms_settings import get_public_branding
+
+    return get_public_branding()
+
 @frappe.whitelist()
 def get_invoice_count():
     return frappe.db.count("Invoice")
