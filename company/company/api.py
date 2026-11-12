@@ -190,6 +190,39 @@ def check_employee_id_available(employee_id, current_employee_id=None):
     return {"available": True, "message": "Employee ID is available"}
 
 
+@frappe.whitelist()
+def check_employee_field_available(fieldname, value, current_employee_id=None):
+    """Validate format and check uniqueness for an Employee phone/statutory field."""
+    from company.company.utils.employee_validation import check_employee_field_value
+
+    return check_employee_field_value(
+        fieldname=str(fieldname or "").strip(),
+        value=value,
+        current_employee_id=current_employee_id,
+    )
+
+
+@frappe.whitelist()
+def check_employee_fields_available(fields_json, current_employee_id=None):
+    """Batch-validate format and uniqueness for multiple Employee phone/statutory fields."""
+    from company.company.utils.employee_validation import check_employee_field_value
+
+    fields = json.loads(fields_json) if isinstance(fields_json, str) else (fields_json or {})
+    results = {}
+    all_valid = True
+    for fieldname, value in fields.items():
+        res = check_employee_field_value(
+            fieldname=str(fieldname or "").strip(),
+            value=value,
+            current_employee_id=current_employee_id,
+        )
+        results[fieldname] = res
+        if not res.get("valid") or not res.get("available"):
+            all_valid = False
+
+    return {"valid": all_valid, "results": results}
+
+
 # =================== INVOICE REFERENCE ===================
 @frappe.whitelist()
 def get_next_invoice_preview():
@@ -3773,32 +3806,11 @@ def bulk_import_employees(rows, update_existing=False, bank_accounts=None):
         except Exception:
             return None
 
-    def _clean_phone(phone_val):
-        if not phone_val:
-            return None
-        s = str(phone_val).strip()
-        if not s:
-            return None
-        # Handle scientific notation like 9.19648E+11 or float strings like 9876543210.0
-        if "e" in s.lower():
-            try:
-                s = str(int(float(s)))
-            except Exception:
-                pass
-        elif s.endswith(".0"):
-            s = s[:-2]
+    def _clean_phone(phone_val, label="Phone Number"):
+        from company.company.utils.employee_validation import normalize_and_validate_phone
 
-        digits = "".join(filter(str.isdigit, s))
-        if not digits:
-            return None
-
-        if s.startswith("+"):
-            return f"+{digits}"
-        if len(digits) == 10:
-            return f"+91{digits}"
-        elif len(digits) == 12 and digits.startswith("91"):
-            return f"+{digits}"
-        return f"+{digits}" if len(digits) >= 10 else digits
+        canonical, _ = normalize_and_validate_phone(phone_val, field_label=label, default_region="IN")
+        return canonical
 
     # =========================================================================
     # STEP 1: RESOLVE EXISTING BANK ACCOUNTS FROM MASTER (DO NOT AUTO-CREATE)
@@ -3887,11 +3899,11 @@ def bulk_import_employees(rows, update_existing=False, bank_accounts=None):
             if "personal_email" in row and row["personal_email"]:
                 doc.personal_email = str(row["personal_email"]).strip()
             if "phone" in row and row["phone"]:
-                cleaned_p = _clean_phone(row["phone"])
+                cleaned_p = _clean_phone(row["phone"], "Personal Phone Number")
                 if cleaned_p:
                     doc.phone = cleaned_p
             if "office_phone_number" in row and row["office_phone_number"]:
-                cleaned_op = _clean_phone(row["office_phone_number"])
+                cleaned_op = _clean_phone(row["office_phone_number"], "Office Phone Number")
                 if cleaned_op:
                     doc.office_phone_number = cleaned_op
             if "dob" in row and row["dob"]:
@@ -4146,6 +4158,7 @@ def bulk_import_employees(rows, update_existing=False, bank_accounts=None):
 
         except Exception as e:
             frappe.db.rollback()
+            frappe.clear_messages()
             errors.append(f"Row {row_num} ({emp_doc_name or emp_name}): {str(e)}")
 
     return {
