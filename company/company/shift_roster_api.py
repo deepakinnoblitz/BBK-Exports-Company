@@ -201,8 +201,10 @@ def get_applicable_shift(employee, attendance_date):
 			"details": shift_details
 		}
 
-	# 3. Fallback: Employee Default Shift
+	# 3. Fallback: Employee Default Shift, preserving pre-change default for historical dates
 	default_shift = frappe.db.get_value("Employee", employee, "shift")
+	history_map = get_default_shift_change_history_map([employee])
+	default_shift = resolve_default_shift_for_date(default_shift, target_date, history_map.get(employee))
 	if default_shift:
 		shift_details = get_shift_metadata(default_shift)
 		return {
@@ -213,6 +215,45 @@ def get_applicable_shift(employee, attendance_date):
 		}
 
 	return None
+
+
+def get_default_shift_change_history_map(emp_ids):
+	"""Batch-fetches active/superseded DEFAULT_SHIFT_CHANGE history rows ordered chronologically."""
+	if not emp_ids:
+		return {}
+	rows = frappe.db.sql(
+		"""
+		SELECT h.employee, h.effective_from, h.previous_shift, h.new_shift, h.creation
+		FROM `tabEmployee Shift Roster History` h
+		LEFT JOIN `tabEmployee Shift Roster` r ON r.name = h.roster_id
+		WHERE h.employee IN %(emp_ids)s
+		  AND h.source IN ('DEFAULT_SHIFT_CHANGE', 'SHIFT_CHANGE', 'Default Shift Change', 'DEFAULT SHIFT CHANGE', 'Shift Change')
+		  AND h.new_shift IS NOT NULL AND h.new_shift != ''
+		  AND r.name IS NOT NULL
+		  AND (r.status = 'Active' OR r.reason LIKE '%%Overridden by%%')
+		ORDER BY h.effective_from ASC, h.creation ASC
+		""",
+		{"emp_ids": tuple(emp_ids)},
+		as_dict=True
+	)
+	history_map = {}
+	for row in rows:
+		history_map.setdefault(row.employee, []).append(row)
+	return history_map
+
+
+def resolve_default_shift_for_date(current_default_shift, target_date, history_rows=None):
+	"""
+	Resolves the effective default shift for target_date.
+	If a Default Shift Change took effect after target_date, returns the previous_shift
+	that was active prior to the earliest subsequent shift change.
+	"""
+	if history_rows:
+		target_d = getdate(target_date)
+		for row in history_rows:
+			if row.effective_from and getdate(row.effective_from) > target_d:
+				return row.previous_shift or None
+	return current_default_shift
 
 
 def get_shift_metadata(shift_id):
@@ -671,6 +712,7 @@ def get_monthly_roster(month=None, year=None, department=None, employee=None, se
 	# 5. Fetch all active roster assignments for THIS page of employees
 	emp_ids = [e.name for e in employees_data]
 	emp_rosters = {}
+	default_shift_history_map = get_default_shift_change_history_map(emp_ids) if emp_ids else {}
 	if emp_ids:
 		roster_records = frappe.db.sql(
 			"""
@@ -812,27 +854,31 @@ def get_monthly_roster(month=None, year=None, department=None, employee=None, se
 						"is_weekly_off": is_emp_wo,
 						"is_holiday": day_info["is_holiday"]
 					}
-				elif emp.shift:
-					s_name = emp.shift
-					s_meta = shift_lookup.get(s_name, {})
-					emp_shifts[d_str] = {
-						"shift": s_name,
-						"shift_name": s_meta.get("shift_name", s_name),
-						"source": "DEFAULT",
-						"roster_id": None,
-						"start_time": str(s_meta.get("start_time") or ""),
-						"end_time": str(s_meta.get("end_time") or ""),
-						"is_weekly_off": is_emp_wo,
-						"is_holiday": day_info["is_holiday"]
-					}
 				else:
-					emp_shifts[d_str] = {
-						"shift": None,
-						"shift_name": "Unassigned",
-						"source": "NONE",
-						"is_weekly_off": is_emp_wo,
-						"is_holiday": day_info["is_holiday"]
-					}
+					resolved_default_shift = resolve_default_shift_for_date(
+						emp.shift, d_obj, default_shift_history_map.get(e_id)
+					)
+					if resolved_default_shift:
+						s_name = resolved_default_shift
+						s_meta = shift_lookup.get(s_name, {})
+						emp_shifts[d_str] = {
+							"shift": s_name,
+							"shift_name": s_meta.get("shift_name", s_name),
+							"source": "DEFAULT",
+							"roster_id": None,
+							"start_time": str(s_meta.get("start_time") or ""),
+							"end_time": str(s_meta.get("end_time") or ""),
+							"is_weekly_off": is_emp_wo,
+							"is_holiday": day_info["is_holiday"]
+						}
+					else:
+						emp_shifts[d_str] = {
+							"shift": None,
+							"shift_name": "Unassigned",
+							"source": "NONE",
+							"is_weekly_off": is_emp_wo,
+							"is_holiday": day_info["is_holiday"]
+						}
 
 		matrix.append({
 			"employee": emp.name,
