@@ -246,6 +246,7 @@
   "tds_standard_deduction_old",
   "tds_rebate_limit_87a_new",
   "tds_rebate_limit_87a_old",
+  "tds_enable_marginal_relief",
   "tds_cess_rate",
   "tds_new_regime_slabs",
   "tds_old_regime_slabs",
@@ -1781,7 +1782,7 @@
    "label": "Standard Deduction (Old Regime)"
   },
   {
-   "default": "700000",
+   "default": "1200000",
    "fieldname": "tds_rebate_limit_87a_new",
    "fieldtype": "Currency",
    "label": "Section 87A Rebate Threshold (New Regime)"
@@ -1793,17 +1794,25 @@
    "label": "Section 87A Rebate Threshold (Old Regime)"
   },
   {
+   "default": "1",
+   "fieldname": "tds_enable_marginal_relief",
+   "fieldtype": "Check",
+   "label": "Enable Section 87A Marginal Relief (New Regime)"
+  },
+  {
    "default": "4.0",
    "fieldname": "tds_cess_rate",
    "fieldtype": "Float",
    "label": "Health & Education Cess (%)"
   },
   {
+   "default": "[{\"from_amount\": 0, \"to_amount\": 400000, \"rate_percent\": 0}, {\"from_amount\": 400001, \"to_amount\": 800000, \"rate_percent\": 5}, {\"from_amount\": 800001, \"to_amount\": 1200000, \"rate_percent\": 10}, {\"from_amount\": 1200001, \"to_amount\": 1600000, \"rate_percent\": 15}, {\"from_amount\": 1600001, \"to_amount\": 2000000, \"rate_percent\": 20}, {\"from_amount\": 2000001, \"to_amount\": 2400000, \"rate_percent\": 25}, {\"from_amount\": 2400001, \"to_amount\": null, \"rate_percent\": 30}]",
    "fieldname": "tds_new_regime_slabs",
    "fieldtype": "Long Text",
    "label": "New Regime Tax Slabs"
   },
   {
+   "default": "[{\"from_amount\": 0, \"to_amount\": 250000, \"rate_percent\": 0}, {\"from_amount\": 250001, \"to_amount\": 500000, \"rate_percent\": 5}, {\"from_amount\": 500001, \"to_amount\": 1000000, \"rate_percent\": 20}, {\"from_amount\": 1000001, \"to_amount\": null, \"rate_percent\": 30}]",
    "fieldname": "tds_old_regime_slabs",
    "fieldtype": "Long Text",
    "label": "Old Regime Tax Slabs"
