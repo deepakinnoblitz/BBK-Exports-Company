@@ -8,6 +8,8 @@ from frappe.utils import cint, flt, get_first_day, get_last_day, getdate, format
 from frappe.model.document import Document
 from calendar import monthrange
 
+from company.company.tds import calculate_monthly_tds
+
 
 def excel_round(val):
     """Exact Excel ROUND(val, 0) arithmetic half-up rounding."""
@@ -31,6 +33,18 @@ class SalarySlip(Document):
                 self.cl_balance = flt(res.get("cl_balance", 0.0))
             except Exception:
                 pass
+
+        self._sync_tds_amount_from_deductions()
+
+    def _sync_tds_amount_from_deductions(self):
+        """Keep tds_amount field aligned with the TDS row in the deductions table."""
+        tds_comp = (frappe.db.get_single_value("HRMS Settings", "tds_deduction_component") or "TDS").strip().lower()
+        tds_total = 0.0
+        for row in getattr(self, "deductions", []) or []:
+            cname = (getattr(row, "component_name", None) or getattr(row, "salary_component", None) or "").strip().lower()
+            if cname == tds_comp or cname in ("tds", "income tax", "tds deduction"):
+                tds_total += flt(getattr(row, "amount", 0.0))
+        self.tds_amount = tds_total
 
     def on_submit(self):
         """Triggered automatically when a Salary Slip is submitted (approved)."""
@@ -1836,12 +1850,24 @@ def preview_salary_slip(employee, start_date, end_date):
     grand_gross_pay = excel_round(sum(flt(e["amount"]) for e in prorated_earnings))
 
 
-    # 5.5. Deductions & Professional Tax, PF, ESI, LWF
+    # 5.5. Deductions & Professional Tax, PF, ESI, LWF, TDS
     pt_amount = calculate_professional_tax(grand_gross_pay, start_date, settings, employee=emp.name, emp_doc=emp)
     emp_pf = calculate_employee_pf(emp, earned_gross_salary, earned_basic_da, settings, prorated_earnings=prorated_earnings)
     emp_esi = calculate_employee_esi(emp, grand_gross_pay, earned_gross_salary, settings)
-    tentative_net = max(0.0, grand_gross_pay - (flt(pt_amount) + flt(emp_pf or 0) + flt(emp_esi or 0) + sum(flt(d.amount) for d in emp.deductions if not any(k in (d.component_name or d.salary_component or "").lower() for k in ["prof", "pt", "pf", "esi", "lwf"]))))
+    tentative_net = max(0.0, grand_gross_pay - (flt(pt_amount) + flt(emp_pf or 0) + flt(emp_esi or 0) + sum(flt(d.amount) for d in emp.deductions if not any(k in (d.component_name or d.salary_component or "").lower() for k in ["prof", "pt", "pf", "esi", "lwf", "tds", "income tax"]))))
     emp_lwf, empr_lwf, is_lwf_eligible = calculate_lwf(emp, grand_gross_pay, start_date, settings, employee_id=emp.name, prorated_earnings=prorated_earnings, net_pay=tentative_net)
+    tds_res = calculate_monthly_tds(
+        grand_gross_pay,
+        start_date,
+        settings,
+        employee=emp.name,
+        emp_doc=emp,
+        base_monthly_gross=base_gross_total if base_gross_total > 0 else gross_pay,
+    )
+    tds_amount = flt(tds_res.get("tds_amount", 0.0))
+    tds_component_name = tds_res.get("tds_component") or "TDS"
+    tds_applicable = bool(tds_res.get("applicable"))
+    tds_breakdown = tds_res.get("breakdown")
 
     # Resolved dynamic deduction component names
     matched_pt_rule = None
@@ -1906,6 +1932,10 @@ def preview_salary_slip(employee, start_date, end_date):
             item["component_name"] = lwf_component_name
             item["salary_component"] = lwf_component_name
             item["amount"] = emp_lwf
+        elif c_lower == tds_component_name.lower() or c_lower in ["tds", "income tax", "tds deduction"]:
+            item["component_name"] = tds_component_name
+            item["salary_component"] = tds_component_name
+            item["amount"] = tds_amount if tds_applicable else 0.0
         else:
             item["amount"] = flt(d.amount)
 
@@ -1917,6 +1947,8 @@ def preview_salary_slip(employee, start_date, end_date):
         elif (c_lower == esi_component_name.lower() or any(k in c_lower for k in ["esi", "esic"])) and "employer" not in c_lower and emp_esi is not None:
             is_statutory_active = True
         elif (c_lower == lwf_component_name.lower() or any(k in c_lower for k in ["lwf", "labour welfare fund", "welfare fund"])) and emp_lwf > 0:
+            is_statutory_active = True
+        elif (c_lower == tds_component_name.lower() or c_lower in ["tds", "income tax", "tds deduction"]) and tds_applicable and tds_amount > 0:
             is_statutory_active = True
         elif "tea" in c_lower and ("deduction" in c_lower or "expense" in c_lower):
             is_statutory_active = True
@@ -1983,6 +2015,22 @@ def preview_salary_slip(employee, start_date, end_date):
             "standard_amount": 0.0,
             "amount": emp_lwf,
             "is_statutory": 1
+        })
+
+    # If TDS wasn't in employee structure and computed tds_amount > 0, add it
+    has_tds = any(
+        (d.get("component_name") or d.get("salary_component") or "").strip().lower()
+        in [tds_component_name.lower(), "tds", "income tax", "tds deduction"]
+        for d in prorated_deductions
+    )
+    if not has_tds and tds_applicable and tds_amount > 0:
+        prorated_deductions.append({
+            "component_name": tds_component_name,
+            "salary_component": tds_component_name,
+            "type": "Deduction",
+            "standard_amount": 0.0,
+            "amount": tds_amount,
+            "is_statutory": 1,
         })
 
     # Employee Tea & Canteen Deductions
@@ -2327,6 +2375,9 @@ def preview_salary_slip(employee, start_date, end_date):
         "leave_encashment_amount": leave_encashment_total,
         "tea_allowance": 0.0,
         "pt_amount": pt_amount,
+        "tds_amount": tds_amount,
+        "tds_component": tds_component_name,
+        "tds_breakdown": tds_breakdown,
         "tea_deduction": emp_tea_deduction,
         "canteen_deduction": emp_canteen_deduction,
         "employee_tea_rate": emp_tea_rate,
@@ -2873,7 +2924,26 @@ def get_salary_slip_with_details(name):
             if (matched_stat_rule and matched_stat_rule.get("canteen_deduction_component"))
             else (get_category_setting(settings, "canteen_deduction_component", emp_type, default="Canteen Deduction") or "Canteen Deduction").strip()
         ),
+        "tds_amount": flt(getattr(doc, "tds_amount", 0.0)),
     })
+
+    tds_calc = calculate_monthly_tds(
+        gross_val,
+        start_date,
+        settings,
+        employee=doc.employee,
+        emp_doc=emp,
+        current_slip_name=doc.name,
+        base_monthly_gross=base_gross_total if base_gross_total > 0 else gross_val,
+    )
+    res["tds_component"] = tds_calc.get("tds_component") or "TDS"
+    res["tds_breakdown"] = tds_calc.get("breakdown")
+    if flt(res.get("tds_amount")) <= 0:
+        res["tds_amount"] = flt(tds_calc.get("tds_amount", 0.0)) if any(
+            (d.get("component_name") or "").strip().lower() in [(res["tds_component"]).lower(), "tds", "income tax", "tds deduction"]
+            and flt(d.get("amount")) > 0
+            for d in enriched_deductions
+        ) else 0.0
 
     # ── Days Breakdown (mirrors preview_salary_slip) ──────────────────────────
     start_date = getdate(doc.pay_period_start)
@@ -3248,6 +3318,7 @@ def generate_salary_slips_from_employee(year=None, month=None, employees=None, s
                 "annual_bonus": data.get("annual_bonus", 0.0),
                 "leave_encashment_amount": data.get("leave_encashment_amount", 0.0),
                 "pt_amount": data.get("pt_amount", 0.0),
+                "tds_amount": data.get("tds_amount", 0.0),
                 "canteen_deduction": data.get("canteen_deduction", 0.0),
                 "employer_pf": data.get("employer_pf", 0.0),
                 "pf_admin_charges": data.get("pf_admin_charges", 0.0),
@@ -3358,6 +3429,33 @@ def delete_salary_slip(name):
         frappe.throw(_("Cannot delete a submitted salary slip. Please cancel it first."))
     frappe.delete_doc("Salary Slip", name, force=1)
     return {"status": "success", "name": name}
+
+
+@frappe.whitelist()
+def calculate_salary_slip_tds(
+    employee=None,
+    grand_gross_pay=0.0,
+    pay_period_start=None,
+    current_slip_name=None,
+    base_monthly_gross=None,
+):
+    """Server-authoritative TDS calculation helper for Draft Salary Slip edits."""
+    if not frappe.has_permission("Salary Slip", "read"):
+        frappe.throw(_("Not permitted to calculate Salary Slip TDS."), frappe.PermissionError)
+    if not employee or not pay_period_start:
+        frappe.throw(_("Employee and Pay Period Start are required to calculate TDS."))
+
+    settings = frappe.get_single("HRMS Settings")
+    emp_doc = frappe.get_doc("Employee", employee)
+    return calculate_monthly_tds(
+        flt(grand_gross_pay),
+        pay_period_start,
+        settings,
+        employee=employee,
+        emp_doc=emp_doc,
+        current_slip_name=current_slip_name,
+        base_monthly_gross=flt(base_monthly_gross) if base_monthly_gross is not None else None,
+    )
 
 
 @frappe.whitelist()

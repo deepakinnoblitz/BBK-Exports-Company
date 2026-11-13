@@ -12,6 +12,7 @@ from company.company.doctype.hrms_settings.hrms_settings import (
 	is_safe_logo_url,
 )
 from company.company.frontend_api import get_app_branding
+from company.company.tds import DEFAULT_TDS_NEW_SLABS_JSON
 
 # On IntegrationTestCase, the doctype test records and all
 # link-field test record dependencies are recursively loaded
@@ -112,3 +113,30 @@ class IntegrationTestHRMSSettings(IntegrationTestCase):
 		branding = get_app_branding()
 		self.assertEqual(branding["app_logo"], doc.app_logo)
 		self.assertEqual(branding["company_name"], "New Horizon Exports")
+
+	def test_rejects_invalid_tds_settings(self):
+		doc = frappe.get_doc("HRMS Settings", "HRMS Settings")
+		doc.tds_standard_deduction_new = -1000
+		with self.assertRaises(frappe.ValidationError):
+			doc.save(ignore_permissions=True)
+
+		doc = frappe.get_doc("HRMS Settings", "HRMS Settings")
+		doc.tds_cess_rate = 25.0
+		with self.assertRaises(frappe.ValidationError):
+			doc.save(ignore_permissions=True)
+
+		doc = frappe.get_doc("HRMS Settings", "HRMS Settings")
+		doc.tds_new_regime_slabs = '[{"from_amount": 0, "to_amount": 500000, "rate_percent": 0}, {"from_amount": 400000, "to_amount": null, "rate_percent": 10}]'
+		with self.assertRaises(frappe.ValidationError):
+			doc.save(ignore_permissions=True)
+
+	def test_accepts_fy_2026_27_new_regime_tds_defaults(self):
+		doc = frappe.get_doc("HRMS Settings", "HRMS Settings")
+		doc.enable_tds = 1
+		doc.tds_standard_deduction_new = 75000
+		doc.tds_rebate_limit_87a_new = 1200000
+		doc.tds_enable_marginal_relief = 1
+		doc.tds_cess_rate = 4.0
+		doc.tds_new_regime_slabs = DEFAULT_TDS_NEW_SLABS_JSON
+		doc.save(ignore_permissions=True)
+		self.assertEqual(float(doc.tds_rebate_limit_87a_new), 1200000.0)

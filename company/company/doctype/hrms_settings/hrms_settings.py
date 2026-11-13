@@ -4,6 +4,9 @@ from urllib.parse import unquote, urlparse
 import frappe
 from frappe import _
 from frappe.model.document import Document
+from frappe.utils import flt
+
+from company.company.tds import MAX_CESS_RATE_PERCENT, validate_tds_slabs
 
 DEFAULT_COMPANY_NAME = "BBK EXPORTS"
 MAX_COMPANY_NAME_LENGTH = 140
@@ -69,6 +72,28 @@ class HRMSSettings(Document):
 	def validate(self):
 		self._validate_company_name()
 		self._validate_and_publish_app_logo()
+		self._validate_tds_settings()
+
+	def _validate_tds_settings(self):
+		non_negative_fields = [
+			("tds_standard_deduction_new", _("Standard Deduction (New Regime)")),
+			("tds_standard_deduction_old", _("Standard Deduction (Old Regime)")),
+			("tds_rebate_limit_87a_new", _("Section 87A Rebate Threshold (New Regime)")),
+			("tds_rebate_limit_87a_old", _("Section 87A Rebate Threshold (Old Regime)")),
+		]
+		for fieldname, label in non_negative_fields:
+			val = getattr(self, fieldname, None)
+			if val is not None and flt(val) < 0:
+				frappe.throw(_("{0} cannot be negative.").format(label))
+
+		cess_val = getattr(self, "tds_cess_rate", None)
+		if cess_val is not None and (flt(cess_val) < 0 or flt(cess_val) > MAX_CESS_RATE_PERCENT):
+			frappe.throw(
+				_("Health & Education Cess (%) must be between 0 and {0}.").format(MAX_CESS_RATE_PERCENT)
+			)
+
+		validate_tds_slabs(getattr(self, "tds_new_regime_slabs", None), _("New Tax Regime Slabs"))
+		validate_tds_slabs(getattr(self, "tds_old_regime_slabs", None), _("Old Tax Regime Slabs"))
 
 	def _validate_company_name(self):
 		if self.company_name is None:
