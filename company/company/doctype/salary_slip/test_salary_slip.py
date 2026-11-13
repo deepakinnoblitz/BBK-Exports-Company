@@ -11,6 +11,7 @@ from company.company.doctype.salary_slip.salary_slip import calculate_salary_sli
 from company.company.tds import (
 	DEFAULT_TDS_NEW_SLABS_JSON,
 	DEFAULT_TDS_OLD_SLABS_JSON,
+	_extract_tds_from_slip,
 	calculate_monthly_tds,
 	compute_annual_income_tax,
 	compute_slab_tax,
@@ -135,6 +136,20 @@ class IntegrationTestSalarySlip(IntegrationTestCase):
 		self.assertEqual(out_mid["breakdown"]["ytd_tds_deducted"], 60000.0)
 		self.assertEqual(out_mid["breakdown"]["remaining_months"], 6)
 		self.assertEqual(out_mid["tds_amount"], 14167.0)
+
+	def test_extract_tds_from_child_salary_structure(self):
+		def mock_get_all(doctype, filters=None, fields=None):
+			self.assertEqual(doctype, "Salary Structure")
+			self.assertEqual(filters.get("parent"), "SS-0001")
+			self.assertEqual(filters.get("parentfield"), "deductions")
+			return [
+				{"component_name": "PF", "amount": 1800.0},
+				{"component_name": "TDS", "amount": 8500.0},
+			]
+
+		with patch("company.company.tds.frappe.get_all", side_effect=mock_get_all):
+			extracted = _extract_tds_from_slip("SS-0001", tds_amount_col=0.0, tds_component_name="TDS")
+		self.assertEqual(extracted, 8500.0)
 
 	def test_calculate_salary_slip_tds_requires_permission(self):
 		prev_user = frappe.session.user
