@@ -323,8 +323,8 @@ def _extract_tds_from_slip(slip_name: str, tds_amount_col: float | None, tds_com
         return flt(tds_amount_col)
 
     rows = frappe.get_all(
-        "Salary Structure Component",
-        filters={"parent": slip_name, "parenttype": "Salary Slip", "type": "Deduction"},
+        "Salary Structure",
+        filters={"parent": slip_name, "parenttype": "Salary Slip", "parentfield": "deductions"},
         fields=["component_name", "amount"],
     )
     target_lower = tds_component_name.strip().lower()
