@@ -5325,11 +5325,12 @@ def get_employee_applied_leave_dates(employee):
 def get_workforce_dashboard_analytics(date=None, from_date=None, to_date=None, start_date=None, end_date=None):
     """
     Returns aggregated workforce analytics for dashboard:
-    1. Line-wise headcount and attendance
+    1. Line-wise headcount and attendance (reflecting active lines & daily roster line changes)
     2. Department-wise headcount and attendance
     3. Shift-wise headcount and attendance
     4. Workers Skill Matrix (Distribution, Line Matrix, Dept Matrix)
     """
+    import re
     from frappe.utils import today, getdate, flt
     target_start = getdate(from_date or start_date or date or today())
     target_end = getdate(to_date or end_date or date or target_start)
@@ -5337,38 +5338,153 @@ def get_workforce_dashboard_analytics(date=None, from_date=None, to_date=None, s
         target_start, target_end = target_end, target_start
     target_date = str(target_end)
 
-    # 1. Line-Wise Analytics
-    raw_lines = frappe.db.sql("""
-        SELECT 
-            IFNULL(e.line_order, 'Unassigned') AS line,
-            COUNT(DISTINCT e.name) AS total,
-            COUNT(DISTINCT CASE WHEN a.status IN ('Present', 'Half Day') THEN a.employee END) AS present,
-            COUNT(DISTINCT CASE WHEN a.status = 'Missing' THEN a.employee END) AS missing,
-            COUNT(DISTINCT CASE WHEN a.status = 'Absent' THEN a.employee END) AS absent
-        FROM `tabEmployee` e
-        LEFT JOIN `tabAttendance` a ON a.employee = e.name 
-            AND a.attendance_date BETWEEN %s AND %s 
-            AND a.docstatus != 2
-        WHERE e.status = 'Active'
-        GROUP BY e.line_order
-        ORDER BY total DESC
+    def get_line_num(name):
+        m = re.search(r'\d+', str(name or ''))
+        return int(m.group()) if m else 999999
+
+    # 1. Fetch only ACTIVE lines from Line Order master
+    active_lines_data = []
+    if frappe.db.table_exists("Line Order"):
+        active_lines_data = frappe.db.sql("""
+            SELECT name, line_name 
+            FROM `tabLine Order` 
+            WHERE status = 'Active'
+            ORDER BY line_name ASC
+        """, as_dict=True)
+
+    active_line_map = {}
+    for al in active_lines_data:
+        raw_n = al["name"]
+        ln = (al.get("line_name") or raw_n).strip()
+        active_line_map[raw_n] = ln
+        active_line_map[ln] = ln
+        m = re.match(r'^Line\s*(\d+)$', ln, re.IGNORECASE)
+        if m:
+            active_line_map[f"L{m.group(1)}"] = ln
+            active_line_map[f"l{m.group(1)}"] = ln
+
+    all_active_canonical_lines = sorted(list(set(active_line_map.values())), key=lambda x: (get_line_num(x), x))
+
+    # 2. Fetch daily Employee Line Roster assignments effective on target_date
+    roster_map = {}
+    if frappe.db.table_exists("Employee Line Roster"):
+        rosters = frappe.db.sql("""
+            SELECT r.employee, r.line_order, r.assignment_type
+            FROM `tabEmployee Line Roster` r
+            WHERE r.status = 'Active'
+              AND r.effective_from <= %(date_str)s
+              AND (r.effective_to IS NULL OR r.effective_to >= %(date_str)s)
+            ORDER BY 
+                CASE 
+                    WHEN r.assignment_type = 'Override' THEN 1 
+                    WHEN r.assignment_type IN ('Face Biometric Change', 'Face Recognition') THEN 2
+                    ELSE 3 
+                END ASC,
+                CASE WHEN r.effective_to IS NOT NULL THEN 1 ELSE 2 END ASC,
+                DATEDIFF(COALESCE(r.effective_to, '2099-12-31'), r.effective_from) ASC,
+                r.modified DESC
+        """, {"date_str": target_date}, as_dict=True)
+        for r in rosters:
+            if r.employee not in roster_map and r.line_order:
+                roster_map[r.employee] = r.line_order
+
+    # 3. Fetch default line history for changes taking effect after target_date
+    history_map = {}
+    if frappe.db.table_exists("Employee Line Roster History"):
+        try:
+            hist_rows = frappe.db.sql("""
+                SELECT h.employee, h.previous_line, h.effective_from
+                FROM `tabEmployee Line Roster History` h
+                LEFT JOIN `tabEmployee Line Roster` r ON r.name = h.roster_id
+                WHERE h.source IN ('DEFAULT_LINE_CHANGE', 'LINE_CHANGE', 'Default Line Change', 'DEFAULT LINE CHANGE', 'Line Change')
+                  AND h.previous_line IS NOT NULL AND h.previous_line != ''
+                  AND h.effective_from > %(date_str)s
+                  AND (r.name IS NULL OR r.status = 'Active' OR r.reason LIKE '%%Overridden by%%')
+                ORDER BY h.effective_from ASC, h.creation ASC
+            """, {"date_str": target_date}, as_dict=True)
+            for h in hist_rows:
+                if h.employee not in history_map and h.previous_line:
+                    history_map[h.employee] = h.previous_line
+        except Exception:
+            pass
+
+    # Helper to resolve employee's effective line for target_date
+    def resolve_emp_line(emp_name, default_line):
+        if emp_name in roster_map:
+            raw_line = roster_map[emp_name]
+        elif emp_name in history_map:
+            raw_line = history_map[emp_name]
+        else:
+            raw_line = default_line
+        
+        if not raw_line:
+            return None
+        trimmed = str(raw_line).strip()
+        if trimmed.lower() in ('unassigned', 'none', 'null', ''):
+            return None
+        
+        canonical = active_line_map.get(trimmed)
+        if not canonical:
+            match_l = re.match(r'^L\s*(\d+)$', trimmed, re.IGNORECASE)
+            if match_l:
+                canonical = active_line_map.get(f"Line {match_l.group(1)}")
+        return canonical
+
+    # 4. Fetch all active employees
+    employees = frappe.db.sql("""
+        SELECT name, line_order, department, shift, skill, employee_type, designation
+        FROM `tabEmployee`
+        WHERE status = 'Active'
+    """, as_dict=True)
+
+    # Fetch attendance records for the date range
+    attendances = frappe.db.sql("""
+        SELECT employee, status
+        FROM `tabAttendance`
+        WHERE attendance_date BETWEEN %s AND %s
+          AND docstatus != 2
     """, (target_start, target_end), as_dict=True)
 
+    emp_att_map = {}
+    for a in attendances:
+        st = a["status"]
+        emp = a["employee"]
+        if emp not in emp_att_map or st in ('Present', 'Half Day'):
+            emp_att_map[emp] = st
+
+    # Initialize line stats for all active canonical lines
+    line_stats = {}
+    for cl in all_active_canonical_lines:
+        line_stats[cl] = {
+            "line": cl,
+            "total": 0,
+            "present": 0,
+            "absent": 0,
+            "missing": 0,
+            "attendance_rate": 0
+        }
+
+    for emp in employees:
+        eff_line = resolve_emp_line(emp["name"], emp.get("line_order"))
+        if not eff_line or eff_line not in line_stats:
+            continue
+        
+        att_status = emp_att_map.get(emp["name"])
+        line_stats[eff_line]["total"] += 1
+        if att_status in ('Present', 'Half Day'):
+            line_stats[eff_line]["present"] += 1
+        elif att_status == 'Missing':
+            line_stats[eff_line]["missing"] += 1
+        else:
+            line_stats[eff_line]["absent"] += 1
+
     line_wise = []
-    for row in raw_lines:
-        tot = row["total"] or 0
-        pres = row["present"] or 0
-        miss = row["missing"] or 0
-        absn = max(0, tot - pres - miss)
-        rate = round((pres / tot * 100), 1) if tot > 0 else 0
-        line_wise.append({
-            "line": row["line"],
-            "total": tot,
-            "present": pres,
-            "absent": absn,
-            "missing": miss,
-            "attendance_rate": rate
-        })
+    for cl in all_active_canonical_lines:
+        st = line_stats[cl]
+        tot = st["total"]
+        pres = st["present"]
+        st["attendance_rate"] = round((pres / tot * 100), 1) if tot > 0 else 0
+        line_wise.append(st)
 
     # 2. Department-Wise Analytics
     raw_depts = frappe.db.sql("""
@@ -5469,37 +5585,31 @@ def get_workforce_dashboard_analytics(date=None, from_date=None, to_date=None, s
             "percentage": pct
         })
 
-    # Line-wise Skill Matrix
-    raw_line_skills = frappe.db.sql("""
-        SELECT 
-            IFNULL(e.line_order, 'Unassigned') AS line,
-            IFNULL(e.skill, 'Unassigned') AS skill,
-            COUNT(e.name) AS count
-        FROM `tabEmployee` e
-        WHERE e.status = 'Active' AND (e.employee_type = 'Workers' OR e.designation = 'Workers')
-        GROUP BY e.line_order, e.skill
-        ORDER BY e.line_order, e.skill
-    """, as_dict=True)
-
+    # Line-wise Skill Matrix using dynamic effective line
     line_matrix_map = {}
-    for r in raw_line_skills:
-        l = r["line"] or "Unassigned"
-        if l not in line_matrix_map:
-            line_matrix_map[l] = {
-                "line": l,
-                "total": 0,
-                "Highly Skilled": 0,
-                "Skilled": 0,
-                "Semi Skilled": 0,
-                "Unskilled": 0,
-                "Unassigned": 0
-            }
-        s = r["skill"] or "Unassigned"
-        cnt = r["count"] or 0
-        line_matrix_map[l][s] = line_matrix_map[l].get(s, 0) + cnt
-        line_matrix_map[l]["total"] += cnt
+    for cl in all_active_canonical_lines:
+        line_matrix_map[cl] = {
+            "line": cl,
+            "total": 0,
+            "Highly Skilled": 0,
+            "Skilled": 0,
+            "Semi Skilled": 0,
+            "Unskilled": 0,
+            "Unassigned": 0
+        }
 
-    line_skill_matrix = sorted(list(line_matrix_map.values()), key=lambda x: x["total"], reverse=True)
+    for emp in employees:
+        if emp.get("employee_type") == 'Workers' or emp.get("designation") == 'Workers':
+            eff_line = resolve_emp_line(emp["name"], emp.get("line_order"))
+            if not eff_line or eff_line not in line_matrix_map:
+                continue
+            sk = emp.get("skill") or "Unassigned"
+            if sk not in ("Highly Skilled", "Skilled", "Semi Skilled", "Unskilled"):
+                sk = "Unassigned"
+            line_matrix_map[eff_line][sk] += 1
+            line_matrix_map[eff_line]["total"] += 1
+
+    line_skill_matrix = [line_matrix_map[cl] for cl in all_active_canonical_lines]
 
     # Department-wise Skill Matrix
     raw_dept_skills = frappe.db.sql("""
