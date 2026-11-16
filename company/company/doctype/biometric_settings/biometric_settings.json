@@ -14,7 +14,6 @@
   "sync_mode",
   "sync_interval_minutes",
   "daily_sync_times",
-  "overlap_minutes",
   "auto_reconciliation_enabled",
   "history_section",
   "last_successful_sync",
@@ -79,13 +78,6 @@
    "fieldname": "daily_sync_times",
    "fieldtype": "Small Text",
    "label": "Specific Daily Sync Times"
-  },
-  {
-   "default": "15",
-   "description": "Number of minutes of buffer/overlap to query before the last sync to catch delayed punches",
-   "fieldname": "overlap_minutes",
-   "fieldtype": "Int",
-   "label": "Overlap Window (Minutes)"
   },
   {
    "default": "0",
