@@ -1199,6 +1199,15 @@ def get_hr_dashboard_data(start_date=None, end_date=None):
                 AND a.docstatus != 2
                 AND e.status = 'Active'
             """, (target_start,))[0][0] or 0
+            today_missing = frappe.db.sql("""
+                SELECT COUNT(DISTINCT a.employee)
+                FROM `tabAttendance` a
+                INNER JOIN `tabEmployee` e ON a.employee = e.name
+                WHERE a.attendance_date = %s
+                AND a.status = 'Missing'
+                AND a.docstatus != 2
+                AND e.status = 'Active'
+            """, (target_start,))[0][0] or 0
         else:
             today_present = frappe.db.sql("""
                 SELECT COUNT(DISTINCT a.employee)
@@ -1209,16 +1218,29 @@ def get_hr_dashboard_data(start_date=None, end_date=None):
                 AND a.docstatus != 2
                 AND e.status = 'Active'
             """, (target_start, target_end))[0][0] or 0
+            today_missing = frappe.db.sql("""
+                SELECT COUNT(DISTINCT a.employee)
+                FROM `tabAttendance` a
+                INNER JOIN `tabEmployee` e ON a.employee = e.name
+                WHERE a.attendance_date BETWEEN %s AND %s
+                AND a.status = 'Missing'
+                AND a.docstatus != 2
+                AND e.status = 'Active'
+            """, (target_start, target_end))[0][0] or 0
 
-        today_absent = max(0, active_emp_count - today_present)
+        today_absent = max(0, active_emp_count - today_present - today_missing)
 
         data["today_present"] = today_present
+        data["today_missing"] = today_missing
+        data["missing_attendance"] = today_missing
         data["today_absent"] = today_absent
         data["present_today"] = today_present
     except Exception:
         data["total_active_employees"] = 0
         data["total_employees"] = 0
         data["today_present"] = 0
+        data["today_missing"] = 0
+        data["missing_attendance"] = 0
         data["today_absent"] = 0
         data["present_today"] = 0
 
@@ -2903,19 +2925,31 @@ def get_weekly_present_absent_data(filter_type=None, from_date=None, to_date=Non
     today_dt = getdate(nowdate())
 
     # 1. Determine Date Range
-    if filter_type == "This Month":
+    if from_date and to_date:
+        start_date = getdate(from_date)
+        end_date = getdate(to_date)
+    elif filter_type == "This Month":
         start_date = getdate(get_first_day(today_dt))
         end_date = today_dt
     elif filter_type == "Last Month":
         last_month_dt = add_months(today_dt, -1)
         start_date = getdate(get_first_day(last_month_dt))
         end_date = getdate(get_last_day(last_month_dt))
-    elif filter_type == "Custom" and from_date and to_date:
-        start_date = getdate(from_date)
-        end_date = getdate(to_date)
+    elif filter_type == "Today":
+        start_date = today_dt
+        end_date = today_dt
+    elif filter_type == "Yesterday":
+        start_date = today_dt - timedelta(days=1)
+        end_date = today_dt - timedelta(days=1)
+    elif filter_type == "This Week":
+        start_date = today_dt - timedelta(days=today_dt.weekday())
+        end_date = today_dt
     else: # Default: Last 7 Days
         start_date = today_dt - timedelta(days=6)
         end_date = today_dt
+
+    if start_date > end_date:
+        start_date, end_date = end_date, start_date
 
     # 3. Get Settings, Baseline and Holiday dates for the range
     settings = frappe.get_doc("HRMS Settings")
@@ -2937,19 +2971,24 @@ def get_weekly_present_absent_data(filter_type=None, from_date=None, to_date=Non
 
     # 4. Optimized Bulk Fetch
     present_counts_map = {}
+    missing_counts_map = {}
     
     # We only fetch if start_date exists and range is reasonable
     if start_date <= end_date:
         if source == "Attendance":
-            # For Attendance source, count Present and Half Day statuses
+            # For Attendance source, count Present/Half Day and Missing statuses
             attendance_data = frappe.db.sql("""
-                SELECT attendance_date, COUNT(*) as count
+                SELECT 
+                    attendance_date,
+                    COUNT(CASE WHEN status IN ('Present', 'Half Day') THEN 1 END) as present_count,
+                    COUNT(CASE WHEN status = 'Missing' THEN 1 END) as missing_count
                 FROM `tabAttendance`
                 WHERE attendance_date BETWEEN %s AND %s
-                AND status IN ('Present', 'Half Day')
+                AND docstatus != 2
                 GROUP BY attendance_date
             """, (start_date, end_date), as_dict=True)
-            present_counts_map = {str(d.attendance_date): d.count for d in attendance_data}
+            present_counts_map = {str(d.attendance_date): (d.present_count or 0) for d in attendance_data}
+            missing_counts_map = {str(d.attendance_date): (d.missing_count or 0) for d in attendance_data}
         else: # Daily Log source
             # For Daily Log source, count unique employees per day
             daily_log_data = frappe.db.sql("""
@@ -2959,6 +2998,7 @@ def get_weekly_present_absent_data(filter_type=None, from_date=None, to_date=Non
                 GROUP BY login_date
             """, (start_date, end_date), as_dict=True)
             present_counts_map = {str(d.login_date): d.count for d in daily_log_data}
+            missing_counts_map = {}
 
     # 5. Generate Result Array
     result = []
@@ -2979,13 +3019,15 @@ def get_weekly_present_absent_data(filter_type=None, from_date=None, to_date=Non
             continue
 
         present_count = present_counts_map.get(curr_date_str, 0)
-        absent_count = max(0, total_active_employees - present_count)
+        missing_count = missing_counts_map.get(curr_date_str, 0)
+        absent_count = max(0, total_active_employees - present_count - missing_count)
         
         result.append({
             "date": curr_date_str,
             "day": day_name,
             "present": present_count,
-            "absent": absent_count
+            "absent": absent_count,
+            "missing": missing_count,
         })
         
     return result
@@ -5280,7 +5322,7 @@ def get_employee_applied_leave_dates(employee):
 
 
 @frappe.whitelist()
-def get_workforce_dashboard_analytics(date=None):
+def get_workforce_dashboard_analytics(date=None, from_date=None, to_date=None, start_date=None, end_date=None):
     """
     Returns aggregated workforce analytics for dashboard:
     1. Line-wise headcount and attendance
@@ -5289,33 +5331,42 @@ def get_workforce_dashboard_analytics(date=None):
     4. Workers Skill Matrix (Distribution, Line Matrix, Dept Matrix)
     """
     from frappe.utils import today, getdate, flt
-    target_date = getdate(date) if date else today()
+    target_start = getdate(from_date or start_date or date or today())
+    target_end = getdate(to_date or end_date or date or target_start)
+    if target_start > target_end:
+        target_start, target_end = target_end, target_start
+    target_date = str(target_end)
 
     # 1. Line-Wise Analytics
     raw_lines = frappe.db.sql("""
         SELECT 
             IFNULL(e.line_order, 'Unassigned') AS line,
-            COUNT(e.name) AS total,
-            COUNT(CASE WHEN a.status IN ('Present', 'Half Day') THEN 1 END) AS present,
-            COUNT(CASE WHEN a.status = 'Absent' THEN 1 END) AS absent
+            COUNT(DISTINCT e.name) AS total,
+            COUNT(DISTINCT CASE WHEN a.status IN ('Present', 'Half Day') THEN a.employee END) AS present,
+            COUNT(DISTINCT CASE WHEN a.status = 'Missing' THEN a.employee END) AS missing,
+            COUNT(DISTINCT CASE WHEN a.status = 'Absent' THEN a.employee END) AS absent
         FROM `tabEmployee` e
-        LEFT JOIN `tabAttendance` a ON a.employee = e.name AND a.attendance_date = %s AND a.docstatus != 2
+        LEFT JOIN `tabAttendance` a ON a.employee = e.name 
+            AND a.attendance_date BETWEEN %s AND %s 
+            AND a.docstatus != 2
         WHERE e.status = 'Active'
         GROUP BY e.line_order
         ORDER BY total DESC
-    """, (target_date,), as_dict=True)
+    """, (target_start, target_end), as_dict=True)
 
     line_wise = []
     for row in raw_lines:
         tot = row["total"] or 0
         pres = row["present"] or 0
-        absn = max(0, tot - pres)
+        miss = row["missing"] or 0
+        absn = max(0, tot - pres - miss)
         rate = round((pres / tot * 100), 1) if tot > 0 else 0
         line_wise.append({
             "line": row["line"],
             "total": tot,
             "present": pres,
             "absent": absn,
+            "missing": miss,
             "attendance_rate": rate
         })
 
@@ -5323,27 +5374,32 @@ def get_workforce_dashboard_analytics(date=None):
     raw_depts = frappe.db.sql("""
         SELECT 
             IFNULL(e.department, 'Unassigned') AS department,
-            COUNT(e.name) AS total,
-            COUNT(CASE WHEN a.status IN ('Present', 'Half Day') THEN 1 END) AS present,
-            COUNT(CASE WHEN a.status = 'Absent' THEN 1 END) AS absent
+            COUNT(DISTINCT e.name) AS total,
+            COUNT(DISTINCT CASE WHEN a.status IN ('Present', 'Half Day') THEN a.employee END) AS present,
+            COUNT(DISTINCT CASE WHEN a.status = 'Missing' THEN a.employee END) AS missing,
+            COUNT(DISTINCT CASE WHEN a.status = 'Absent' THEN a.employee END) AS absent
         FROM `tabEmployee` e
-        LEFT JOIN `tabAttendance` a ON a.employee = e.name AND a.attendance_date = %s AND a.docstatus != 2
+        LEFT JOIN `tabAttendance` a ON a.employee = e.name 
+            AND a.attendance_date BETWEEN %s AND %s 
+            AND a.docstatus != 2
         WHERE e.status = 'Active'
         GROUP BY e.department
         ORDER BY total DESC
-    """, (target_date,), as_dict=True)
+    """, (target_start, target_end), as_dict=True)
 
     department_wise = []
     for row in raw_depts:
         tot = row["total"] or 0
         pres = row["present"] or 0
-        absn = max(0, tot - pres)
+        miss = row["missing"] or 0
+        absn = max(0, tot - pres - miss)
         rate = round((pres / tot * 100), 1) if tot > 0 else 0
         department_wise.append({
             "department": row["department"],
             "total": tot,
             "present": pres,
             "absent": absn,
+            "missing": miss,
             "attendance_rate": rate
         })
 
@@ -5351,27 +5407,32 @@ def get_workforce_dashboard_analytics(date=None):
     raw_shifts = frappe.db.sql("""
         SELECT 
             IFNULL(e.shift, 'General Shift') AS shift,
-            COUNT(e.name) AS total,
-            COUNT(CASE WHEN a.status IN ('Present', 'Half Day') THEN 1 END) AS present,
-            COUNT(CASE WHEN a.status = 'Absent' THEN 1 END) AS absent
+            COUNT(DISTINCT e.name) AS total,
+            COUNT(DISTINCT CASE WHEN a.status IN ('Present', 'Half Day') THEN a.employee END) AS present,
+            COUNT(DISTINCT CASE WHEN a.status = 'Missing' THEN a.employee END) AS missing,
+            COUNT(DISTINCT CASE WHEN a.status = 'Absent' THEN a.employee END) AS absent
         FROM `tabEmployee` e
-        LEFT JOIN `tabAttendance` a ON a.employee = e.name AND a.attendance_date = %s AND a.docstatus != 2
+        LEFT JOIN `tabAttendance` a ON a.employee = e.name 
+            AND a.attendance_date BETWEEN %s AND %s 
+            AND a.docstatus != 2
         WHERE e.status = 'Active'
         GROUP BY e.shift
         ORDER BY total DESC
-    """, (target_date,), as_dict=True)
+    """, (target_start, target_end), as_dict=True)
 
     shift_wise = []
     for row in raw_shifts:
         tot = row["total"] or 0
         pres = row["present"] or 0
-        absn = max(0, tot - pres)
+        miss = row["missing"] or 0
+        absn = max(0, tot - pres - miss)
         rate = round((pres / tot * 100), 1) if tot > 0 else 0
         shift_wise.append({
             "shift": row["shift"],
             "total": tot,
             "present": pres,
             "absent": absn,
+            "missing": miss,
             "attendance_rate": rate
         })
 
