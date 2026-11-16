@@ -135,8 +135,10 @@ def get_applicable_line(employee, attendance_date):
 			"details": line_details
 		}
 
-	# 3. Fallback to Employee's Default Line (line_order)
+	# 3. Fallback to Employee's Default Line (line_order), preserving pre-change default for historical dates
 	default_line = frappe.db.get_value("Employee", employee, "line_order")
+	history_map = get_default_line_change_history_map([employee])
+	default_line = resolve_default_line_for_date(default_line, target_date, history_map.get(employee))
 	if default_line:
 		line_details = get_line_metadata(default_line)
 		return {
@@ -147,6 +149,45 @@ def get_applicable_line(employee, attendance_date):
 		}
 
 	return None
+
+
+def get_default_line_change_history_map(emp_ids):
+	"""Batch-fetches active/superseded DEFAULT_LINE_CHANGE history rows ordered chronologically."""
+	if not emp_ids:
+		return {}
+	rows = frappe.db.sql(
+		"""
+		SELECT h.employee, h.effective_from, h.previous_line, h.new_line, h.creation
+		FROM `tabEmployee Line Roster History` h
+		LEFT JOIN `tabEmployee Line Roster` r ON r.name = h.roster_id
+		WHERE h.employee IN %(emp_ids)s
+		  AND h.source IN ('DEFAULT_LINE_CHANGE', 'LINE_CHANGE', 'Default Line Change', 'DEFAULT LINE CHANGE', 'Line Change')
+		  AND h.new_line IS NOT NULL AND h.new_line != ''
+		  AND r.name IS NOT NULL
+		  AND (r.status = 'Active' OR r.reason LIKE '%%Overridden by%%')
+		ORDER BY h.effective_from ASC, h.creation ASC
+		""",
+		{"emp_ids": tuple(emp_ids)},
+		as_dict=True
+	)
+	history_map = {}
+	for row in rows:
+		history_map.setdefault(row.employee, []).append(row)
+	return history_map
+
+
+def resolve_default_line_for_date(current_default_line, target_date, history_rows=None):
+	"""
+	Resolves the effective default line for target_date.
+	If a Default Line Change took effect after target_date, returns the previous_line
+	that was active prior to the earliest subsequent line change.
+	"""
+	if history_rows:
+		target_d = getdate(target_date)
+		for row in history_rows:
+			if row.effective_from and getdate(row.effective_from) > target_d:
+				return row.previous_line or None
+	return current_default_line
 
 
 def get_line_metadata(line_order):
@@ -684,6 +725,7 @@ def get_monthly_roster(month=None, year=None, department=None, employee=None, se
 	# 5. Fetch all active line roster assignments for THIS page of employees
 	emp_ids = [e.name for e in employees_data]
 	emp_rosters = {}
+	default_line_history_map = get_default_line_change_history_map(emp_ids) if emp_ids else {}
 	if emp_ids:
 		roster_records = frappe.db.sql(
 			"""
@@ -848,25 +890,29 @@ def get_monthly_roster(month=None, year=None, department=None, employee=None, se
 						"is_weekly_off": day_info["is_weekend"],
 						"is_holiday": day_info["is_holiday"]
 					}
-				elif emp.line_order:
-					l_name = emp.line_order
-					l_meta = line_lookup.get(l_name, {})
-					emp_lines[d_str] = {
-						"line_order": l_name,
-						"line_name": l_meta.get("line_name", l_name),
-						"source": "DEFAULT",
-						"roster_id": None,
-						"is_weekly_off": day_info["is_weekend"],
-						"is_holiday": day_info["is_holiday"]
-					}
 				else:
-					emp_lines[d_str] = {
-						"line_order": None,
-						"line_name": "Unassigned",
-						"source": "NONE",
-						"is_weekly_off": day_info["is_weekend"],
-						"is_holiday": day_info["is_holiday"]
-					}
+					resolved_default_line = resolve_default_line_for_date(
+						emp.line_order, d_obj, default_line_history_map.get(e_id)
+					)
+					if resolved_default_line:
+						l_name = resolved_default_line
+						l_meta = line_lookup.get(l_name, {})
+						emp_lines[d_str] = {
+							"line_order": l_name,
+							"line_name": l_meta.get("line_name", l_name),
+							"source": "DEFAULT",
+							"roster_id": None,
+							"is_weekly_off": day_info["is_weekend"],
+							"is_holiday": day_info["is_holiday"]
+						}
+					else:
+						emp_lines[d_str] = {
+							"line_order": None,
+							"line_name": "Unassigned",
+							"source": "NONE",
+							"is_weekly_off": day_info["is_weekend"],
+							"is_holiday": day_info["is_holiday"]
+						}
 
 		matrix.append({
 			"employee": emp.name,
