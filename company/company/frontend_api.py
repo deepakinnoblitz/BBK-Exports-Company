@@ -5552,31 +5552,111 @@ def get_workforce_dashboard_analytics(date=None, from_date=None, to_date=None, s
             "attendance_rate": rate
         })
 
-    # 4. Workers Skill Matrix
-    SKILL_ORDER = ["Highly Skilled", "Skilled", "Semi Skilled", "Unskilled"]
+    # 4. Workers Skill Matrix (Dynamic from Skill Master & Employee Skill History)
 
-    # Overall Worker Skill Counts
-    raw_skills = frappe.db.sql("""
-        SELECT 
-            IFNULL(e.skill, 'Unassigned') AS skill,
-            COUNT(e.name) AS count
-        FROM `tabEmployee` e
-        WHERE e.status = 'Active' AND (e.employee_type = 'Workers' OR e.designation = 'Workers')
-        GROUP BY e.skill
-    """, as_dict=True)
+    # 4.1. Fetch all active skills from Skill Master
+    master_skills_data = []
+    if frappe.db.table_exists("Skill"):
+        master_skills_data = frappe.db.sql("""
+            SELECT name, skill_name
+            FROM `tabSkill`
+            WHERE is_active = 1
+            ORDER BY creation ASC
+        """, as_dict=True)
 
-    skill_counts = {s: 0 for s in SKILL_ORDER}
-    skill_counts["Unassigned"] = 0
+    master_skill_names = [s["name"] for s in master_skills_data if s.get("name")]
+    if not master_skill_names:
+        master_skill_names = ["Highly Skilled", "Skilled", "Semi Skilled", "Unskilled"]
+
+    # 4.2. Resolve each employee's effective skill on target_date using Employee Skill History
+    target_end_datetime = f"{target_end} 23:59:59"
+    emp_history_skill = {}
+    if frappe.db.table_exists("Employee Skill History"):
+        history_rows = frappe.db.sql("""
+            SELECT employee, to_skill, changed_at
+            FROM `tabEmployee Skill History`
+            WHERE changed_at <= %s
+            ORDER BY changed_at ASC
+        """, (target_end_datetime,), as_dict=True)
+        for h in history_rows:
+            emp_id = h.get("employee")
+            to_sk = (h.get("to_skill") or "").strip()
+            if emp_id and to_sk:
+                emp_history_skill[emp_id] = to_sk
+
+    # 4.3. Gather all distinct skills from active workers
+    assigned_skills = set()
+    for emp in employees:
+        if emp.get("employee_type") == 'Workers' or emp.get("designation") == 'Workers':
+            eff_sk = emp_history_skill.get(emp["name"]) or (emp.get("skill") or "").strip()
+            if eff_sk:
+                assigned_skills.add(eff_sk)
+
+    # Ordered list of all skills: Master skills first, followed by any assigned skills
+    all_skills = []
+    for s in master_skill_names:
+        if s not in all_skills:
+            all_skills.append(s)
+    for s in sorted(list(assigned_skills)):
+        if s not in all_skills and s != "Unassigned":
+            all_skills.append(s)
+
+    # 4.4. Initialize counts and matrix maps
     total_workers = 0
+    skill_counts = {s: 0 for s in all_skills}
+    skill_counts["Unassigned"] = 0
 
-    for r in raw_skills:
-        s = r["skill"] or "Unassigned"
-        c = r["count"] or 0
-        skill_counts[s] = skill_counts.get(s, 0) + c
-        total_workers += c
+    line_matrix_map = {}
+    for cl in all_active_canonical_lines:
+        line_matrix_map[cl] = {
+            "line": cl,
+            "total": 0,
+            **{s: 0 for s in all_skills},
+            "Unassigned": 0
+        }
+
+    dept_matrix_map = {}
+
+    for emp in employees:
+        if emp.get("employee_type") == 'Workers' or emp.get("designation") == 'Workers':
+            total_workers += 1
+            eff_sk = emp_history_skill.get(emp["name"]) or (emp.get("skill") or "").strip() or "Unassigned"
+            if eff_sk not in skill_counts:
+                skill_counts[eff_sk] = 0
+            skill_counts[eff_sk] += 1
+
+            # Line matrix
+            eff_line = resolve_emp_line(emp["name"], emp.get("line_order"))
+            if eff_line and eff_line in line_matrix_map:
+                if eff_sk not in line_matrix_map[eff_line]:
+                    line_matrix_map[eff_line][eff_sk] = 0
+                line_matrix_map[eff_line][eff_sk] += 1
+                line_matrix_map[eff_line]["total"] += 1
+
+            # Department matrix
+            dept = (emp.get("department") or "").strip() or "Unassigned"
+            if dept not in dept_matrix_map:
+                dept_matrix_map[dept] = {
+                    "department": dept,
+                    "total": 0,
+                    **{s: 0 for s in all_skills},
+                    "Unassigned": 0
+                }
+            if eff_sk not in dept_matrix_map[dept]:
+                dept_matrix_map[dept][eff_sk] = 0
+            dept_matrix_map[dept][eff_sk] += 1
+            dept_matrix_map[dept]["total"] += 1
+
+    line_skill_matrix = [line_matrix_map[cl] for cl in all_active_canonical_lines]
+    dept_skill_matrix = sorted(list(dept_matrix_map.values()), key=lambda x: x["total"], reverse=True)
+
+    # 4.5. Overall skills distribution
+    skills_for_overall = [s for s in all_skills if s != "Unassigned"]
+    if skill_counts.get("Unassigned", 0) > 0:
+        skills_for_overall.append("Unassigned")
 
     overall_skills = []
-    for s in SKILL_ORDER + (["Unassigned"] if skill_counts.get("Unassigned", 0) > 0 else []):
+    for s in skills_for_overall:
         c = skill_counts.get(s, 0)
         pct = round((c / total_workers * 100), 1) if total_workers > 0 else 0
         overall_skills.append({
@@ -5585,63 +5665,11 @@ def get_workforce_dashboard_analytics(date=None, from_date=None, to_date=None, s
             "percentage": pct
         })
 
-    # Line-wise Skill Matrix using dynamic effective line
-    line_matrix_map = {}
-    for cl in all_active_canonical_lines:
-        line_matrix_map[cl] = {
-            "line": cl,
-            "total": 0,
-            "Highly Skilled": 0,
-            "Skilled": 0,
-            "Semi Skilled": 0,
-            "Unskilled": 0,
-            "Unassigned": 0
-        }
-
-    for emp in employees:
-        if emp.get("employee_type") == 'Workers' or emp.get("designation") == 'Workers':
-            eff_line = resolve_emp_line(emp["name"], emp.get("line_order"))
-            if not eff_line or eff_line not in line_matrix_map:
-                continue
-            sk = emp.get("skill") or "Unassigned"
-            if sk not in ("Highly Skilled", "Skilled", "Semi Skilled", "Unskilled"):
-                sk = "Unassigned"
-            line_matrix_map[eff_line][sk] += 1
-            line_matrix_map[eff_line]["total"] += 1
-
-    line_skill_matrix = [line_matrix_map[cl] for cl in all_active_canonical_lines]
-
-    # Department-wise Skill Matrix
-    raw_dept_skills = frappe.db.sql("""
-        SELECT 
-            IFNULL(e.department, 'Unassigned') AS department,
-            IFNULL(e.skill, 'Unassigned') AS skill,
-            COUNT(e.name) AS count
-        FROM `tabEmployee` e
-        WHERE e.status = 'Active' AND (e.employee_type = 'Workers' OR e.designation = 'Workers')
-        GROUP BY e.department, e.skill
-        ORDER BY e.department, e.skill
-    """, as_dict=True)
-
-    dept_matrix_map = {}
-    for r in raw_dept_skills:
-        d = r["department"] or "Unassigned"
-        if d not in dept_matrix_map:
-            dept_matrix_map[d] = {
-                "department": d,
-                "total": 0,
-                "Highly Skilled": 0,
-                "Skilled": 0,
-                "Semi Skilled": 0,
-                "Unskilled": 0,
-                "Unassigned": 0
-            }
-        s = r["skill"] or "Unassigned"
-        cnt = r["count"] or 0
-        dept_matrix_map[d][s] = dept_matrix_map[d].get(s, 0) + cnt
-        dept_matrix_map[d]["total"] += cnt
-
-    dept_skill_matrix = sorted(list(dept_matrix_map.values()), key=lambda x: x["total"], reverse=True)
+    summary_dict = {}
+    for s in skills_for_overall:
+        key = re.sub(r'[^a-zA-Z0-9]+', '_', s.strip().lower()).strip('_')
+        if key:
+            summary_dict[key] = skill_counts.get(s, 0)
 
     return {
         "date": target_date,
@@ -5650,15 +5678,10 @@ def get_workforce_dashboard_analytics(date=None, from_date=None, to_date=None, s
         "shift_wise": shift_wise,
         "skill_matrix": {
             "total_workers": total_workers,
+            "skills": skills_for_overall,
             "overall": overall_skills,
             "line_matrix": line_skill_matrix,
             "department_matrix": dept_skill_matrix,
-            "summary": {
-                "highly_skilled": skill_counts.get("Highly Skilled", 0),
-                "skilled": skill_counts.get("Skilled", 0),
-                "semi_skilled": skill_counts.get("Semi Skilled", 0),
-                "unskilled": skill_counts.get("Unskilled", 0),
-                "unassigned": skill_counts.get("Unassigned", 0),
-            }
+            "summary": summary_dict
         }
     }
