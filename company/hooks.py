@@ -159,9 +159,6 @@ scheduler_events = {
         "company.company.doctype.employee_monthly_award.employee_monthly_award.calculate_monthly_awards",
     ],
     "cron": {
-        "* * * * *": [
-            "company.company.biometric.biometric_sync.evaluate_and_run_scheduled_sync"
-        ],
         "0 1 1 * *": [
             "company.company.frontend_api.cron_allocate_conditional_leaves"
         ]
@@ -289,11 +286,12 @@ role_home_page = {
 # 	"filters": "company.utils.jinja_filters"
 # }
 
-# Installation
-# ------------
+# Installation & Migration
+# ------------------------
 
 # before_install = "company.install.before_install"
-# after_install = "company.install.after_install"
+after_install = "company.company.setup.setup_biometric_daemon"
+after_migrate = "company.company.setup.setup_biometric_daemon"
 
 # Uninstallation
 # ------------
