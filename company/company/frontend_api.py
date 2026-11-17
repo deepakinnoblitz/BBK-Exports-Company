@@ -32,23 +32,28 @@ def get_doctype_list(doctype, txt=None, fields=None, filters=None, limit=0, orde
         # Bypass direct permission check for Payment Terms to allow Invoice readers/creators to fetch them
         if not frappe.has_permission("Invoice", "read") and not frappe.has_permission("Invoice", "create"):
             return []
+    elif doctype == "Bus Route Point":
+        # Bus Route Point is a child table of Bus Travel Route
+        if not frappe.has_permission("Bus Travel Route", "read") and not frappe.has_permission("Employee", "read"):
+            return []
     elif not frappe.has_permission(doctype, "read"):
         return []
 
     query_filters = {}
     if txt:
-        query_filters["name"] = ["like", f"%{txt}%"]
+        search_field = "point_name" if doctype == "Bus Route Point" else "name"
+        query_filters[search_field] = ["like", f"%{txt}%"]
 
     if filters:
         import json
         extra_filters = json.loads(filters) if isinstance(filters, str) else filters
         query_filters.update(extra_filters)
 
-    # Use get_all for Payment Terms to bypass strict system manager check
-    fetch_fn = frappe.get_all if doctype == "Payment Terms" else frappe.get_list
+    # Use get_all for Payment Terms and child tables like Bus Route Point to bypass strict system manager check / child table limitation
+    fetch_fn = frappe.get_all if doctype in ("Payment Terms", "Bus Route Point") else frappe.get_list
 
     limit_val = int(limit) if limit is not None else 0
-    order = order_by or "name asc"
+    order = order_by or ("point_name asc" if doctype == "Bus Route Point" else "name asc")
 
     kwargs = {
         "filters": query_filters,
@@ -62,7 +67,7 @@ def get_doctype_list(doctype, txt=None, fields=None, filters=None, limit=0, orde
         kwargs["fields"] = field_list
         return fetch_fn(doctype, **kwargs)
 
-    kwargs["pluck"] = "name"
+    kwargs["pluck"] = "point_name" if doctype == "Bus Route Point" else "name"
     return fetch_fn(doctype, **kwargs)
 
 
