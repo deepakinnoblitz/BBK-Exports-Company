@@ -5655,10 +5655,8 @@ def get_workforce_dashboard_analytics(date=None, from_date=None, to_date=None, s
     line_skill_matrix = [line_matrix_map[cl] for cl in all_active_canonical_lines]
     dept_skill_matrix = sorted(list(dept_matrix_map.values()), key=lambda x: x["total"], reverse=True)
 
-    # 4.5. Overall skills distribution
+    # 4.5. Overall skills distribution (exclude Unassigned from skill distribution and chart)
     skills_for_overall = [s for s in all_skills if s != "Unassigned"]
-    if skill_counts.get("Unassigned", 0) > 0:
-        skills_for_overall.append("Unassigned")
 
     overall_skills = []
     for s in skills_for_overall:
