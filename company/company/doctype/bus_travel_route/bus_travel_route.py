@@ -7,6 +7,7 @@ from frappe.model.document import Document
 class BusTravelRoute(Document):
 	def validate(self):
 		self.validate_unique_fields()
+		self.validate_route_points()
 
 	def validate_unique_fields(self):
 		bus_no = (self.bus_number or "").strip()
@@ -51,11 +52,16 @@ class BusTravelRoute(Document):
 			self.bus_number = ""
 
 		if contact:
+			digits = "".join(filter(str.isdigit, contact))
+			if not digits:
+				frappe.throw(_("Driver Contact must contain numeric values only."))
+
 			self.driver_contact = contact
+			existing = None
 			if is_existing:
-				existing = frappe.db.sql(
+				routes = frappe.db.sql(
 					"""
-					SELECT name, route_name
+					SELECT name, route_name, driver_contact
 					FROM `tabBus Travel Route`
 					WHERE LOWER(TRIM(driver_contact)) = LOWER(%s)
 					AND name != %s
@@ -64,10 +70,29 @@ class BusTravelRoute(Document):
 					(contact, self.name),
 					as_dict=True,
 				)
+				if routes:
+					existing = routes
+				elif len(digits) >= 10:
+					all_routes = frappe.db.sql(
+						"""
+						SELECT name, route_name, driver_contact
+						FROM `tabBus Travel Route`
+						WHERE driver_contact IS NOT NULL AND driver_contact != ''
+						AND name != %s
+						""",
+						(self.name,),
+						as_dict=True,
+					)
+					last_10 = digits[-10:]
+					for r in all_routes:
+						r_digits = "".join(filter(str.isdigit, r.get("driver_contact") or ""))
+						if r_digits and (r_digits == digits or (len(r_digits) >= 10 and r_digits[-10:] == last_10)):
+							existing = [r]
+							break
 			else:
-				existing = frappe.db.sql(
+				routes = frappe.db.sql(
 					"""
-					SELECT name, route_name
+					SELECT name, route_name, driver_contact
 					FROM `tabBus Travel Route`
 					WHERE LOWER(TRIM(driver_contact)) = LOWER(%s)
 					LIMIT 1
@@ -75,6 +100,23 @@ class BusTravelRoute(Document):
 					(contact,),
 					as_dict=True,
 				)
+				if routes:
+					existing = routes
+				elif len(digits) >= 10:
+					all_routes = frappe.db.sql(
+						"""
+						SELECT name, route_name, driver_contact
+						FROM `tabBus Travel Route`
+						WHERE driver_contact IS NOT NULL AND driver_contact != ''
+						""",
+						as_dict=True,
+					)
+					last_10 = digits[-10:]
+					for r in all_routes:
+						r_digits = "".join(filter(str.isdigit, r.get("driver_contact") or ""))
+						if r_digits and (r_digits == digits or (len(r_digits) >= 10 and r_digits[-10:] == last_10)):
+							existing = [r]
+							break
 
 			if existing:
 				existing_title = existing[0].get("route_name") or existing[0].get("name")
@@ -85,6 +127,21 @@ class BusTravelRoute(Document):
 				)
 		else:
 			self.driver_contact = ""
+
+	def validate_route_points(self):
+		seen_names = set()
+		for pt in (self.points or []):
+			p_name = (pt.point_name or "").strip()
+			if not p_name:
+				continue
+			lower = p_name.lower()
+			if lower in seen_names:
+				frappe.throw(
+					_("Point / Stop Name '{0}' is duplicated in Route Points. Point names must be unique within a route.").format(
+						p_name
+					)
+				)
+			seen_names.add(lower)
 
 
 
@@ -118,12 +175,22 @@ def save_bus_travel_route(
 
 	doc.set("points", [])
 	if points and isinstance(points, list):
+		seen_p = set()
 		for p in points:
 			if isinstance(p, dict) and p.get("point_name"):
+				p_name = p.get("point_name").strip()
+				lower_name = p_name.lower()
+				if lower_name in seen_p:
+					frappe.throw(
+						_("Point / Stop Name '{0}' is duplicated in Route Points. Point names must be unique within a route.").format(
+							p_name
+						)
+					)
+				seen_p.add(lower_name)
 				doc.append(
 					"points",
 					{
-						"point_name": p.get("point_name").strip(),
+						"point_name": p_name,
 						"pickup_time": p.get("pickup_time") or None,
 						"drop_time": p.get("drop_time") or None,
 					},
