@@ -9,14 +9,23 @@ class EmployeeType(Document):
 		emp_type = (self.employee_type or "").strip()
 		cat_type = (self.category_type or "").strip()
 
-		if cat_type and cat_type != "General":
-			# Append category if not already in employee_type
-			if not emp_type.lower().endswith(f"- {cat_type}".lower()) and not emp_type.lower().endswith(f"({cat_type})".lower()):
-				generated = f"{emp_type} - {cat_type}"
-			else:
+		# Only Staff supports categories (CTC / Non CTC)
+		if emp_type.lower() == "staff" or emp_type.lower().startswith("staff -"):
+			if cat_type in ["CTC", "Non CTC"]:
+				generated = f"Staff - {cat_type}"
+			elif " - " in emp_type:
 				generated = emp_type
+			else:
+				generated = f"Staff - {cat_type}" if cat_type and cat_type != "General" else "Staff - CTC"
 		else:
+			# Non-Staff (Workers, Drivers, Contractor, etc.) - No category
 			generated = emp_type
+			self.category_type = "General"
 
 		self.name = generated
 		self.employee_type = generated
+
+	def validate(self):
+		emp_type = (self.employee_type or "").strip()
+		if emp_type.lower() != "staff" and not emp_type.lower().startswith("staff -"):
+			self.category_type = "General"

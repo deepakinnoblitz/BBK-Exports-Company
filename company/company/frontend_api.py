@@ -1,3 +1,5 @@
+import re
+import re
 import frappe
 from frappe.auth import LoginManager
 from frappe import _
@@ -1658,11 +1660,23 @@ def update_my_password(old_password, new_password):
     if old_password == new_password:
         return {"status": "failed", "message": "New password must be different from the old password."}
 
+    # Password strength validation
+    if len(new_password) < 8:
+        return {"status": "failed", "message": "Password must be at least 8 characters long."}
+    if not re.search(r'[A-Z]', new_password):
+        return {"status": "failed", "message": "Password must contain at least one uppercase letter."}
+    if not re.search(r'[a-z]', new_password):
+        return {"status": "failed", "message": "Password must contain at least one lowercase letter."}
+    if not re.search(r'[0-9]', new_password):
+        return {"status": "failed", "message": "Password must contain at least one number."}
+    if not re.search(r'[!@#$%^&*(),.?":{}|<>]', new_password):
+        return {"status": "failed", "message": "Password must contain at least one special character."}
+
     # Verify old password
     try:
         frappe.utils.password.check_password(user, old_password)
     except frappe.AuthenticationError:
-        return {"status": "failed", "message": "Incorrect old password"}
+        return {"status": "failed", "message": "Incorrect Current password"}
 
     # Update password and commit to DB
     frappe.utils.password.update_password(user, new_password)
@@ -1726,11 +1740,14 @@ def update_profile_info(first_name, middle_name=None, last_name=None):
     if user == "Guest":
         return {"status": "failed", "message": "Please login to update profile"}
 
+    if not first_name or not str(first_name).strip():
+        return {"status": "failed", "message": "First name is required."}
+
     try:
         user_doc = frappe.get_doc("User", user)
-        user_doc.first_name = first_name
-        user_doc.middle_name = middle_name
-        user_doc.last_name = last_name
+        user_doc.first_name = str(first_name).strip()
+        user_doc.middle_name = (middle_name or "").strip() or None
+        user_doc.last_name = (last_name or "").strip() or None
         user_doc.save(ignore_permissions=True)
 
         return {
@@ -1745,7 +1762,10 @@ def update_profile_info(first_name, middle_name=None, last_name=None):
         }
     except Exception as e:
         frappe.log_error(f"Error updating profile: {str(e)}")
-        return {"status": "failed", "message": str(e)}
+        err_msg = str(e)
+        if "first_name" in err_msg or "MandatoryError" in err_msg:
+            err_msg = "First name is required."
+        return {"status": "failed", "message": err_msg}
 
 
 @frappe.whitelist(allow_guest=True)
