@@ -8,10 +8,18 @@ from frappe.model.document import Document
 
 class Designation(Document):
 	def validate(self):
+		self.validate_designation_name()
 		self.validate_designation_code()
+
+	def validate_designation_name(self):
+		name = (self.designation_name or "").strip()
+		if len(name) > 140 or len(self.designation_name or "") > 140:
+			frappe.throw(_("Maximum character limit is 140 characters for Designation Name."))
 
 	def validate_designation_code(self):
 		code = (self.designation_code or "").strip()
+		if len(code) > 140 or len(self.designation_code or "") > 140:
+			frappe.throw(_("Maximum character limit is 140 characters for Designation Code."))
 		if code:
 			self.designation_code = code
 
