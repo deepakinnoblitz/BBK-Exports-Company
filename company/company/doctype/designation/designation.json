@@ -27,7 +27,8 @@
   {
    "fieldname": "designation_code",
    "fieldtype": "Data",
-   "label": "Designation Code"
+   "label": "Designation Code",
+   "unique": 1
   },
   {
    "fieldname": "department",
