@@ -27,7 +27,7 @@
    "fieldtype": "Data",
    "in_list_view": 1,
    "label": "Account Number",
-   "length": 15,
+   "length": 30,
    "reqd": 1,
    "unique": 1
   },

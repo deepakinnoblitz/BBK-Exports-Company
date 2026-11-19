@@ -740,12 +740,14 @@ def calculate_professional_tax(gross_salary, pay_period_start, settings, employe
             return None
         configured_slabs = matched_other_rule.get("pt_slabs")
         frequency = matched_other_rule.get("pt_deduction_frequency") or "Half-Yearly Deduction"
+        half_yearly_months_setting = matched_other_rule.get("pt_half_yearly_months") or "April, September"
     else:
         enable_pt = cint(get_category_setting(settings, "enable_pt", emp_type, default=1))
         if not enable_pt:
             return None
         configured_slabs = get_category_setting(settings, "pt_slabs", emp_type)
-        frequency = get_category_setting(settings, "pt_deduction_frequency", emp_type, default="Half-Yearly (Sep & Feb)")
+        frequency = get_category_setting(settings, "pt_deduction_frequency", emp_type, default="Half-Yearly Deduction")
+        half_yearly_months_setting = get_category_setting(settings, "pt_half_yearly_months", emp_type, default="April, September")
 
     pay_period_start = getdate(pay_period_start)
     gross = flt(gross_salary)
@@ -822,6 +824,22 @@ def calculate_professional_tax(gross_salary, pay_period_start, settings, employe
     if doj and doj > get_last_day(pay_period_start):
         return 0.0
     if dol and dol < pay_period_start:
+        return 0.0
+
+    # For Half-Yearly Deduction: Check if current month is in configured PT cycle months
+    # (Allow deduction only in designated cycle months or if employee is leaving this month)
+    cycle_months = [
+        m.strip().lower()
+        for m in str(half_yearly_months_setting).replace("&", ",").split(",")
+        if m.strip()
+    ]
+    cur_month_name = pay_period_start.strftime("%B").lower()
+
+    is_leaving_this_period = False
+    if dol and pay_period_start <= dol <= get_last_day(pay_period_start):
+        is_leaving_this_period = True
+
+    if cur_month_name not in cycle_months and not is_leaving_this_period:
         return 0.0
 
     effective_cycle_start = cycle_start
@@ -1940,7 +1958,7 @@ def preview_salary_slip(employee, start_date, end_date):
             item["amount"] = flt(d.amount)
 
         is_statutory_active = False
-        if c_name in [pt_component_name, "Prof.Tax", "Professional Tax", "PT", "Prof Tax"] and pt_amount is not None:
+        if c_name in [pt_component_name, "Prof.Tax", "Professional Tax", "PT", "Prof Tax"] and flt(pt_amount) > 0:
             is_statutory_active = True
         elif (c_lower == pf_component_name.lower() or any(k in c_lower for k in ["pf", "provident fund", "epf"])) and "employer" not in c_lower and "admin" not in c_lower and emp_pf is not None:
             is_statutory_active = True
@@ -1960,9 +1978,9 @@ def preview_salary_slip(employee, start_date, end_date):
 
         prorated_deductions.append(item)
 
-    # If Prof.Tax wasn't in employee structure but pt_amount is not None (PT is enabled in settings), add it
+    # If Prof.Tax wasn't in employee structure but pt_amount is not None (PT is enabled in settings), add it only if pt_amount > 0
     has_pt = any((d.get("component_name") or d.get("salary_component") or "").lower() in [pt_component_name.lower(), "prof.tax", "professional tax", "pt", "prof tax"] for d in prorated_deductions)
-    if not has_pt and pt_amount is not None:
+    if not has_pt and pt_amount is not None and flt(pt_amount) > 0:
         prorated_deductions.append({
             "component_name": pt_component_name,
             "salary_component": pt_component_name,
