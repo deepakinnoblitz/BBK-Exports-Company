@@ -47,6 +47,9 @@ app_include_css = "/assets/company/css/custom.css?v=17"
 
 
 doc_events = {
+    "User": {
+        "on_update": "company.company.doctype.employee.employee.sync_user_permissions_on_user_update"
+    },
     "Estimation": {
         "before_insert": "company.company.api.before_insert_estimation"
     },
