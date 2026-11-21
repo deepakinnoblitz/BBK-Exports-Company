@@ -67,10 +67,42 @@ def get_doctype_list(doctype, txt=None, fields=None, filters=None, limit=0, orde
         import json
         field_list = json.loads(fields) if isinstance(fields, str) else fields
         kwargs["fields"] = field_list
-        return fetch_fn(doctype, **kwargs)
+        res = fetch_fn(doctype, **kwargs)
+    else:
+        kwargs["pluck"] = "point_name" if doctype == "Bus Route Point" else "name"
+        res = fetch_fn(doctype, **kwargs)
 
-    kwargs["pluck"] = "point_name" if doctype == "Bus Route Point" else "name"
-    return fetch_fn(doctype, **kwargs)
+    if doctype == "User" and isinstance(res, list):
+        user_names = [u.get("name") if isinstance(u, dict) else u for u in res if u]
+        if user_names:
+            has_roles = frappe.db.get_all(
+                "Has Role",
+                filters={"parent": ["in", user_names], "role": ["not in", ["All", "Guest", "Desk User"]]},
+                fields=["parent", "role"],
+            )
+            roles_map = {}
+            for r in has_roles:
+                roles_map.setdefault(r.parent, []).append(r.role)
+
+            formatted_res = []
+            for u in res:
+                if isinstance(u, dict):
+                    user_roles = roles_map.get(u.get("name"), [])
+                    u["roles"] = ", ".join(user_roles) if user_roles else ""
+                    u["roles_list"] = user_roles
+                    formatted_res.append(u)
+                else:
+                    user_roles = roles_map.get(u, [])
+                    formatted_res.append({
+                        "name": u,
+                        "email": u,
+                        "full_name": u,
+                        "roles": ", ".join(user_roles) if user_roles else "",
+                        "roles_list": user_roles,
+                    })
+            return formatted_res
+
+    return res
 
 
 @frappe.whitelist()
