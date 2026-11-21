@@ -255,17 +255,74 @@ class Employee(Document):
 			})
 
 		if self.user:
-			# Create or ensure new permission exists
-			if not frappe.db.exists("User Permission", {"user": self.user, "allow": "Employee", "for_value": self.name}):
-				frappe.get_doc({
-					"doctype": "User Permission",
+			user_roles = frappe.get_roles(self.user)
+			if "Employee" in user_roles:
+				# Create or ensure new permission exists only if the user has the 'Employee' role
+				if not frappe.db.exists("User Permission", {"user": self.user, "allow": "Employee", "for_value": self.name}):
+					frappe.get_doc({
+						"doctype": "User Permission",
+						"user": self.user,
+						"allow": "Employee",
+						"for_value": self.name
+					}).insert(ignore_permissions=True)
+			else:
+				# If user does NOT have Employee role (e.g. HR, System Manager, Administrator),
+				# remove any existing Employee user permission so they are not restricted
+				frappe.db.delete("User Permission", {
 					"user": self.user,
 					"allow": "Employee",
 					"for_value": self.name
-				}).insert(ignore_permissions=True)
+				})
 
 	def delete_user_permissions(self):
 		frappe.db.delete("User Permission", {
 			"allow": "Employee",
 			"for_value": self.name
 		})
+
+
+def sync_user_permissions_on_user_update(doc, method=None):
+	"""
+	When a User document is updated, sync their Employee User Permissions based on their roles.
+	If user has the 'Employee' role, ensure User Permission exists for their linked Employee doc(s).
+	If user does not have the 'Employee' role (e.g. HR, System Manager), remove Employee User Permission.
+	"""
+	user_email = doc.name
+	linked_employees = frappe.db.get_all("Employee", filters={"user": user_email}, pluck="name")
+	if not linked_employees:
+		return
+
+	user_roles = frappe.get_roles(user_email)
+	is_employee_role = "Employee" in user_roles
+
+	for emp_name in linked_employees:
+		if is_employee_role:
+			if not frappe.db.exists("User Permission", {"user": user_email, "allow": "Employee", "for_value": emp_name}):
+				frappe.get_doc({
+					"doctype": "User Permission",
+					"user": user_email,
+					"allow": "Employee",
+					"for_value": emp_name
+				}).insert(ignore_permissions=True)
+		else:
+			frappe.db.delete("User Permission", {
+				"user": user_email,
+				"allow": "Employee",
+				"for_value": emp_name
+			})
+
+
+def cleanup_non_employee_user_permissions():
+	"""
+	One-time cleanup: remove 'Employee' User Permissions for any users who do not have the 'Employee' role.
+	"""
+	perms = frappe.db.get_all("User Permission", filters={"allow": "Employee"}, fields=["name", "user", "for_value"])
+	removed = []
+	for p in perms:
+		roles = frappe.get_roles(p.user)
+		if "Employee" not in roles:
+			frappe.db.delete("User Permission", {"name": p.name})
+			removed.append(p)
+	frappe.db.commit()
+	return f"Cleaned up {len(removed)} invalid User Permission records: {removed}"
+
