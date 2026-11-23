@@ -17,6 +17,7 @@ class JobApplicant(Document):
 
     def validate(self):
         self.validate_resume_attachment()
+        self.validate_phone_number()
         self.validate_unique_email_and_phone_per_job()
 
     def validate_resume_attachment(self):
@@ -32,6 +33,21 @@ class JobApplicant(Document):
             frappe.throw(
                 _("Video files are not allowed for resume attachment. Please upload a valid document (PDF, DOC, DOCX, JPG, PNG).")
             )
+
+    def validate_phone_number(self):
+        if not self.phone_number:
+            return
+
+        digits = re.sub(r"\D", "", str(self.phone_number))
+        raw = str(self.phone_number).strip()
+        if raw.startswith("+91") or (digits.startswith("91") and len(digits) > 10):
+            national_digits = digits[2:] if digits.startswith("91") else digits
+            if len(national_digits) != 10:
+                frappe.throw(
+                    _("Invalid Phone Number: Mobile number for India (+91) must be exactly 10 digits.")
+                )
+        elif len(digits) < 8 or len(digits) > 15:
+            frappe.throw(_("Invalid Phone Number: Please enter a valid phone number."))
 
     def validate_unique_email_and_phone_per_job(self):
         if not self.job_title:
