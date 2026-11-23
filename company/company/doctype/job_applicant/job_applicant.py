@@ -1,7 +1,97 @@
+import re
 import frappe
+from frappe import _
 from frappe.model.document import Document
 
+
+def normalize_phone_key(phone):
+    if not phone:
+        return ""
+    digits = re.sub(r"\D", "", str(phone))
+    if len(digits) >= 10:
+        return digits[-10:]
+    return digits
+
+
 class JobApplicant(Document):
+
+    def validate(self):
+        self.validate_unique_email_and_phone_per_job()
+
+    def validate_unique_email_and_phone_per_job(self):
+        if not self.job_title:
+            return
+
+        is_existing = bool(self.name and not self.is_new() and frappe.db.exists("Job Applicant", self.name))
+
+        # Resolve matching job openings with the same job title
+        matching_openings = [self.job_title]
+        actual_title = frappe.db.get_value("Job Opening", self.job_title, "job_title")
+        if actual_title:
+            same_title_openings = frappe.get_all(
+                "Job Opening",
+                filters={"job_title": actual_title},
+                pluck="name"
+            )
+            matching_openings.extend(same_title_openings)
+        else:
+            same_title_openings = frappe.get_all(
+                "Job Opening",
+                filters={"job_title": self.job_title},
+                pluck="name"
+            )
+            matching_openings.extend(same_title_openings)
+
+        matching_openings = list(set(matching_openings))
+
+        # 1. Validate Email uniqueness for the same job title
+        if self.email_id:
+            clean_email = self.email_id.strip().lower()
+            query = """
+                SELECT name, applicant_name, email_id 
+                FROM `tabJob Applicant`
+                WHERE job_title IN %(openings)s
+                AND LOWER(TRIM(email_id)) = %(email)s
+            """
+            params = {"openings": matching_openings, "email": clean_email}
+            if is_existing:
+                query += " AND name != %(name)s"
+                params["name"] = self.name
+            query += " LIMIT 1"
+
+            existing_email = frappe.db.sql(query, params, as_dict=True)
+            if existing_email:
+                job_display = actual_title or self.job_title
+                frappe.throw(
+                    _("An applicant with the email '{0}' already exists for job title '{1}'.").format(
+                        self.email_id, job_display
+                    )
+                )
+
+        # 2. Validate Phone Number uniqueness for the same job title
+        if self.phone_number:
+            phone_key = normalize_phone_key(self.phone_number)
+            if phone_key and len(phone_key) >= 10:
+                query = """
+                    SELECT name, applicant_name, phone_number 
+                    FROM `tabJob Applicant`
+                    WHERE job_title IN %(openings)s
+                """
+                params = {"openings": matching_openings}
+                if is_existing:
+                    query += " AND name != %(name)s"
+                    params["name"] = self.name
+
+                existing_applicants = frappe.db.sql(query, params, as_dict=True)
+                for applicant in existing_applicants:
+                    existing_phone_key = normalize_phone_key(applicant.get("phone_number"))
+                    if existing_phone_key == phone_key:
+                        job_display = actual_title or self.job_title
+                        frappe.throw(
+                            _("An applicant with the phone number '{0}' already exists for job title '{1}'.").format(
+                                self.phone_number, job_display
+                            )
+                        )
 
     def after_insert(self):
         self.notify_hr_on_creation()
