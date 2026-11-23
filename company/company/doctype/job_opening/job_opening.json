@@ -123,9 +123,9 @@
   {
    "default": "General Shift",
    "fieldname": "shift",
-   "fieldtype": "Select",
+   "fieldtype": "Link",
    "label": "Shift",
-   "options": "General Shift\nWFH\nNight Shift",
+   "options": "Shift",
    "reqd": 1
   },
   {
