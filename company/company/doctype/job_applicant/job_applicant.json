@@ -73,6 +73,7 @@
    "in_list_view": 1,
    "label": "Job Opening",
    "options": "Job Opening",
+   "reqd": 1,
    "search_index": 1
   },
   {
