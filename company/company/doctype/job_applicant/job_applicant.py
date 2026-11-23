@@ -16,7 +16,22 @@ def normalize_phone_key(phone):
 class JobApplicant(Document):
 
     def validate(self):
+        self.validate_resume_attachment()
         self.validate_unique_email_and_phone_per_job()
+
+    def validate_resume_attachment(self):
+        if not self.resume_attachment:
+            return
+
+        video_extensions = (
+            ".webm", ".mp4", ".mkv", ".mov", ".avi", ".flv",
+            ".wmv", ".m4v", ".3gp", ".ogg", ".ogv", ".ts", ".mpg", ".mpeg"
+        )
+        url_clean = self.resume_attachment.lower().split("?")[0].strip()
+        if any(url_clean.endswith(ext) for ext in video_extensions):
+            frappe.throw(
+                _("Video files are not allowed for resume attachment. Please upload a valid document (PDF, DOC, DOCX, JPG, PNG).")
+            )
 
     def validate_unique_email_and_phone_per_job(self):
         if not self.job_title:

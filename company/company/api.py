@@ -3093,6 +3093,15 @@ def submit_job_application():
         frappe.throw("Please upload your Resume / CV")
 
     uploaded_file = frappe.request.files["resume_attachment"]
+    filename_lower = (uploaded_file.filename or "").lower().split("?")[0].strip()
+    video_extensions = (
+        ".webm", ".mp4", ".mkv", ".mov", ".avi", ".flv",
+        ".wmv", ".m4v", ".3gp", ".ogg", ".ogv", ".ts", ".mpg", ".mpeg"
+    )
+    if any(filename_lower.endswith(ext) for ext in video_extensions) or (
+        getattr(uploaded_file, "content_type", None) and uploaded_file.content_type.lower().startswith("video/")
+    ):
+        frappe.throw(_("Video files are not allowed for resume attachment. Please upload a valid document (PDF, DOC, DOCX, JPG, PNG)."))
 
     # 2) Save file temporarily (without linking)
     temp_file = save_file(
