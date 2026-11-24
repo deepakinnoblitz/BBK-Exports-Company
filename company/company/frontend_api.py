@@ -3280,6 +3280,11 @@ def submit_referral(candidate_name, candidate_email, job_opening, resume, candid
     if not target_referrer:
         frappe.throw(_("Employee profile not found for the current user."))
 
+    if resume:
+        file_size = frappe.db.get_value("File", {"file_url": resume}, "file_size")
+        if file_size and file_size > 5 * 1024 * 1024:
+            frappe.throw(_("Resume attachment file size exceeds 5MB limit. Please upload a file smaller than 5MB."))
+
     doc = frappe.get_doc({
         "doctype": "Employee Referral",
         "referrer": target_referrer,

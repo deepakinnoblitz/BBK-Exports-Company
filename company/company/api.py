@@ -3104,9 +3104,14 @@ def submit_job_application():
         frappe.throw(_("Video files are not allowed for resume attachment. Please upload a valid document (PDF, DOC, DOCX, JPG, PNG)."))
 
     # 2) Save file temporarily (without linking)
+    MAX_FILE_SIZE = 5 * 1024 * 1024  # 5MB
+    file_content = uploaded_file.read()
+    if len(file_content) > MAX_FILE_SIZE:
+        frappe.throw(_("Resume attachment file size exceeds 5MB limit. Please upload a file smaller than 5MB."))
+
     temp_file = save_file(
         uploaded_file.filename,
-        uploaded_file.read(),
+        file_content,
         None,
         None,
         folder=None,

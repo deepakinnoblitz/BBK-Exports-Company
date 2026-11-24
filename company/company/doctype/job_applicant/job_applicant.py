@@ -34,6 +34,10 @@ class JobApplicant(Document):
                 _("Video files are not allowed for resume attachment. Please upload a valid document (PDF, DOC, DOCX, JPG, PNG).")
             )
 
+        file_size = frappe.db.get_value("File", {"file_url": self.resume_attachment}, "file_size")
+        if file_size and file_size > 5 * 1024 * 1024:
+            frappe.throw(_("Resume attachment file size exceeds 5MB limit. Please upload a file smaller than 5MB."))
+
     def validate_phone_number(self):
         if not self.phone_number:
             return
