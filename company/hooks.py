@@ -202,6 +202,9 @@ for r in spa_routes:
     website_route_rules.append({"from_route": f"/{r}/<path:app_path>", "to_route": "crm"})
     website_route_rules.append({"from_route": f"/{r}", "to_route": "crm"})
 
+# Fallback route for face-api models to ensure legacy /models/<file> requests redirect to static public assets
+website_route_rules.append({"from_route": "/models/<path:model_file>", "to_route": "models"})
+
 home_page = "crm"
 
 website_context = {

@@ -46,9 +46,17 @@ scriptApp.onload = () => {
         }
 
         // Step 6️⃣ - Get FCM token — this links messaging → SW automatically
+        const vapidKey =
+          (window.frappe &&
+            frappe.boot &&
+            frappe.boot.site_config &&
+            frappe.boot.site_config.firebase &&
+            frappe.boot.site_config.firebase.vapid_key) ||
+          "BNoDcuaDF51hrhWUmDUQko_rBVI8E1QfWrT-GOVDJXQpqA045DBEXz9I7VHe_SpPvttLJhjIJrbjafYtpQNWQrk";
+
         messaging
           .getToken({
-            vapidKey: frappe.boot.site_config.firebase.vapid_key,
+            vapidKey: vapidKey,
             serviceWorkerRegistration: registration, // ✔ Correct way in v10
           })
           .then((token) => {
