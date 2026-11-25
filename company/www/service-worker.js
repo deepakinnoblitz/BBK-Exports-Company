@@ -75,7 +75,9 @@ self.addEventListener("fetch", event => {
     // ── 1. Static assets: cache-first (fast, versioned filenames never stale)
     if (url.pathname.startsWith("/assets/")) {
         event.respondWith(
-            fetch(event.request).catch(() => caches.match(event.request))
+            fetch(event.request).catch(() =>
+                caches.match(event.request).then(cached => cached || new Response("Not found", { status: 404, statusText: "Not Found" }))
+            )
         );
         return;
     }
@@ -102,14 +104,22 @@ self.addEventListener("fetch", event => {
                     caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
                     return response;
                 })
-                .catch(() => caches.match(event.request))
+                .catch(() =>
+                    caches.match(event.request).then(cached =>
+                        cached || caches.match("/").then(rootCached =>
+                            rootCached || new Response("Offline", { status: 503, statusText: "Offline" })
+                        )
+                    )
+                )
         );
         return;
     }
 
     // ── 4. Everything else: network-first, cache fallback
     event.respondWith(
-        fetch(event.request).catch(() => caches.match(event.request))
+        fetch(event.request).catch(() =>
+            caches.match(event.request).then(cached => cached || new Response("Not found", { status: 404, statusText: "Not Found" }))
+        )
     );
 });
 
