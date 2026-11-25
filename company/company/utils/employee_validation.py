@@ -15,6 +15,8 @@ NULLABLE_IDENTITY_FIELDS = (
     "uan_number",
     "esi_no",
     "pf_number",
+    "bank_account",
+    "user",
 )
 
 
@@ -67,9 +69,25 @@ EMPLOYEE_IDENTITY_RULES: dict[str, dict[str, Any]] = {
     "pf_number": {
         "label": "PF Number",
         "normalize": _normalize_pf,
+        "pattern": re.compile(r"^([A-Z]{2}[A-Z]{3}\d{7}\d{3}\d{7}|[A-Z]{2}/[A-Z]{3}/\d{1,7}(?:/\d{1,3})?/\d{1,7})$"),
+        "format_error": "PF Number must follow valid EPFO format (e.g., TN/MAS/10036/0000265 or 22-character Member ID).",
+        "sql_norm": "UPPER(REPLACE(TRIM(`pf_number`), ' ', ''))",
+        "unique": True,
+    },
+    "bank_account": {
+        "label": "Bank Account",
+        "normalize": lambda v: str(v or "").strip(),
         "pattern": None,
         "format_error": None,
-        "sql_norm": "UPPER(REPLACE(TRIM(`pf_number`), ' ', ''))",
+        "sql_norm": "TRIM(`bank_account`)",
+        "unique": True,
+    },
+    "user": {
+        "label": "User Login",
+        "normalize": lambda v: str(v or "").strip(),
+        "pattern": None,
+        "format_error": None,
+        "sql_norm": "TRIM(`user`)",
         "unique": True,
     },
 }
