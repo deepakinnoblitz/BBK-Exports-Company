@@ -3,6 +3,27 @@ import frappe
 from frappe.model.document import Document
 
 class ReimbursementClaim(Document):
+    def validate(self):
+        self.validate_receipt()
+
+    def validate_receipt(self):
+        if not self.receipt:
+            return
+
+        video_extensions = (
+            ".webm", ".mp4", ".mkv", ".mov", ".avi", ".flv",
+            ".wmv", ".m4v", ".3gp", ".ogg", ".ogv", ".ts", ".mpg", ".mpeg"
+        )
+        url_clean = self.receipt.lower().split("?")[0].strip()
+        if any(url_clean.endswith(ext) for ext in video_extensions):
+            frappe.throw(
+                frappe._("Video files are not allowed for receipt. Please upload an image or document (PDF, PNG, JPG, JPEG).")
+            )
+
+        file_size = frappe.db.get_value("File", {"file_url": self.receipt}, "file_size")
+        if file_size and file_size > 5 * 1024 * 1024:
+            frappe.throw(frappe._("Receipt file size exceeds 5MB limit. Please upload a file smaller than 5MB."))
+
     def on_submit(self):
         """Enqueue HR notifications in background to avoid submit delay"""
         # 🛡️ Prevent double enqueuing in the same request

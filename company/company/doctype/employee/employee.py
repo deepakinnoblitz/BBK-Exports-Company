@@ -1,4 +1,5 @@
 import json
+import os
 import frappe
 from frappe.model.document import Document
 from frappe.utils import getdate, flt
@@ -42,7 +43,29 @@ class Employee(Document):
 		validate_and_normalize_employee_fields(self)
 		self.validate_duplicate_components()
 		self.validate_status_and_dol()
+		self.validate_documents()
+		self.validate_bus_route_point()
+		self.validate_unique_user()
 		self.calculate_totals()
+
+	def validate_bus_route_point(self):
+		if self.bus_travel_route and not self.bus_route_point:
+			frappe.throw(frappe._("Bus Route Point is required when Bus - Travel Route is selected."))
+		elif not self.bus_travel_route:
+			self.bus_route_point = None
+
+	def validate_unique_user(self):
+		if self.user:
+			existing_user = frappe.db.get_value(
+				"Employee",
+				{"user": self.user, "name": ["!=", self.name]},
+				["name", "employee_name"],
+				as_dict=True
+			)
+			if existing_user:
+				frappe.throw(
+					frappe._(f"User Login '{self.user}' is already assigned to Employee {existing_user.employee_name or existing_user.name} ({existing_user.name}).")
+				)
 
 	def calculate_totals(self):
 		from frappe.utils import flt
@@ -50,13 +73,30 @@ class Employee(Document):
 		self.total_deductions = round(sum(flt(d.amount) for d in self.get("deductions", [])), 2)
 		self.net_salary = round(self.total_earnings - self.total_deductions, 2)
 
+	def validate_documents(self):
+		forbidden_exts = {
+			".mp3", ".wav", ".aac", ".m4a", ".ogg", ".wma", ".flac",
+			".mp4", ".mkv", ".avi", ".mov", ".flv", ".wmv", ".webm",
+			".gif",".exe"
+		}
+		for doc in self.get("documents", []):
+			if doc.attachment:
+				clean_url = str(doc.attachment).split("?")[0].split("#")[0]
+				ext = os.path.splitext(clean_url)[1].lower()
+				if ext in forbidden_exts:
+					frappe.throw(
+						frappe._(f"File '{doc.attachment}' is not permitted. Audio, video, and GIF files are not allowed in Employee Documents.")
+					)
+
 	def validate_status_and_dol(self):
 		if self.status == "Active":
 			self.date_of_leaving = None
 		elif self.status == "Inactive":
+			if not self.date_of_leaving:
+				frappe.throw(frappe._("Date of Leaving (DOL) is required when Status is Inactive."))
 			if self.date_of_leaving and self.date_of_joining:
 				if getdate(self.date_of_leaving) < getdate(self.date_of_joining):
-					frappe.throw("Date of Leaving cannot be before Date of Joining")
+					frappe.throw(frappe._("Date of Leaving cannot be before Date of Joining."))
 
 	def validate_duplicate_components(self):
 		components = []
@@ -70,8 +110,19 @@ class Employee(Document):
 		if self.user:
 			frappe.db.set_value("User", self.user, "user_image", self.profile_picture)
 		
+		self.sync_line_roster_on_update()
 		self.manage_user_permissions()
 		self.log_history_changes()
+
+	def sync_line_roster_on_update(self):
+		if not self.line_order:
+			active_line_rosters = frappe.get_all(
+				"Employee Line Roster",
+				filters={"employee": self.name, "status": "Active"},
+				fields=["name"]
+			)
+			for roster in active_line_rosters:
+				frappe.db.set_value("Employee Line Roster", roster.name, "status", "Cancelled")
 
 	def log_history_changes(self):
 		old_doc = self.get_doc_before_save()
