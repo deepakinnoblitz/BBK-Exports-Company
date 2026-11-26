@@ -187,12 +187,21 @@ def get_monthly_canteen(month=None, year=None, department=None, employee=None, m
 			d_str = str(entry.canteen_date)
 			existing_rec = emp_entries.setdefault(entry.employee, {}).get(d_str)
 			count = entry.meal_count or 1
+			entry_item = {
+				"name": entry.name,
+				"meal_type": entry.meal_type or "Lunch",
+				"meal_count": count,
+				"status": entry.status or "Availed",
+				"source": entry.source or "Manual",
+				"remarks": entry.remarks or "",
+			}
 			if existing_rec:
 				existing_rec["meal_count"] += count
 				current_types = existing_rec.get("meal_types", [existing_rec.get("meal_type")])
 				current_types.append(entry.meal_type or "Lunch")
 				existing_rec["meal_types"] = current_types
 				existing_rec["meal_type"] = ", ".join(list(dict.fromkeys(current_types)))
+				existing_rec.setdefault("entries", []).append(entry_item)
 			else:
 				emp_entries.setdefault(entry.employee, {})[d_str] = {
 					"name": entry.name,
@@ -201,7 +210,8 @@ def get_monthly_canteen(month=None, year=None, department=None, employee=None, m
 					"meal_types": [entry.meal_type or "Lunch"],
 					"status": entry.status,
 					"source": entry.source,
-					"remarks": entry.remarks
+					"remarks": entry.remarks,
+					"entries": [entry_item],
 				}
 			if d_str in daily_totals:
 				daily_totals[d_str] += count
@@ -224,6 +234,7 @@ def get_monthly_canteen(month=None, year=None, department=None, employee=None, m
 					"meal_type": rec.get("meal_type", "Lunch"),
 					"entry_id": rec.get("name"),
 					"source": rec.get("source", "Manual"),
+					"entries": rec.get("entries", []),
 					"is_holiday": d["is_holiday"],
 					"is_weekend": d["is_weekend"],
 					"holiday_name": d["holiday_name"]
@@ -378,7 +389,7 @@ def get_calendar_canteen(start_date, end_date, employee=None, department=None, m
 
 @frappe.whitelist()
 def create_canteen_entry(data):
-	"""Create a new canteen entry (or update if already exists for same employee, date, meal_type)"""
+	"""Create a new canteen entry"""
 	if isinstance(data, str):
 		data = json.loads(data)
 
@@ -386,20 +397,6 @@ def create_canteen_entry(data):
 	c_date = data.get("canteen_date")
 	m_type = data.get("meal_type") or "Lunch"
 	m_count = cint(data.get("meal_count")) or 1
-
-	existing = frappe.db.get_value(
-		"Canteen Entry",
-		{"employee": emp, "canteen_date": c_date, "meal_type": m_type},
-		"name"
-	)
-
-	if existing:
-		doc = frappe.get_doc("Canteen Entry", existing)
-		doc.meal_count = m_count
-		doc.status = data.get("status") or "Availed"
-		doc.remarks = data.get("remarks") or doc.remarks
-		doc.save(ignore_permissions=True)
-		return doc.as_dict()
 
 	doc = frappe.get_doc({
 		"doctype": "Canteen Entry",
