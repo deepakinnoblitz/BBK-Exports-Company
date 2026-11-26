@@ -2,9 +2,33 @@
 # Copyright (c) 2026, Administrator and contributors
 # For license information, please see license.txt
 
+import html
+import re
 import frappe
 from frappe import _
 from frappe.model.document import Document
+
+_ESCAPED_HTML_PATTERN = re.compile(
+	r"&lt;\s*/?\s*(?:div|table|thead|tbody|tr|td|th|p|h[1-6]|span|strong|b|i|em|u|ul|ol|li|br|hr|style|section|header|footer|article|img|a|!doctype|html|body)\b[^&]*&gt;",
+	re.IGNORECASE,
+)
+
+
+def normalize_html_content(content: str) -> str:
+	"""Unescape editor-escaped HTML tags (e.g. pasted HTML inside Rich Text Editor)."""
+	if not content or not isinstance(content, str):
+		return content or ""
+
+	if not _ESCAPED_HTML_PATTERN.search(content):
+		return content
+
+	cleaned = re.sub(r"</p>\s*<p[^>]*>", "\n", content, flags=re.IGNORECASE)
+	cleaned = re.sub(r"^\s*<p[^>]*>", "", cleaned, flags=re.IGNORECASE)
+	cleaned = re.sub(r"</p>\s*$", "", cleaned, flags=re.IGNORECASE)
+	cleaned = re.sub(r"<br\s*/?>", "\n", cleaned, flags=re.IGNORECASE)
+	cleaned = html.unescape(cleaned)
+	cleaned = cleaned.replace("\u00a0", " ")
+	return cleaned.strip()
 
 
 class HRDocumentGeneration(Document):
@@ -97,6 +121,7 @@ def render_document_template(template_name, employee_id, custom_subject=None, cu
 	# Determine subject and content to render (prefer custom per-document overrides if provided)
 	raw_subject = custom_subject if custom_subject and custom_subject.strip() else template.subject
 	raw_content = custom_content if custom_content and custom_content.strip() else template.template_content
+	raw_content = normalize_html_content(raw_content)
 
 	rendered_subject = ""
 	rendered_content = ""
@@ -114,8 +139,84 @@ def render_document_template(template_name, employee_id, custom_subject=None, cu
 		except Exception as e:
 			frappe.log_error(f"Content Render Error: {str(e)}", "HR Document Render")
 			rendered_content = raw_content
+		rendered_content = normalize_html_content(rendered_content)
 
 	return {
 		"subject": rendered_subject,
 		"content": rendered_content,
 	}
+
+
+@frappe.whitelist()
+def download_rendered_pdf(name: str):
+	"""Generate and return a PDF containing only the Rendered Content of an HR Document Generation record."""
+	from frappe.utils.pdf import get_pdf
+
+	if not name:
+		frappe.throw(_("Document name is required"))
+
+	frappe.has_permission("HR Document Generation", "read", name, throw=True)
+	doc = frappe.get_doc("HR Document Generation", name)
+
+	content = normalize_html_content(doc.rendered_content or "")
+	if not content and doc.document_template and doc.employee:
+		res = render_document_template(
+			template_name=doc.document_template,
+			employee_id=doc.employee,
+			custom_subject=doc.subject,
+			custom_content=doc.template_content,
+		)
+		content = normalize_html_content(res.get("content", ""))
+
+	if not content:
+		content = "<p>No rendered content available.</p>"
+
+	title = html.escape(doc.rendered_subject or doc.subject or doc.name or "HR Document")
+	full_html = f"""<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>{title}</title>
+<style>
+  @page {{
+    size: A4;
+    margin: 10mm;
+  }}
+  body {{
+    font-family: Arial, Helvetica, sans-serif;
+    font-size: 13px;
+    line-height: 1.5;
+    color: #1f2937;
+    margin: 0;
+    padding: 0;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }}
+  table {{
+    border-collapse: collapse;
+  }}
+  img {{
+    max-width: 100%;
+    height: auto;
+  }}
+</style>
+</head>
+<body>
+{content}
+</body>
+</html>"""
+
+	pdf_bytes = get_pdf(
+		full_html,
+		options={
+			"page-size": "A4",
+			"margin-top": "10mm",
+			"margin-bottom": "10mm",
+			"margin-left": "10mm",
+			"margin-right": "10mm",
+		},
+	)
+
+	frappe.local.response.filename = f"{doc.name}.pdf"
+	frappe.local.response.filecontent = pdf_bytes
+	frappe.local.response.type = "pdf"
