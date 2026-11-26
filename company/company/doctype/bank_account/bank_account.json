@@ -11,7 +11,8 @@
   "bank_name",
   "branch",
   "ifsc_code",
-  "account_type"
+  "account_type",
+  "status"
  ],
  "fields": [
   {
@@ -53,6 +54,14 @@
    "fieldtype": "Select",
    "label": "Account Type",
    "options": "\nSavings\nCurrent\nSalary Account\nOther"
+  },
+  {
+   "default": "Active",
+   "fieldname": "status",
+   "fieldtype": "Select",
+   "in_list_view": 1,
+   "label": "Status",
+   "options": "Active\nInactive"
   }
  ],
  "grid_page_length": 50,
