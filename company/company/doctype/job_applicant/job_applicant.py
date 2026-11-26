@@ -1,7 +1,132 @@
+import re
 import frappe
+from frappe import _
 from frappe.model.document import Document
 
+
+def normalize_phone_key(phone):
+    if not phone:
+        return ""
+    digits = re.sub(r"\D", "", str(phone))
+    if len(digits) >= 10:
+        return digits[-10:]
+    return digits
+
+
 class JobApplicant(Document):
+
+    def validate(self):
+        self.validate_resume_attachment()
+        self.validate_phone_number()
+        self.validate_unique_email_and_phone_per_job()
+
+    def validate_resume_attachment(self):
+        if not self.resume_attachment:
+            return
+
+        video_extensions = (
+            ".webm", ".mp4", ".mkv", ".mov", ".avi", ".flv",
+            ".wmv", ".m4v", ".3gp", ".ogg", ".ogv", ".ts", ".mpg", ".mpeg"
+        )
+        url_clean = self.resume_attachment.lower().split("?")[0].strip()
+        if any(url_clean.endswith(ext) for ext in video_extensions):
+            frappe.throw(
+                _("Video files are not allowed for resume attachment. Please upload a valid document (PDF, DOC, DOCX, JPG, PNG).")
+            )
+
+        file_size = frappe.db.get_value("File", {"file_url": self.resume_attachment}, "file_size")
+        if file_size and file_size > 5 * 1024 * 1024:
+            frappe.throw(_("Resume attachment file size exceeds 5MB limit. Please upload a file smaller than 5MB."))
+
+    def validate_phone_number(self):
+        if not self.phone_number:
+            return
+
+        digits = re.sub(r"\D", "", str(self.phone_number))
+        raw = str(self.phone_number).strip()
+        if raw.startswith("+91") or (digits.startswith("91") and len(digits) > 10):
+            national_digits = digits[2:] if digits.startswith("91") else digits
+            if len(national_digits) != 10:
+                frappe.throw(
+                    _("Invalid Phone Number: Mobile number for India (+91) must be exactly 10 digits.")
+                )
+        elif len(digits) < 8 or len(digits) > 15:
+            frappe.throw(_("Invalid Phone Number: Please enter a valid phone number."))
+
+    def validate_unique_email_and_phone_per_job(self):
+        if not self.job_title:
+            return
+
+        is_existing = bool(self.name and not self.is_new() and frappe.db.exists("Job Applicant", self.name))
+
+        # Resolve matching job openings with the same job title
+        matching_openings = [self.job_title]
+        actual_title = frappe.db.get_value("Job Opening", self.job_title, "job_title")
+        if actual_title:
+            same_title_openings = frappe.get_all(
+                "Job Opening",
+                filters={"job_title": actual_title},
+                pluck="name"
+            )
+            matching_openings.extend(same_title_openings)
+        else:
+            same_title_openings = frappe.get_all(
+                "Job Opening",
+                filters={"job_title": self.job_title},
+                pluck="name"
+            )
+            matching_openings.extend(same_title_openings)
+
+        matching_openings = list(set(matching_openings))
+
+        # 1. Validate Email uniqueness for the same job title
+        if self.email_id:
+            clean_email = self.email_id.strip().lower()
+            query = """
+                SELECT name, applicant_name, email_id 
+                FROM `tabJob Applicant`
+                WHERE job_title IN %(openings)s
+                AND LOWER(TRIM(email_id)) = %(email)s
+            """
+            params = {"openings": matching_openings, "email": clean_email}
+            if is_existing:
+                query += " AND name != %(name)s"
+                params["name"] = self.name
+            query += " LIMIT 1"
+
+            existing_email = frappe.db.sql(query, params, as_dict=True)
+            if existing_email:
+                job_display = actual_title or self.job_title
+                frappe.throw(
+                    _("An applicant with the email '{0}' already exists for job title '{1}'.").format(
+                        self.email_id, job_display
+                    )
+                )
+
+        # 2. Validate Phone Number uniqueness for the same job title
+        if self.phone_number:
+            phone_key = normalize_phone_key(self.phone_number)
+            if phone_key and len(phone_key) >= 10:
+                query = """
+                    SELECT name, applicant_name, phone_number 
+                    FROM `tabJob Applicant`
+                    WHERE job_title IN %(openings)s
+                """
+                params = {"openings": matching_openings}
+                if is_existing:
+                    query += " AND name != %(name)s"
+                    params["name"] = self.name
+
+                existing_applicants = frappe.db.sql(query, params, as_dict=True)
+                for applicant in existing_applicants:
+                    existing_phone_key = normalize_phone_key(applicant.get("phone_number"))
+                    if existing_phone_key == phone_key:
+                        job_display = actual_title or self.job_title
+                        frappe.throw(
+                            _("An applicant with the phone number '{0}' already exists for job title '{1}'.").format(
+                                self.phone_number, job_display
+                            )
+                        )
 
     def after_insert(self):
         self.notify_hr_on_creation()

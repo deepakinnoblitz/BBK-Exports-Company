@@ -97,7 +97,6 @@
    "fieldtype": "Data",
    "label": "Email",
    "options": "Email",
-   "reqd": 1,
    "unique": 1
   },
   {

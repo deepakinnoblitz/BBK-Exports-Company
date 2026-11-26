@@ -3094,11 +3094,25 @@ def submit_job_application():
         frappe.throw("Please upload your Resume / CV")
 
     uploaded_file = frappe.request.files["resume_attachment"]
+    filename_lower = (uploaded_file.filename or "").lower().split("?")[0].strip()
+    video_extensions = (
+        ".webm", ".mp4", ".mkv", ".mov", ".avi", ".flv",
+        ".wmv", ".m4v", ".3gp", ".ogg", ".ogv", ".ts", ".mpg", ".mpeg"
+    )
+    if any(filename_lower.endswith(ext) for ext in video_extensions) or (
+        getattr(uploaded_file, "content_type", None) and uploaded_file.content_type.lower().startswith("video/")
+    ):
+        frappe.throw(_("Video files are not allowed for resume attachment. Please upload a valid document (PDF, DOC, DOCX, JPG, PNG)."))
 
     # 2) Save file temporarily (without linking)
+    MAX_FILE_SIZE = 5 * 1024 * 1024  # 5MB
+    file_content = uploaded_file.read()
+    if len(file_content) > MAX_FILE_SIZE:
+        frappe.throw(_("Resume attachment file size exceeds 5MB limit. Please upload a file smaller than 5MB."))
+
     temp_file = save_file(
         uploaded_file.filename,
-        uploaded_file.read(),
+        file_content,
         None,
         None,
         folder=None,
@@ -3814,7 +3828,7 @@ def bulk_import_employees(rows, update_existing=False, bank_accounts=None):
         return canonical
 
     # =========================================================================
-    # STEP 1: RESOLVE EXISTING BANK ACCOUNTS FROM MASTER (DO NOT AUTO-CREATE)
+    # STEP 1: RESOLVE EXISTING BANK ACCOUNTS FROM MASTER (OR AUTO-CREATE NEW)
     # =========================================================================
     bank_account_by_ref = {}
     bank_account_by_acct = {}
@@ -3824,6 +3838,8 @@ def bulk_import_employees(rows, update_existing=False, bank_accounts=None):
     for r in rows:
         if isinstance(r, dict) and r.get("bank_details"):
             all_bank_items.append(r["bank_details"])
+
+    valid_account_types = ("Savings", "Current", "Salary Account", "Other")
 
     for b_item in all_bank_items:
         if not isinstance(b_item, dict):
@@ -3845,6 +3861,56 @@ def bulk_import_employees(rows, update_existing=False, bank_accounts=None):
             if not ba_doc_name and acct_name:
                 ba_doc_name = frappe.db.get_value("Bank Account", {"bank_account_name": acct_name}, "name")
 
+            if not ba_doc_name and acct_no:
+                b_bank_name = str(b_item.get("bank_name") or "").strip()
+                b_branch = str(b_item.get("branch") or "").strip()
+                b_ifsc = str(b_item.get("ifsc_code") or "").strip().upper()
+
+                if b_ifsc and (not b_bank_name or not b_branch):
+                    ifsc_res = get_bank_details_by_ifsc(b_ifsc)
+                    if ifsc_res.get("success") and ifsc_res.get("data"):
+                        if not b_bank_name:
+                            b_bank_name = str(ifsc_res["data"].get("bank_name") or "").strip()
+                        if not b_branch:
+                            b_branch = str(ifsc_res["data"].get("branch") or "").strip()
+
+                ba_doc = frappe.new_doc("Bank Account")
+                ba_doc.account_number = acct_no
+                ba_doc.bank_account_name = acct_name or f"Salary Account - {acct_no}"
+                if b_bank_name:
+                    ba_doc.bank_name = b_bank_name
+                if b_branch:
+                    ba_doc.branch = b_branch
+                if b_ifsc:
+                    ba_doc.ifsc_code = b_ifsc
+                b_acct_type = str(b_item.get("account_type") or "").strip()
+                ba_doc.account_type = b_acct_type if b_acct_type in valid_account_types else "Salary Account"
+                ba_doc.flags.ignore_permissions = True
+                if not b_bank_name:
+                    ba_doc.flags.ignore_mandatory = True
+                ba_doc.insert(ignore_permissions=True)
+                frappe.db.commit()
+                ba_doc_name = ba_doc.name
+            elif ba_doc_name:
+                b_ifsc = str(b_item.get("ifsc_code") or "").strip().upper()
+                if b_ifsc:
+                    existing_ba = frappe.db.get_value(
+                        "Bank Account", ba_doc_name, ["bank_name", "branch", "ifsc_code"], as_dict=True
+                    )
+                    if existing_ba and (not existing_ba.get("bank_name") or not existing_ba.get("branch")):
+                        ifsc_res = get_bank_details_by_ifsc(b_ifsc)
+                        if ifsc_res.get("success") and ifsc_res.get("data"):
+                            updates = {}
+                            if not existing_ba.get("bank_name") and ifsc_res["data"].get("bank_name"):
+                                updates["bank_name"] = str(ifsc_res["data"]["bank_name"]).strip()
+                            if not existing_ba.get("branch") and ifsc_res["data"].get("branch"):
+                                updates["branch"] = str(ifsc_res["data"]["branch"]).strip()
+                            if not existing_ba.get("ifsc_code"):
+                                updates["ifsc_code"] = b_ifsc
+                            if updates:
+                                frappe.db.set_value("Bank Account", ba_doc_name, updates)
+                                frappe.db.commit()
+
             if ba_doc_name:
                 if ref_no:
                     bank_account_by_ref[ref_no.lower()] = ba_doc_name
@@ -3853,7 +3919,8 @@ def bulk_import_employees(rows, update_existing=False, bank_accounts=None):
                 if acct_name:
                     bank_account_by_name[acct_name.lower()] = ba_doc_name
         except Exception as e:
-            print("Error resolving bank account:", e)
+            frappe.db.rollback()
+            print("Error resolving/creating bank account:", e)
 
     # =========================================================================
     # STEP 2 & 3: RESOLVE MASTER RECORDS & IMPORT EMPLOYEES
@@ -3898,7 +3965,8 @@ def bulk_import_employees(rows, update_existing=False, bank_accounts=None):
 
             # Core Personal & Employment Details
             doc.employee_name = emp_name
-            doc.email = email
+            if email:
+                doc.email = email
             if "father_husband_name" in row and row["father_husband_name"]:
                 doc.father_husband_name = str(row["father_husband_name"]).strip()
             if "personal_email" in row and row["personal_email"]:
@@ -4150,6 +4218,8 @@ def bulk_import_employees(rows, update_existing=False, bank_accounts=None):
                 doc.ctc = total_earnings
 
             doc.flags.ignore_permissions = True
+            if not email:
+                doc.flags.ignore_mandatory = True
             if is_new and emp_doc_name:
                 doc.insert(set_name=emp_doc_name, ignore_permissions=True)
             else:

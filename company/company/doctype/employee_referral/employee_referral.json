@@ -80,7 +80,8 @@
    "fieldname": "candidate_phone",
    "fieldtype": "Data",
    "label": "Candidate Phone",
-   "options": "Phone"
+   "options": "Phone",
+   "reqd": 1
   },
   {
    "fieldname": "resume",

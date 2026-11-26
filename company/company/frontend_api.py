@@ -310,6 +310,51 @@ def get_doc_permissions(doctype):
     }
 
 
+def get_or_create_employee_for_user(user_name):
+    """Retrieve or automatically map/create the Employee record for the given user."""
+    if not user_name or user_name == "Guest":
+        return None
+
+    emp = frappe.db.get_value("Employee", {"user": user_name}, ["name", "employee_name"], as_dict=True)
+    if emp:
+        return emp
+
+    if not frappe.db.exists("User", user_name):
+        return None
+
+    user_doc = frappe.get_doc("User", user_name)
+
+    if user_doc.email:
+        emp_name = frappe.db.get_value("Employee", {"email": user_doc.email}, "name") or \
+                   frappe.db.get_value("Employee", {"personal_email": user_doc.email}, "name")
+        if emp_name:
+            frappe.db.set_value("Employee", emp_name, "user", user_name)
+            return frappe.db.get_value("Employee", emp_name, ["name", "employee_name"], as_dict=True)
+
+    candidate_name = user_doc.full_name or user_doc.first_name
+    if candidate_name:
+        emp_name = frappe.db.get_value("Employee", {"employee_name": candidate_name}, "name")
+        if emp_name:
+            frappe.db.set_value("Employee", emp_name, "user", user_name)
+            return frappe.db.get_value("Employee", emp_name, ["name", "employee_name"], as_dict=True)
+
+    try:
+        display_name = user_doc.full_name or user_doc.first_name or user_name.split("@")[0]
+        email = user_doc.email or (user_name if "@" in user_name else f"{user_name}@localhost")
+        new_emp = frappe.get_doc({
+            "doctype": "Employee",
+            "employee_name": display_name,
+            "user": user_name,
+            "email": email,
+            "status": "Active"
+        })
+        new_emp.insert(ignore_permissions=True)
+        return {"name": new_emp.name, "employee_name": new_emp.employee_name}
+    except Exception as e:
+        frappe.log_error(f"Failed to auto-create Employee for user {user_name}: {e}", "Auto Create Employee")
+        return None
+
+
 @frappe.whitelist()
 def get_current_user_info():
     """
@@ -323,7 +368,7 @@ def get_current_user_info():
     allowed_modules = [m for m in all_modules if m not in blocked_modules]
 
     # Fetch employee info
-    employee = frappe.db.get_value("Employee", {"user": user.name}, ["name", "employee_name"], as_dict=True)
+    employee = get_or_create_employee_for_user(user.name)
 
     has_crm_permission = bool(frappe.db.exists("User Permission", {"user": user.name}))
 
@@ -3170,7 +3215,8 @@ def get_open_jobs(search=None, filters=None, limit_start=0, limit_page_length=10
 def get_my_referrals(search=None, filters=None, limit_start=0, limit_page_length=10, order_by="creation desc"):
     """Fetch referrals submitted by the currently logged-in employee."""
     user = frappe.session.user
-    employee = frappe.db.get_value("Employee", {"user": user}, "name")
+    emp_info = get_or_create_employee_for_user(user)
+    employee = emp_info.get("name") if emp_info else None
     
     if not employee:
         return []
@@ -3206,17 +3252,42 @@ def get_my_referrals(search=None, filters=None, limit_start=0, limit_page_length
 
 
 @frappe.whitelist()
-def submit_referral(candidate_name, candidate_email, job_opening, resume, candidate_phone=None, relationship=None, notes=None):
+def submit_referral(candidate_name, candidate_email, job_opening, resume, candidate_phone=None, relationship=None, notes=None, referrer=None):
     """Submit a new candidate referral."""
-    user = frappe.session.user
-    employee = frappe.db.get_value("Employee", {"user": user}, "name")
-    
-    if not employee:
-        frappe.throw(_("Employee record not found for the current user."))
-        
+    if not candidate_phone or not str(candidate_phone).strip():
+        frappe.throw(_("Candidate Phone is required"))
+    current_user = frappe.session.user
+    user_roles = frappe.get_roles(current_user)
+    is_hr = any(role in user_roles for role in ["HR Manager", "HR", "HR User", "System Manager", "Administrator"])
+
+    target_referrer = None
+
+    if is_hr and referrer:
+        if not frappe.db.exists("Employee", referrer):
+            frappe.throw(_("Employee {0} not found").format(referrer))
+        target_referrer = referrer
+    else:
+        emp_info = get_or_create_employee_for_user(current_user)
+        target_referrer = emp_info.get("name") if emp_info else None
+
+    if not target_referrer:
+        if referrer and frappe.db.exists("Employee", referrer):
+            target_referrer = referrer
+        else:
+            emp_info = get_or_create_employee_for_user(current_user)
+            target_referrer = emp_info.get("name") if emp_info else None
+
+    if not target_referrer:
+        frappe.throw(_("Employee profile not found for the current user."))
+
+    if resume:
+        file_size = frappe.db.get_value("File", {"file_url": resume}, "file_size")
+        if file_size and file_size > 5 * 1024 * 1024:
+            frappe.throw(_("Resume attachment file size exceeds 5MB limit. Please upload a file smaller than 5MB."))
+
     doc = frappe.get_doc({
         "doctype": "Employee Referral",
-        "referrer": employee,
+        "referrer": target_referrer,
         "job_opening": job_opening,
         "candidate_name": candidate_name,
         "candidate_email": candidate_email,
@@ -3224,7 +3295,8 @@ def submit_referral(candidate_name, candidate_email, job_opening, resume, candid
         "resume": resume,
         "relationship": relationship,
         "notes": notes,
-        "status": "Pending"
+        "status": "Pending",
+        "date": frappe.utils.today()
     })
     
     doc.insert(ignore_permissions=True)
