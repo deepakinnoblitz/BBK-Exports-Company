@@ -1,6 +1,7 @@
 import frappe
 import json
 import os
+import re
 from frappe import _
 from frappe.utils import (
     getdate,
@@ -3929,12 +3930,19 @@ def bulk_import_employees(rows, update_existing=False, bank_accounts=None):
         emp_doc_name = str(row.get("name") or row.get("employee_id") or "").strip()
         emp_name = str(row.get("employee_name") or "").strip()
         email = str(row.get("email") or "").strip()
+        emp_type = str(row.get("employee_type") or "").strip()
 
         if not emp_doc_name:
             errors.append(f"Row {row_num}: Employee ID is required")
             continue
         if not emp_name:
             errors.append(f"Row {row_num}: Employee Name is required")
+            continue
+        if not email:
+            errors.append(f"Row {row_num}: Email is required")
+            continue
+        if not emp_type:
+            errors.append(f"Row {row_num}: Employee Type is required")
             continue
 
         try:
@@ -4226,7 +4234,8 @@ def bulk_import_employees(rows, update_existing=False, bank_accounts=None):
         except Exception as e:
             frappe.db.rollback()
             frappe.clear_messages()
-            errors.append(f"Row {row_num} ({emp_doc_name or emp_name}): {str(e)}")
+            err_msg = re.sub(r"\bSex\b", "Gender", str(e))
+            errors.append(f"Row {row_num} ({emp_doc_name or emp_name}): {err_msg}")
 
     return {
         "success": len(errors) == 0,
