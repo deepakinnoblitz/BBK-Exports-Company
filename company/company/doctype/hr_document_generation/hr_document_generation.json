@@ -2,6 +2,7 @@
  "actions": [],
  "allow_rename": 1,
  "creation": "2026-07-28 06:40:00",
+ "default_print_format": "HR Document Print Format",
  "doctype": "DocType",
  "engine": "InnoDB",
  "field_order": [
