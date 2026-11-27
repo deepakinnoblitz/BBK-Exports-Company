@@ -194,7 +194,7 @@ spa_routes = [
     "email-templates", "email-campaigns", "email-automations", "email-settings", "whatsapp-templates",
     "whatsapp-automation", "whatsapp-settings", "whatsapp-campaigns", "lead-integration", "sales-target-entry", "role-permissions", 
     "employee-type", "line-order", "shift", "bus-travel-route", "blood-group", "hr-document-category", "shift-roster", "monthly-roster",
-    "shift-rotation", "line-roster", "monthly-line-roster", "line-rotation", "face-line-change", "canteen", "skill"
+    "shift-rotation", "line-roster", "monthly-line-roster", "line-rotation", "face-line-change", "canteen", "skill", "hr-document-generation"
 ]
 
 website_route_rules = []
